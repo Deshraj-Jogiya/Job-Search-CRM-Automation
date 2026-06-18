@@ -10,7 +10,7 @@ api_key = os.getenv("OPENAI_API_KEY")
 api_base = os.getenv("OPENAI_API_BASE")
 model_name = os.getenv("OPENAI_MODEL", "gemini-3.5-flash")
 
-# Initialize OpenAI client (could map to Gemini's compatibility base)
+# Initialize OpenAI client
 client = OpenAI(
     api_key=api_key,
     base_url=api_base if api_base else None
@@ -45,7 +45,7 @@ Provide your response in EXACTLY the following JSON format:
   "gaps_analysis": "Identify key gaps between candidates skills and the requirements."
 }}
 Ensure the score is an integer between 0 and 100.
-Do not wrap your output in markdown code blocks like ```json ... ```. Just return raw JSON.
+Do not wrap your output in markdown code blocks. Just return raw JSON.
 """
     try:
         response = client.chat.completions.create(
@@ -57,7 +57,6 @@ Do not wrap your output in markdown code blocks like ```json ... ```. Just retur
             temperature=0.2
         )
         content = response.choices[0].message.content.strip()
-        # Fallback cleaning if markdown wrappers were included
         if content.startswith("```"):
             lines = content.splitlines()
             if lines[0].startswith("```json") or lines[0].startswith("```"):
@@ -74,17 +73,16 @@ Do not wrap your output in markdown code blocks like ```json ... ```. Just retur
             "gaps_analysis": "Error during analysis."
         }
 
-def tailor_resume(resume_data: dict, jd_text: str) -> dict:
-    """Rewrite experience bullets to align with the job description without making up achievements."""
+def run_tailoring_pass(experience_list: list, jd_text: str) -> list:
+    """Pass 1: Initial experience tailoring rewrite."""
     prompt = f"""
 You are an expert resume writer. Rewrite the professional experience bullets of the candidate's resume to highlight skills and projects relevant to the provided Job Description.
 RULES:
-1. DO NOT fabricate any work history, dates, companies, or metrics.
+1. DO NOT fabricate any work history, dates, companies, or metrics. Keep all statements 100% genuine.
 2. Align the framing and emphasis of bullets to match high-frequency and important keywords from the JD (e.g. data governance, ETL speed, ML forecasting).
-3. Keep the same structure: list of companies, roles, and their corresponding bullet points.
 
-Original Resume Experience:
-{json.dumps(resume_data.get('experience', []), indent=2)}
+Original Experience:
+{json.dumps(experience_list, indent=2)}
 
 Job Description:
 {jd_text}
@@ -97,8 +95,8 @@ Provide your response in EXACTLY the following JSON format:
     "location": "Location",
     "date": "Date Range",
     "bullets": [
-      "Rewritten bullet 1 emphasizing keywords",
-      "Rewritten bullet 2 emphasizing keywords"
+      "Rewritten bullet 1",
+      "Rewritten bullet 2"
     ]
   }},
   ...
@@ -121,8 +119,119 @@ Do not wrap your output in markdown code blocks. Just return raw JSON.
                 content = "\n".join(lines[1:-1]).strip()
         return json.loads(content)
     except Exception as e:
-        print(f"Error tailoring resume: {e}")
-        return resume_data.get('experience', [])
+        print(f"Error in tailoring pass 1: {e}")
+        return experience_list
+
+def verify_ats_score(experience_list: list, jd_text: str) -> dict:
+    """Verify ATS match score and extract remaining keyword gaps."""
+    prompt = f"""
+You are an ATS parser. Analyze the following candidate experience description against the Job Description.
+Calculate a compatibility score (0-100) and list any high-priority keywords from the JD that are still missing from the candidate experience.
+
+Candidate Experience:
+{json.dumps(experience_list, indent=2)}
+
+Job Description:
+{jd_text}
+
+Provide your response in EXACTLY the following JSON format:
+{{
+  "score": 90,
+  "missing_keywords": ["Spark", "Kubernetes"]
+}}
+Do not wrap your output in markdown code blocks. Just return raw JSON.
+"""
+    try:
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that returns only raw JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2
+        )
+        content = response.choices[0].message.content.strip()
+        if content.startswith("```"):
+            lines = content.splitlines()
+            if lines[0].startswith("```json") or lines[0].startswith("```"):
+                content = "\n".join(lines[1:-1]).strip()
+        return json.loads(content)
+    except Exception as e:
+        print(f"Error checking ATS score: {e}")
+        return {"score": 75, "missing_keywords": []}
+
+def run_refinement_pass(experience_list: list, jd_text: str, missing_keywords: list) -> list:
+    """Pass 2/3: Refine experience bullets to weave in missing keywords naturally and genuinely."""
+    prompt = f"""
+You are an expert resume writer. Refine the experience bullet points to naturally and genuinely weave in the following missing keywords from the JD, without fabricating any details or history.
+Only add the keywords if they align with the candidate's existing achievements (e.g. if the keyword is 'Docker' and a bullet mentions containerization or scaling, refine it to include 'Docker').
+
+Missing Keywords to Inject: {json.dumps(missing_keywords)}
+
+Original Experience:
+{json.dumps(experience_list, indent=2)}
+
+Job Description:
+{jd_text}
+
+Provide your response in EXACTLY the following JSON format:
+[
+  {{
+    "role": "Role Name",
+    "company": "Company Name",
+    "location": "Location",
+    "date": "Date Range",
+    "bullets": [
+      "Refined bullet 1",
+      "Refined bullet 2"
+    ]
+  }},
+  ...
+]
+Do not wrap your output in markdown code blocks. Just return raw JSON.
+"""
+    try:
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that returns only raw JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3
+        )
+        content = response.choices[0].message.content.strip()
+        if content.startswith("```"):
+            lines = content.splitlines()
+            if lines[0].startswith("```json") or lines[0].startswith("```"):
+                content = "\n".join(lines[1:-1]).strip()
+        return json.loads(content)
+    except Exception as e:
+        print(f"Error in refinement pass: {e}")
+        return experience_list
+
+def tailor_resume(resume_data: dict, jd_text: str) -> dict:
+    """Tailor experience bullets using a multi-pass loops to target a 95+ ATS score."""
+    experience = resume_data.get('experience', [])
+    
+    # Pass 1: Initial tailoring
+    print("AI Resume Optimization - Pass 1: Inital rewrite...")
+    experience = run_tailoring_pass(experience, jd_text)
+    
+    # Loop for Multi-pass ATS target (max 2 additional passes)
+    for pass_num in range(2):
+        evaluation = verify_ats_score(experience, jd_text)
+        score = evaluation.get("score", 70)
+        missing = evaluation.get("missing_keywords", [])
+        
+        print(f"ATS Match Score after Pass {pass_num+1}: {score}%")
+        if score >= 95 or not missing:
+            print(f"Target score reached or no key gaps remaining.")
+            break
+            
+        print(f"Attempting to inject missing keywords: {missing}")
+        experience = run_refinement_pass(experience, jd_text, missing)
+        
+    return experience
 
 def generate_cover_letter(resume_data: dict, company_name: str, job_title: str, jd_text: str) -> str:
     """Generate a highly personalized 3-paragraph cover letter."""

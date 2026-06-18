@@ -1,5 +1,6 @@
 import os
 import json
+import threading
 from datetime import datetime
 from fastapi import FastAPI, Depends, Form, Request, HTTPException
 from fastapi.responses import RedirectResponse, HTMLResponse
@@ -9,7 +10,8 @@ from sqlalchemy.orm import Session
 
 from .database import engine, Base, get_db
 from .models import JobApplication, TailoredDocument
-from .services import ai_service
+from .services import ai_service, autofill_service
+from .services import scheduler as bg_scheduler
 
 # Initialize Database tables
 Base.metadata.create_all(bind=engine)
@@ -22,6 +24,16 @@ os.makedirs("app/static/css", exist_ok=True)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 templates = Jinja2Templates(directory="app/templates")
+
+@app.on_event("startup")
+def startup_event():
+    # Start background scheduler for crawling new jobs
+    bg_scheduler.start_scheduler()
+
+@app.on_event("shutdown")
+def shutdown_event():
+    # Stop background scheduler
+    bg_scheduler.stop_scheduler()
 
 def get_base_resume():
     """Helper to load the default base resume data."""
@@ -110,11 +122,20 @@ def ingest_job(
     
     return RedirectResponse(url="/", status_code=303)
 
+@app.post("/jobs/crawl")
+def trigger_manual_crawl():
+    """Manually trigger job search crawler in background thread."""
+    threading.Thread(
+        target=bg_scheduler.trigger_crawling_job,
+        daemon=True
+    ).start()
+    return RedirectResponse(url="/", status_code=303)
+
 @app.get("/jobs/{job_id}", response_class=HTMLResponse)
 def job_detail(job_id: int, request: Request, db: Session = Depends(get_db)):
     job = db.query(JobApplication).filter(JobApplication.id == job_id).first()
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=4404, detail="Job not found")
         
     analysis = {}
     if job.match_analysis:
@@ -155,7 +176,7 @@ def tailor_application(job_id: int, db: Session = Depends(get_db)):
         
     resume_data = get_base_resume()
     
-    # 1. Tailor experience bullets
+    # 1. Tailor experience bullets (using multi-pass 95+ ATS optimizer)
     tailored_experience = ai_service.tailor_resume(resume_data, job.job_description)
     
     # Compile a tailored copy of the resume profile JSON
@@ -206,6 +227,16 @@ def tailor_application(job_id: int, db: Session = Depends(get_db)):
     
     return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
 
+@app.post("/jobs/{job_id}/autofill")
+def trigger_autofill(job_id: int):
+    """Run Playwright headed browser form filler in a background thread."""
+    threading.Thread(
+        target=autofill_service.autofill_job_application,
+        args=(job_id,),
+        daemon=True
+    ).start()
+    return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
+
 @app.post("/jobs/{job_id}/update-status")
 def update_status(job_id: int, status: str = Form(...), db: Session = Depends(get_db)):
     job = db.query(JobApplication).filter(JobApplication.id == job_id).first()
@@ -223,7 +254,7 @@ def update_status(job_id: int, status: str = Form(...), db: Session = Depends(ge
 def update_notes(job_id: int, notes: str = Form(...), db: Session = Depends(get_db)):
     job = db.query(JobApplication).filter(JobApplication.id == job_id).first()
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=4404, detail="Job not found")
         
     job.notes = notes
     db.commit()
@@ -234,7 +265,7 @@ def update_notes(job_id: int, notes: str = Form(...), db: Session = Depends(get_
 def delete_job(job_id: int, db: Session = Depends(get_db)):
     job = db.query(JobApplication).filter(JobApplication.id == job_id).first()
     if not job:
-        raise HTTPException(status_code=4404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="Job not found")
     db.delete(job)
     db.commit()
     return RedirectResponse(url="/", status_code=303)
@@ -247,7 +278,6 @@ def render_tailored_resume(job_id: int, request: Request, db: Session = Depends(
     ).first()
     
     if not resume_doc:
-        # Fallback to base resume if tailoring hasn't run yet
         resume_data = get_base_resume()
     else:
         resume_data = json.loads(resume_doc.content)
@@ -271,12 +301,10 @@ def render_tailored_cover_letter(job_id: int, request: Request, db: Session = De
     ).first()
     
     if not cl_doc:
-        raise HTTPException(status_code=404, detail="Cover letter not generated yet. Click 'Generate Tailored Documents' first.")
+        raise HTTPException(status_code=404, detail="Cover letter not generated yet.")
         
     resume_data = get_base_resume()
     job = db.query(JobApplication).filter(JobApplication.id == job_id).first()
-    
-    # Split paragraphs by double newline
     paragraphs = cl_doc.content.split("\n\n")
     
     return templates.TemplateResponse(
