@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: job-search-crm
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    disk:
+      name: crm-db-disk
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: DATABASE_URL
+        value: sqlite:////data/crm.db
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gemini-3.5-flash
+      - key: OPENAI_API_BASE
+        value: https://generativelanguage.googleapis.com/v1beta/openai/
+      - key: IMAP_HOST
+        value: imap.gmail.com
+      - key: IMAP_USER
+        sync: false
+      - key: IMAP_PASSWORD
+        sync: false

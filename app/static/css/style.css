@@ -11,6 +11,7 @@
     /* Kanban columns / Badges colors */
     --color-ingested: #60a5fa;
     --color-tailored: #a78bfa;
+    --color-needs-review: #f97316;
     --color-applied: #fbbf24;
     --color-interviewing: #34d399;
     --color-offer: #10b981;
@@ -271,6 +272,7 @@ textarea {
 /* Column Header Specific Colors */
 .kanban-col[data-status="Ingested"] .kanban-col-header h3 { color: var(--color-ingested); }
 .kanban-col[data-status="Tailored"] .kanban-col-header h3 { color: var(--color-tailored); }
+.kanban-col[data-status="Needs Review"] .kanban-col-header h3 { color: var(--color-needs-review); }
 .kanban-col[data-status="Applied"] .kanban-col-header h3 { color: var(--color-applied); }
 .kanban-col[data-status="Interviewing"] .kanban-col-header h3 { color: var(--color-interviewing); }
 .kanban-col[data-status="Offer"] .kanban-col-header h3 { color: var(--color-offer); }

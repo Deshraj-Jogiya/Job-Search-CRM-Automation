@@ -65,6 +65,7 @@ def index(request: Request, db: Session = Depends(get_db)):
     kanban = {
         "Ingested": [j for j in jobs if j.status == "Ingested"],
         "Tailored": [j for j in jobs if j.status == "Tailored"],
+        "Needs Review": [j for j in jobs if j.status == "Needs Review"],
         "Applied": [j for j in jobs if j.status == "Applied"],
         "Interviewing": [j for j in jobs if j.status == "Interviewing"],
         "Offer": [j for j in jobs if j.status == "Offer"],
