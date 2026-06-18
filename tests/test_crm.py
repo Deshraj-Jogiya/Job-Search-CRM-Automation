@@ -89,5 +89,34 @@ class TestJobSearchCRM(unittest.TestCase):
         self.assertIsNotNone(scheduler)
         self.assertIsNotNone(autofill_service)
 
+    def test_candidate_account_relation(self):
+        from app.models import CandidateAccount
+        
+        # Create portal account
+        account = CandidateAccount(
+            company_name="Stripe",
+            login_url="https://stripe.myworkdayjobs.com/stripe",
+            username="djogiya786@gmail.com",
+            password="TestPassword123!"
+        )
+        self.db.add(account)
+        self.db.commit()
+        self.db.refresh(account)
+        
+        # Create job linked to it
+        job = JobApplication(
+            company_name="Stripe",
+            job_title="Data Engineer",
+            job_description="ETL and SQL requirements.",
+            status="Applied",
+            account_id=account.id
+        )
+        self.db.add(job)
+        self.db.commit()
+        self.db.refresh(job)
+        
+        self.assertEqual(job.account.username, "djogiya786@gmail.com")
+        self.assertEqual(account.applications[0].job_title, "Data Engineer")
+
 if __name__ == "__main__":
     unittest.main()
