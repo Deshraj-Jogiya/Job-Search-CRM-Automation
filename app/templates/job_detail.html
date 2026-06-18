@@ -157,6 +157,18 @@
             <!-- Right Column: Recruiter Networking Outreach & JD -->
             <div style="display: flex; flex-direction: column; gap: 2rem;">
                 
+                <!-- Candidate Account Credentials -->
+                {% if job.account %}
+                <div class="detail-card">
+                    <h2>🔑 Portal Credentials</h2>
+                    <ul class="meta-list" style="margin: 0; padding: 0; list-style: none; font-size: 0.9rem;">
+                        <li style="margin-bottom: 0.5rem;"><strong>Portal URL:</strong> <a href="{{ job.account.login_url }}" target="_blank" style="color: var(--accent-blue); text-decoration: none;">Go to Portal →</a></li>
+                        <li style="margin-bottom: 0.5rem;"><strong>Username:</strong> {{ job.account.username }}</li>
+                        <li style="margin-bottom: 0.5rem;"><strong>Password:</strong> <code>{{ job.account.password }}</code></li>
+                    </ul>
+                </div>
+                {% endif %}
+                
                 <!-- Recruiter Outreach Box -->
                 <div class="detail-card">
                     <h2>Recruiter Outreach (LinkedIn Premium)</h2>

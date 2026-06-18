@@ -3,6 +3,19 @@ from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from .database import Base
 
+class CandidateAccount(Base):
+    __tablename__ = "candidate_accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_name = Column(String, nullable=False, index=True)
+    login_url = Column(String, nullable=True)
+    username = Column(String, nullable=False)
+    password = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    applications = relationship("JobApplication", back_populates="account")
+
 class JobApplication(Base):
     __tablename__ = "job_applications"
 
@@ -21,6 +34,10 @@ class JobApplication(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     applied_at = Column(DateTime, nullable=True)
     notes = Column(Text, nullable=True)
+
+    # Portal Account Relation
+    account_id = Column(Integer, ForeignKey("candidate_accounts.id"), nullable=True)
+    account = relationship("CandidateAccount", back_populates="applications")
 
     # Relationships
     documents = relationship("TailoredDocument", back_populates="job", cascade="all, delete-orphan")

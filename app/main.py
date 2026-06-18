@@ -124,9 +124,9 @@ def ingest_job(
 
 @app.post("/jobs/crawl")
 def trigger_manual_crawl():
-    """Manually trigger job search crawler in background thread."""
+    """Manually trigger job search, auto-apply, and email updates loop."""
     threading.Thread(
-        target=bg_scheduler.trigger_crawling_job,
+        target=bg_scheduler.trigger_crawling_and_apply_job,
         daemon=True
     ).start()
     return RedirectResponse(url="/", status_code=303)
