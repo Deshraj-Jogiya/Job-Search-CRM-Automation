@@ -81,5 +81,13 @@ class TestJobSearchCRM(unittest.TestCase):
         self.assertTrue("Test Company" in short_note or "Test Role" in short_note or "Bob" in short_note or len(short_note) > 0)
         self.assertTrue(len(short_note) <= 300)
 
+    def test_imports(self):
+        from app.services import crawler
+        from app.services import scheduler
+        from app.services import autofill_service
+        self.assertIsNotNone(crawler)
+        self.assertIsNotNone(scheduler)
+        self.assertIsNotNone(autofill_service)
+
 if __name__ == "__main__":
     unittest.main()

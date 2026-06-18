@@ -134,6 +134,12 @@
                                 {% if has_tailored_cl %}✉️ Open Cover Letter{% else %}✉️ (CL Not Ready){% endif %}
                             </a>
                         </div>
+                        
+                        {% if job.job_url %}
+                        <form action="/jobs/{{ job.id }}/autofill" method="POST" style="margin-top: 0.5rem;">
+                            <button type="submit" class="btn" style="width: 100%; background: linear-gradient(135deg, #3b82f6, #60a5fa);">🚀 Autofill Application (Playwright)</button>
+                        </form>
+                        {% endif %}
                     </div>
                 </div>
 

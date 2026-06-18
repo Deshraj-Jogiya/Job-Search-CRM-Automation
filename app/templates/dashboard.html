@@ -90,7 +90,12 @@
 
         <!-- Kanban Board Section -->
         <div>
-            <h2 style="font-size: 1.25rem; margin-bottom: 1.5rem; border-left: 4px solid var(--accent-blue); padding-left: 0.75rem;">📋 Application Pipelines</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <h2 style="font-size: 1.25rem; border-left: 4px solid var(--accent-blue); padding-left: 0.75rem; margin: 0;">📋 Application Pipelines</h2>
+                <form action="/jobs/crawl" method="POST">
+                    <button type="submit" class="btn btn-secondary" style="padding: 0.5rem 1.25rem; font-size: 0.85rem;">🔍 Scan Active Jobs (Last 7 Days)</button>
+                </form>
+            </div>
             <div class="kanban-board">
                 
                 {% for status_name, job_list in kanban.items() %}
