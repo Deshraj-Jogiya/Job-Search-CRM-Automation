@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings | Job Search CRM</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+    <header>
+        <h1>🎯 Settings Command Center</h1>
+        <div class="header-links">
+            <a href="/">← Back to Dashboard</a>
+        </div>
+    </header>
+
+    <div class="container" style="max-width: 600px;">
+        
+        <div class="detail-card">
+            <h2>📧 Configure Email Inbox Monitoring</h2>
+            <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.5rem; line-height: 1.6;">
+                The status monitor connects securely to your email inbox via IMAP to auto-detect rejections, screening requests, and interview invites.
+                <br><br>
+                💡 <strong>Note for Gmail:</strong> You must create an **App Password** (not your regular password) at <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color: var(--accent-blue);">Google Account Security</a> and paste it below.
+            </p>
+
+            {% if message %}
+            <div style="padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; font-size: 0.9rem; 
+                {% if success %}
+                    background: rgba(52, 211, 153, 0.15); border: 1px solid rgba(52, 211, 153, 0.3); color: #34d399;
+                {% else %}
+                    background: rgba(248, 113, 113, 0.15); border: 1px solid rgba(248, 113, 113, 0.3); color: #f87171;
+                {% endif %}">
+                {{ message }}
+            </div>
+            {% endif %}
+
+            <form action="/settings/update" method="POST" style="display: flex; flex-direction: column; gap: 1.25rem;">
+                <div class="form-group">
+                    <label for="imap_host">IMAP Host Server *</label>
+                    <input type="text" id="imap_host" name="imap_host" value="{{ imap_host }}" placeholder="e.g. imap.gmail.com" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="imap_user">IMAP Email Username *</label>
+                    <input type="email" id="imap_user" name="imap_user" value="{{ imap_user }}" placeholder="e.g. djogiya786@gmail.com" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="imap_password">IMAP App Password *</label>
+                    <input type="password" id="imap_password" name="imap_password" value="{{ imap_password }}" placeholder="••••••••••••••••" required>
+                </div>
+
+                <div class="form-group" style="margin-top: 1rem;">
+                    <button type="submit" class="btn" style="width: 100%;">Test Connection &amp; Save Settings</button>
+                </div>
+            </form>
+        </div>
+
+    </div>
+
+</body>
+</html>

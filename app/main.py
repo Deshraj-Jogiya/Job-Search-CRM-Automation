@@ -1,7 +1,9 @@
 import os
 import json
 import threading
+import imaplib
 from datetime import datetime
+from dotenv import load_dotenv
 from fastapi import FastAPI, Depends, Form, Request, HTTPException
 from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -315,5 +317,93 @@ def render_tailored_cover_letter(job_id: int, request: Request, db: Session = De
             "resume": resume_data,
             "job": job,
             "date_today": datetime.utcnow().strftime("%B %d, %Y")
+        }
+    )
+
+@app.get("/settings", response_class=HTMLResponse)
+def get_settings_page(request: Request):
+    load_dotenv()
+    return templates.TemplateResponse(
+        "settings.html",
+        {
+            "request": request,
+            "imap_host": os.getenv("IMAP_HOST", "imap.gmail.com"),
+            "imap_user": os.getenv("IMAP_USER", ""),
+            "imap_password": os.getenv("IMAP_PASSWORD", ""),
+            "success": None,
+            "message": None
+        }
+    )
+
+@app.post("/settings/update", response_class=HTMLResponse)
+def update_settings(
+    request: Request,
+    imap_host: str = Form(...),
+    imap_user: str = Form(...),
+    imap_password: str = Form(...)
+):
+    # Update .env file
+    env_path = ".env"
+    env_lines = []
+    
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            env_lines = f.readlines()
+            
+    # Parse existing variables
+    env_dict = {}
+    for line in env_lines:
+        if "=" in line and not line.strip().startswith("#"):
+            k, v = line.split("=", 1)
+            env_dict[k.strip()] = v.strip()
+            
+    # Update properties
+    env_dict["IMAP_HOST"] = imap_host
+    env_dict["IMAP_USER"] = imap_user
+    env_dict["IMAP_PASSWORD"] = imap_password
+    
+    # Rewrite file
+    with open(env_path, "w", encoding="utf-8") as f:
+        written_keys = set()
+        for line in env_lines:
+            if "=" in line and not line.strip().startswith("#"):
+                k, _ = line.split("=", 1)
+                k_clean = k.strip()
+                if k_clean in env_dict:
+                    f.write(f"{k_clean}={env_dict[k_clean]}\n")
+                    written_keys.add(k_clean)
+                else:
+                    f.write(line)
+            else:
+                f.write(line)
+                
+        for k_clean, val in env_dict.items():
+            if k_clean not in written_keys:
+                f.write(f"{k_clean}={val}\n")
+                
+    load_dotenv()
+    
+    success = False
+    message = ""
+    try:
+        print(f"Testing IMAP connection for {imap_user} at {imap_host}...")
+        mail = imaplib.IMAP4_SSL(imap_host, 993)
+        mail.login(imap_user, imap_password)
+        mail.logout()
+        success = True
+        message = "Connection successful! Email monitoring credentials are valid and active."
+    except Exception as e:
+        success = False
+        message = f"Connection failed: {e}. Please check your credentials and make sure App Passwords are enabled."
+        
+    return templates.TemplateResponse(
+        "settings.html",
+        {
+            "request": request,
+            "imap_host": imap_host,
+            "imap_user": imap_user,
+            "imap_password": imap_password,
+            "success": success,
+            "message": message
         }
     )
