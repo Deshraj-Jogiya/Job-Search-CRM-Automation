@@ -1,0 +1,137 @@
+{
+  "name": "Deshraj Jogiya",
+  "title": "Data & AI/ML Engineer",
+  "contact": {
+    "location": "Tempe, Arizona (open to relocation)",
+    "phone": "(480) 876-2863",
+    "email": "djogiya786@gmail.com",
+    "linkedin": "https://linkedin.com/in/deshraj-jogiya",
+    "github": "https://github.com/Deshraj-Jogiya"
+  },
+  "summary": "Research-focused data/ML engineer with over five years of extensive experience delivering ETL automation 70% efficiency gains, AI model optimization (25% accuracy boosts), and cloud data pipelines across research and industry roles. Expertise in Python/SQL/PostgreSQL, OpenAI APIs, Supabase/AWS/Snowflake, and ML techniques from K-Means clustering to NLP systems. ASU research alum and IBM certified, currently engineering real-time ML solutions at Technoid LLC.",
+  "skills": {
+    "languages": ["Python", "SQL", "PostgreSQL", "R/Tidyverse"],
+    "ml_data_science": [
+      "Regression Analysis", "Random Forest", "Scikit-learn", "Pandas", "NumPy", "A/B Testing", 
+      "Experiment Design", "Statistical Analysis", "Forecasting", "Deep Learning", "Neural Networks", 
+      "Model Evaluation", "Feature Engineering", "Time Series Analysis", "Anomaly Detection", 
+      "Recommendation Systems", "OpenAI API"
+    ],
+    "analytics_viz": [
+      "Tableau", "Power BI", "Data Mining", "Product Analytics", "ETL Pipeline Design", 
+      "Seaborn", "Matplotlib", "Business Intelligence", "Customer Segmentation", "Cohort Analysis", 
+      "Predictive Modeling", "Descriptive Statistics", "Inferential Statistics"
+    ],
+    "cloud": ["Google Workspace", "Azure ML", "AWS", "Data Lakes", "Snowflake"],
+    "data_engineering": ["Data Integration", "Data Transformation", "Data Warehousing", "Data Modeling", "Data Governance", "Data Quality", "Data Architecture", "Git"]
+  },
+  "education": [
+    {
+      "degree": "Master of Science, IT",
+      "institution": "Arizona State University (ASU)",
+      "date": "Aug 2022 – May 2024",
+      "gpa": "4.0/4.0"
+    },
+    {
+      "degree": "Bachelor of Technology, Computer Eng.",
+      "institution": "Institute of Advanced Research",
+      "date": "Aug 2017 – May 2021",
+      "gpa": "7.8/10"
+    }
+  ],
+  "certifications": [
+    {
+      "name": "Tableau Business Intelligence Analyst",
+      "date": "Feb 2026"
+    },
+    {
+      "name": "ElevateMe Bootcamp Data Analytics",
+      "date": "Feb 2026"
+    },
+    {
+      "name": "IBM Data Analyst Specialization",
+      "date": "September 2025"
+    }
+  ],
+  "experience": [
+    {
+      "role": "Teleoperation Data Collection Associate",
+      "company": "Objectways Technologies LLC",
+      "location": "Tempe, AZ",
+      "date": "May 2026 – Present",
+      "bullets": [
+        "Collected and validated 10,000+ high-quality teleoperation data samples for AI/ML model training using Python-based workflows, improving dataset accuracy and consistency by 20%.",
+        "Developed and maintained scalable data pipelines using Python, Scala, and Kubernetes to process and organize large datasets, reducing data processing time by 30% and enhancing system efficiency.",
+        "Performed data analysis and quality assurance on robotics-generated datasets, identifying and resolving data inconsistencies, which improved model training performance and reduced error rates by 15%."
+      ]
+    },
+    {
+      "role": "Applied Machine Learning Engineer",
+      "company": "Technoid LLC",
+      "location": "Piscataway, NJ",
+      "date": "Dec 2025 – May 2026",
+      "bullets": [
+        "Optimized GPT-4o mini models for resume analysis/tailoring using OpenAI APIs, SQL, and PostgreSQL, improving recommendation accuracy by 25%.",
+        "Established Supabase data sync with RLS fixes and PostgreSQL backend, reducing data sync latency by 65% for real-time operations.",
+        "Produced phased regression and UAT testing frameworks, cutting model deployment errors by 30%."
+      ]
+    },
+    {
+      "role": "Data Analytics & ML Fellow Trainee",
+      "company": "ElevateMe Bootcamp",
+      "location": "Columbus, OH",
+      "date": "Jan 2025 – Mar 2026",
+      "bullets": [
+        "Analyzed company financial and operational data with Python and Excel, identifying 4 key revenue-impacting trends that guided department-level strategic actions.",
+        "Deployed interactive Power BI dashboards to visualize KPIs and financial trends, improving executive insight and reporting efficiency.",
+        "Led customer segmentation using K-Means clustering and PCA for dimensionality reduction, visualized results in Power BI, and identified six segments that captured 92% of data variance.",
+        "Led marketing intelligence strategy using classification models and Power BI analytics, increasing campaign click-through rates by 12%."
+      ]
+    },
+    {
+      "role": "Data Analyst",
+      "company": "Zifatech Solutions LLC",
+      "location": "Milwaukee, WI",
+      "date": "Jun 2025 – Dec 2025",
+      "bullets": [
+        "Transformed SQL/Python-based ETL pipelines to automate sales insights reporting, reducing manual effort by 70% and improving data refresh consistency.",
+        "Migrated legacy data workflows to AWS Glue and S3, increasing data availability by 60% and streamlining integration with Snowflake and Power BI.",
+        "Modernized Star Schema models in Snowflake using Great Expectations QA validations, achieving over 98% data reliability.",
+        "Built interactive Power BI dashboards connected to Snowflake datasets, translating analytical outputs into actionable business insights for sales and operations teams."
+      ]
+    },
+    {
+      "role": "Data Engineer & ML Research Assistant",
+      "company": "Arizona State University",
+      "location": "Tempe, AZ",
+      "date": "Sep 2024 – Jun 2025",
+      "bullets": [
+        "Produced a real-time data pipeline utilizing Node.js and MongoDB to process streaming data, ensuring 99.9% uptime for 5,000 concurrent users, and optimized data output by 35%.",
+        "Constructed a personalized recommendation engine utilizing behavioral data; refined algorithms weekly, leading to a 12% increase in content click-through rates and reduced user churn.",
+        "Led the development of an NLP chatbot that analyzed user input, pinpointing the top three user interface pain points, and driving a 15% increase in positive user satisfaction."
+      ]
+    },
+    {
+      "role": "AI-ML Analyst Apprentice",
+      "company": "Jetson Infinity",
+      "location": "Austin, TX",
+      "date": "Jul 2024 – Aug 2024",
+      "bullets": [
+        "Implemented a Python-based data processing pipeline leveraging Pandas and NumPy, resulting in a 3% refinement in robotic arm precision and enhanced workflow efficiency by 10%.",
+        "Automated data pipeline for robotic arm motion data employing Python and SQL, enhancing data processing efficiency by 17% and enabling real-time anomaly detection and faster analysis.",
+        "Devised an internal knowledge base with Python tutorials and real-world case studies, accelerating new data analyst onboarding by 25% and improving team proficiency in Python."
+      ]
+    },
+    {
+      "role": "Data Analyst",
+      "company": "Kronic Keys",
+      "location": "Junagadh, GJ",
+      "date": "Aug 2021 – Mar 2022",
+      "bullets": [
+        "Cleaned and prepared large datasets (500k+ rows), leading to more accurate sales and customer behavior insights and reducing reporting time by 30%.",
+        "Built SQL queries and Tableau dashboards that improved sales reporting efficiency by 30%.",
+        "Developed and maintained Tableau dashboards that visualized key sales performance indicators, helping drive a 12% increase in customer acquisition; dashboards were built using data extracted from PostgreSQL."
+      ]
+    }
+  ]
+}

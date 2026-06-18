@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cover Letter - {{ resume.get('name') }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            background-color: #ffffff;
+            color: #1e293b;
+            font-family: 'Inter', sans-serif;
+            font-size: 10pt;
+            line-height: 1.6;
+            padding: 0.6in 0.8in;
+            max-width: 8.5in;
+            margin: 0 auto;
+        }
+        .header {
+            margin-bottom: 24px;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 12px;
+        }
+        .header h1 {
+            font-size: 18pt;
+            font-weight: 700;
+            color: #0f172a;
+            margin-bottom: 4px;
+        }
+        .header .meta {
+            display: flex;
+            gap: 15px;
+            font-size: 8.5pt;
+            color: #64748b;
+        }
+        .date-block {
+            margin-bottom: 20px;
+            font-weight: 500;
+            color: #334155;
+        }
+        .recipient-block {
+            margin-bottom: 24px;
+            font-size: 9.5pt;
+            color: #334155;
+        }
+        .recipient-block div {
+            margin-bottom: 2px;
+        }
+        .subject {
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: #0f172a;
+            text-transform: uppercase;
+            font-size: 9.5pt;
+        }
+        .letter-body p {
+            margin-bottom: 18px;
+            text-align: justify;
+            color: #334155;
+        }
+        .signature {
+            margin-top: 30px;
+        }
+        .signature p {
+            margin-bottom: 4px;
+        }
+        @media print {
+            body {
+                padding: 0;
+            }
+            .no-print {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Print overlay (hidden during print) -->
+    <div class="no-print" style="background: #f1f5f9; border: 1px solid #cbd5e1; padding: 12px; margin-bottom: 30px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 9pt;">
+        <div>
+            <strong>Print Mode Enabled:</strong> Press <strong>Ctrl + P</strong> to save this cover letter as a clean PDF.
+        </div>
+        <button onclick="window.print()" style="background: #8b5cf6; border: none; color: #fff; padding: 6px 12px; border-radius: 4px; font-weight: 600; cursor: pointer;">
+            Print / Save to PDF
+        </button>
+    </div>
+
+    <div class="header">
+        <h1>{{ resume.get('name') }}</h1>
+        <div class="meta">
+            <span>📍 {{ resume.get('contact', {}).get('location') }}</span>
+            <span>📞 {{ resume.get('contact', {}).get('phone') }}</span>
+            <span>✉️ {{ resume.get('contact', {}).get('email') }}</span>
+        </div>
+    </div>
+
+    <div class="date-block">
+        {{ date_today }}
+    </div>
+
+    <div class="recipient-block">
+        <div><strong>Hiring Manager / Team</strong></div>
+        <div>{{ job.company_name }}</div>
+        {% if job.job_url %}
+        <div style="font-size: 8.5pt; color: #64748b;">Ref: {{ job.job_title }}</div>
+        {% endif %}
+    </div>
+
+    <div class="subject">
+        Subject: Application for the Position of {{ job.job_title }}
+    </div>
+
+    <div class="letter-body">
+        <p>Dear Hiring Team,</p>
+        
+        {% for para in paragraphs %}
+        <p>{{ para }}</p>
+        {% endfor %}
+        
+        <p>Thank you for your time and consideration.</p>
+    </div>
+
+    <div class="signature">
+        <p>Sincerely,</p>
+        <p style="font-weight: 700; margin-top: 15px; color: #0f172a;">{{ resume.get('name') }}</p>
+        <p style="font-size: 8.5pt; color: #64748b;">{{ resume.get('title') }}</p>
+    </div>
+
+</body>
+</html>

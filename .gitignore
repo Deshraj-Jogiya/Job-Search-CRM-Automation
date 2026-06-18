@@ -1,0 +1,18 @@
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Local virtual environment
+venv/
+.venv/
+env/
+
+# Database files
+*.db
+*.sqlite
+
+# Environment configuration
+.env
