@@ -4,13 +4,9 @@ services:
     env: python
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
-    disk:
-      name: crm-db-disk
-      mountPath: /data
-      sizeGB: 1
     envVars:
       - key: DATABASE_URL
-        value: sqlite:////data/crm.db
+        sync: false
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_MODEL
