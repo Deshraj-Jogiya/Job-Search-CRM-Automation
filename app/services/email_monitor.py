@@ -138,6 +138,13 @@ def scan_inbox_for_updates():
                         status_updated = True
                         
                     if status_updated:
+                        if new_status == "Rejected":
+                            log_activity(db, f"Auto-deleting rejected job '{app.job_title}' at '{app.company_name}' (Intent: REJECTION)", "INFO")
+                            db.query(TailoredDocument).filter(TailoredDocument.job_id == app.id).delete()
+                            db.delete(app)
+                            db.commit()
+                            continue
+                            
                         if new_status != app.status:
                             log_activity(db, f"Updated '{app.job_title}' at '{app.company_name}' status from '{app.status}' to '{new_status}' (Intent: {intent.upper()})", "INFO")
                             app.status = new_status

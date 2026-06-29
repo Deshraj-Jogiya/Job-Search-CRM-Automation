@@ -370,6 +370,15 @@ def update_status(job_id: int, status: str = Form(...), db: Session = Depends(ge
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
         
+    if status in ["Rejected", "Archived", "Auto-Archived"]:
+        comp = job.company_name
+        title = job.job_title
+        db.query(TailoredDocument).filter(TailoredDocument.job_id == job_id).delete()
+        db.delete(job)
+        db.commit()
+        log_activity(db, f"Deleted application for {title} at {comp} because it was marked as {status}.", "INFO")
+        return RedirectResponse(url="/", status_code=303)
+        
     job.status = status
     if status == "Applied":
         job.applied_at = datetime.utcnow()

@@ -226,7 +226,15 @@
                 <h4>{{ project.name }}</h4>
                 <span style="font-weight: 500; font-size: 8pt; color: #475569;">{{ (project.technologies or [])|join(', ') }}</span>
             </div>
-            <p style="font-size: 8pt; color: #334155; margin-top: 2px; text-align: justify;">{{ project.description }}</p>
+            {% if project.bullets %}
+            <ul style="font-size: 8pt; color: #334155; margin-top: 2px; padding-left: 15px; margin-bottom: 0; text-align: justify; line-height: 1.25;">
+                {% for bullet in project.bullets %}
+                <li>{{ bullet }}</li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p style="font-size: 8pt; color: #334155; margin-top: 2px; text-align: justify; line-height: 1.25;">{{ project.description }}</p>
+            {% endif %}
         </div>
         {% endfor %}
     </div>
