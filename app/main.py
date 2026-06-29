@@ -420,7 +420,10 @@ def update_notes(job_id: int, notes: str = Form(...), db: Session = Depends(get_
     return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
 
 @app.post("/jobs/{job_id}/delete")
-def delete_job(job_id: int, db: Session = Depends(get_db)):
+def delete_job(job_id: int, password: str = Form(""), db: Session = Depends(get_db)):
+    admin_pwd = os.getenv("ADMIN_PASSWORD", "admin123")
+    if password != admin_pwd:
+        raise HTTPException(status_code=403, detail="Unauthorized: Incorrect admin passcode.")
     job = db.query(JobApplication).filter(JobApplication.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
