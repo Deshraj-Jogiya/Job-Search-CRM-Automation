@@ -99,9 +99,9 @@ def index(request: Request, db: Session = Depends(get_db)):
     }
     
     return templates.TemplateResponse(
+        request,
         "dashboard.html",
         {
-            "request": request,
             "jobs": jobs,
             "total": total,
             "applied": applied,
@@ -186,9 +186,9 @@ def job_detail(job_id: int, request: Request, db: Session = Depends(get_db)):
     ).first()
     
     return templates.TemplateResponse(
+        request,
         "job_detail.html",
         {
-            "request": request,
             "job": job,
             "analysis": analysis,
             "has_tailored_resume": resume_doc is not None,
@@ -342,9 +342,9 @@ def render_tailored_resume(job_id: int, request: Request, db: Session = Depends(
     job = db.query(JobApplication).filter(JobApplication.id == job_id).first()
     
     return templates.TemplateResponse(
+        request,
         "resume_print.html",
         {
-            "request": request,
             "resume": resume_data,
             "job": job
         }
@@ -365,9 +365,9 @@ def render_tailored_cover_letter(job_id: int, request: Request, db: Session = De
     paragraphs = cl_doc.content.split("\n\n")
     
     return templates.TemplateResponse(
+        request,
         "cover_letter_print.html",
         {
-            "request": request,
             "paragraphs": paragraphs,
             "resume": resume_data,
             "job": job,
@@ -379,9 +379,9 @@ def render_tailored_cover_letter(job_id: int, request: Request, db: Session = De
 def get_settings_page(request: Request):
     load_dotenv()
     return templates.TemplateResponse(
+        request,
         "settings.html",
         {
-            "request": request,
             "imap_host": os.getenv("IMAP_HOST", "imap.gmail.com"),
             "imap_user": os.getenv("IMAP_USER", ""),
             "imap_password": os.getenv("IMAP_PASSWORD", ""),
@@ -452,9 +452,9 @@ def update_settings(
         message = f"Connection failed: {e}. Please check your credentials and make sure App Passwords are enabled."
         
     return templates.TemplateResponse(
+        request,
         "settings.html",
         {
-            "request": request,
             "imap_host": imap_host,
             "imap_user": imap_user,
             "imap_password": imap_password,
