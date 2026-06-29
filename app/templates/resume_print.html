@@ -132,17 +132,24 @@
             body {
                 padding: 0 !important;
                 margin: 0 !important;
+                background: #fff !important;
             }
-            .no-print {
+            body > *:not(.print-wrapper) {
                 display: none !important;
                 height: 0 !important;
-                width: 0 !important;
+                visibility: hidden !important;
+            }
+            .print-wrapper {
+                box-shadow: none !important;
                 padding: 0 !important;
                 margin: 0 !important;
-                border: none !important;
-                visibility: hidden !important;
-                opacity: 0 !important;
-                overflow: hidden !important;
+                width: 100% !important;
+                min-height: auto !important;
+                background: #fff !important;
+                visibility: visible !important;
+            }
+            .print-wrapper * {
+                visibility: visible !important;
             }
         }
     </style>
@@ -159,6 +166,7 @@
         </button>
     </div>
 
+    <div class="print-wrapper">
     <div class="header">
         <h1>{{ resume.get('name') }}</h1>
         <div class="sub">{{ resume.get('title') }}</div>
@@ -264,5 +272,12 @@
         {% endfor %}
     </div>
 
+    <script>
+        window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                window.print();
+            }, 500);
+        });
+    </script>
 </body>
 </html>
