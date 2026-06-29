@@ -216,12 +216,6 @@
                                     </button>
                                 </form>
                                 {% endif %}
-                                <!-- Archive/Delete Trigger -->
-                                <form action="/jobs/{{ job.id }}/delete" method="POST" onclick="event.stopPropagation();" onsubmit="return confirm('Are you sure you want to delete this job card?');" style="margin: 0; padding: 0;">
-                                    <button type="submit" style="background: rgba(248, 113, 113, 0.25); border: 1px solid rgba(248, 113, 113, 0.45); border-radius: 4px; padding: 0.2rem 0.35rem; color: #f87171; cursor: pointer; font-size: 0.75rem; display: flex; align-items: center; justify-content: center;" title="Archive Job">
-                                        🗑️
-                                    </button>
-                                </form>
                             </div>
     
                             <div class="company">{{ job.company_name }}</div>

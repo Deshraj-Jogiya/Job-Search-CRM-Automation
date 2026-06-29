@@ -44,11 +44,8 @@ def run_instant_pipeline_for_job(job_id: int):
         existing_res = db.query(TailoredDocument).filter_by(job_id=job.id, document_type="resume").first()
         if not existing_res:
             resume_data = get_base_resume()
-            log_activity(db, f"Tailoring resume experiences for {job.company_name}...", "INFO")
-            tailored_experience = ai_service.tailor_resume(resume_data, job.job_description)
-            
-            tailored_resume_json = resume_data.copy()
-            tailored_resume_json["experience"] = tailored_experience
+            log_activity(db, f"Tailoring resume, summary, skills, and selecting projects for {job.company_name}...", "INFO")
+            tailored_resume_json = ai_service.tailor_resume(resume_data, job.job_description)
             
             res_doc = TailoredDocument(
                 job_id=job.id,
