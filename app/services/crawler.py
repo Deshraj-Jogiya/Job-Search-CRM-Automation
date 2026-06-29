@@ -129,9 +129,9 @@ def search_linkedin_jobs(keywords="Data Engineer", location="United States", lim
         
     return jobs_list
 
-def run_daily_crawl_and_ingest(db: Session, base_resume: dict, timeframe: str = "1m"):
+def run_daily_crawl_and_ingest(db: Session, base_resume: dict, timeframe: str = "1m", location: str = "United States"):
     """Main pipeline execution for job search and matching ingestion."""
-    log_activity(db, f"Initiating active job crawler query (Timeframe: {timeframe})...", "INFO")
+    log_activity(db, f"Initiating active job crawler query (Timeframe: {timeframe}, Location: {location})...", "INFO")
     
     # Load keywords from database configuration
     db_queries = db.query(SearchKeyword).filter(SearchKeyword.is_active == True).all()
@@ -147,8 +147,8 @@ def run_daily_crawl_and_ingest(db: Session, base_resume: dict, timeframe: str = 
     crawl_limit = 15 if timeframe in ["2h", "12h", "24h", "3d"] else 6
     
     for query in search_queries:
-        log_activity(db, f"Crawling public job posts for: '{query}'...", "INFO")
-        jobs = search_linkedin_jobs(keywords=query, limit=crawl_limit)
+        log_activity(db, f"Crawling public job posts for: '{query}' in location: '{location}'...", "INFO")
+        jobs = search_linkedin_jobs(keywords=query, location=location, limit=crawl_limit)
         all_jobs_found.extend(jobs)
         
     # Filter by timeframe

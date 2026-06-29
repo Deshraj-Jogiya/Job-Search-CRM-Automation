@@ -267,7 +267,19 @@ Return ONLY the cover letter text, no metadata or greetings.
         return response.choices[0].message.content.strip()
     except Exception as e:
         print(f"Error generating cover letter: {e}")
-        return f"Dear Hiring Team at {company_name},\n\nI am writing to express my interest in the {job_title} position. Given my background in data engineering and machine learning, I am confident I can add value to your team.\n\nSincerely,\n{resume_data.get('name')}"
+        fallback_para = (
+            f"I am writing to express my strong interest in the {job_title} position at {company_name}. "
+            f"With over 5 years of professional experience building scalable data pipelines (ETL/ELT), optimizing database schema designs, "
+            f"and deploying machine learning models, I am confident in my ability to deliver immediate value to your engineering team."
+            f"\n\n"
+            f"Throughout my career, I have specialized in building real-time data ingestion streams, model tracking setups using MLflow, "
+            f"and robust orchestration layers with Apache Airflow. I am eager to apply this hands-on technical expertise to solve the complex "
+            f"data infrastructure and integration challenges present at {company_name}."
+            f"\n\n"
+            f"Thank you for considering my application. I would welcome the opportunity to discuss how my background in Python, "
+            f"SQL, and distributed data systems aligns with your upcoming engineering priorities."
+        )
+        return fallback_para
 
 def generate_outreach_templates(company_name: str, job_title: str, jd_text: str, recruiter_name: str = None) -> tuple[str, str]:
     """Generate connection notes and InMail outreach drafts."""

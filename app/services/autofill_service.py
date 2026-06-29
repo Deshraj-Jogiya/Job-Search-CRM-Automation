@@ -82,6 +82,124 @@ def handle_workday_signup(page, email, password, headless=True):
         print(f"Workday signup automation warning: {e}")
     return False
 
+def answer_custom_question(question_label: str, resume_summary: str) -> str:
+    """Use Gemini AI model to dynamically answer custom job application questions."""
+    from .ai_service import client, model_name
+    prompt = f"""
+Based on the candidate's resume context, generate a short, professional response to the following job application question.
+Candidate Name: Deshraj Jogiya
+Years of Professional Experience: 5 years (excluding university/bootcamp/studies)
+Resume Context Summary: {resume_summary}
+
+Question: "{question_label}"
+
+Rules:
+- If the question asks for years of experience (e.g. with Python, SQL, or in general), reply with the exact number based on our context (e.g., "5" or "5 years").
+- If the question asks if we have experience or are familiar with a skill, and it's present in the resume context, answer with a short positive sentence (e.g., "Yes, I have over 5 years of hands-on experience using this technology in industrial environments.").
+- If it is a text-area description of projects, write 1-2 professional, concise, human-like sentences.
+- If it is about visa sponsorship or citizenship: the candidate is located in Tempe, Arizona, USA, and open to relocation.
+- Keep the response brief, human-sounding, and direct. Do not include greetings or metadata.
+"""
+    try:
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": "You are a professional assistant completing a job application form."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=150,
+            temperature=0.4
+        )
+        ans = response.choices[0].message.content.strip()
+        if ans.startswith('"') and ans.endswith('"'):
+            ans = ans[1:-1].strip()
+        return ans
+    except Exception as e:
+        print(f"Error generating answer for question '{question_label}': {e}")
+        ql = question_label.lower()
+        if "python" in ql or "machine learning" in ql or "sql" in ql:
+            return "5"
+        if "year" in ql:
+            return "5"
+        if "sponsorship" in ql:
+            return "No"
+        return "Yes, I have extensive professional experience applying these technologies in enterprise pipelines."
+
+def fill_custom_form_fields(page, db, resume_summary: str):
+    """Scan all empty text inputs, textareas, and select elements, and answer custom questions via Gemini."""
+    try:
+        # 1. Answer text inputs and textareas
+        text_inputs = page.locator("input[type='text'], textarea").all()
+        for inp in text_inputs:
+            val = inp.evaluate("el => el.value") or ""
+            if val.strip():
+                continue
+                
+            name_attr = (inp.get_attribute("name") or "").lower()
+            id_attr = (inp.get_attribute("id") or "").lower()
+            placeholder = (inp.get_attribute("placeholder") or "").lower()
+            
+            skip_terms = ["first", "last", "email", "phone", "linkedin", "github", "portfolio", "resume", "cv"]
+            if any(term in name_attr or term in id_attr or term in placeholder for term in skip_terms):
+                continue
+                
+            label_text = ""
+            label_loc = page.locator(f"label[for='{inp.get_attribute('id')}']")
+            if label_loc.count() > 0:
+                label_text = label_loc.first.inner_text()
+            else:
+                parent_text = inp.evaluate("el => el.parentElement ? el.parentElement.innerText : ''") or ""
+                label_text = parent_text.split("\n")[0]
+                
+            if not label_text.strip():
+                label_text = placeholder or name_attr or "Job application details"
+                
+            label_text = label_text.strip()
+            
+            log_activity(db, f"Asking AI to answer custom form question: '{label_text[:60]}...'", "INFO")
+            answer = answer_custom_question(label_text, resume_summary)
+            inp.fill(answer)
+            page.wait_for_timeout(500)
+            
+        # 2. Answer dropdown selects
+        selects = page.locator("select").all()
+        for sel in selects:
+            val = sel.evaluate("el => el.value") or ""
+            if val.strip() and val != "select" and val != "":
+                continue
+                
+            label_text = ""
+            label_loc = page.locator(f"label[for='{sel.get_attribute('id')}']")
+            if label_loc.count() > 0:
+                label_text = label_loc.first.inner_text()
+            else:
+                parent_text = sel.evaluate("el => el.parentElement ? el.parentElement.innerText : ''") or ""
+                label_text = parent_text.split("\n")[0]
+                
+            if not label_text.strip():
+                label_text = "Select option"
+                
+            label_text = label_text.strip()
+            
+            log_activity(db, f"Asking AI to select option for: '{label_text[:60]}...'", "INFO")
+            answer = answer_custom_question(label_text, resume_summary)
+            
+            options = sel.locator("option").all()
+            best_val = ""
+            for opt in options:
+                opt_val = opt.get_attribute("value") or ""
+                opt_text = opt.inner_text().strip().lower()
+                if answer.lower() in opt_text or opt_text in answer.lower():
+                    best_val = opt_val
+                    break
+            
+            if best_val:
+                sel.select_option(best_val)
+            page.wait_for_timeout(500)
+            
+    except Exception as e:
+        print(f"Error filling custom fields: {e}")
+
 def autofill_job_application(job_id: int, auto_submit: bool = False):
     """Launch browser (headless on cloud, headed on local), auto-sign up/login, autofill, and optionally submit."""
     db = SessionLocal()
@@ -256,6 +374,8 @@ def autofill_job_application(job_id: int, auto_submit: bool = False):
                 except Exception:
                     pass
                     
+                fill_custom_form_fields(page, db, resume_data.get("summary", ""))
+                    
                 if auto_submit:
                     submit_btn = page.locator("#submit_app")
                     if submit_btn.count() > 0:
@@ -290,6 +410,8 @@ def autofill_job_application(job_id: int, auto_submit: bool = False):
                 fill_if_exists("input[name='urls[LinkedIn]']", linkedin)
                 fill_if_exists("input[name='urls[GitHub]']", github)
                 
+                fill_custom_form_fields(page, db, resume_data.get("summary", ""))
+                
                 if auto_submit:
                     submit_btn = page.locator("button[type='submit']")
                     if submit_btn.count() > 0:
@@ -314,6 +436,9 @@ def autofill_job_application(job_id: int, auto_submit: bool = False):
                 fill_if_exists("input[name*='name'], input[id*='name']", full_name)
                 fill_if_exists("input[type='email'], input[name*='email'], input[id*='email']", email)
                 fill_if_exists("input[type='tel'], input[name*='phone'], input[id*='phone']", phone)
+                
+                fill_custom_form_fields(page, db, resume_data.get("summary", ""))
+                
                 if headless_mode:
                     log_activity(db, "Generic form requires visual validation. Routing to Needs Review.", "WARNING")
                     raise Exception("Generic form filling complete. Submission requires manual verification.")

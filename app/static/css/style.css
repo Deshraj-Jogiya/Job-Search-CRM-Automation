@@ -693,4 +693,20 @@ body.light-mode .meta-row span:not(.badge) {
     color: #64748b !important;
 }
 
+/* Funnel card styling */
+.funnel-card {
+    flex: 1;
+    text-align: center;
+    background: rgba(13, 18, 36, 0.45);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 0.75rem 0.5rem;
+    transition: all 0.3s;
+}
+
+body.light-mode .funnel-card {
+    background: rgba(15, 23, 42, 0.04) !important;
+    border-color: rgba(15, 23, 42, 0.08) !important;
+}
+
 
