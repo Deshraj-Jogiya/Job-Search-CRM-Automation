@@ -6,7 +6,7 @@ import imaplib
 from datetime import datetime
 from dotenv import load_dotenv
 from fastapi import FastAPI, Depends, Form, Request, HTTPException
-from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi.responses import RedirectResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -488,6 +488,30 @@ def render_tailored_cover_letter(job_id: int, request: Request, db: Session = De
             "date_today": datetime.utcnow().strftime("%B %d, %Y")
         }
     )
+
+@app.get("/jobs/{job_id}/download-resume")
+def download_resume(job_id: int, db: Session = Depends(get_db)):
+    from .services.autofill_service import compile_resume_to_pdf
+    pdf_path = compile_resume_to_pdf(job_id)
+    if not os.path.exists(pdf_path):
+        raise HTTPException(status_code=500, detail="Failed to compile PDF")
+    job = db.query(JobApplication).filter_by(id=job_id).first()
+    comp = job.company_name.replace(" ", "_") if job else "Company"
+    title = job.job_title.replace(" ", "_") if job else "Role"
+    filename = f"Deshraj_Jogiya_Resume_{comp}_{title}.pdf"
+    return FileResponse(pdf_path, media_type="application/pdf", filename=filename)
+
+@app.get("/jobs/{job_id}/download-cover-letter")
+def download_cover_letter(job_id: int, db: Session = Depends(get_db)):
+    from .services.autofill_service import compile_cover_letter_to_pdf
+    pdf_path = compile_cover_letter_to_pdf(job_id)
+    if not os.path.exists(pdf_path):
+        raise HTTPException(status_code=500, detail="Failed to compile PDF")
+    job = db.query(JobApplication).filter_by(id=job_id).first()
+    comp = job.company_name.replace(" ", "_") if job else "Company"
+    title = job.job_title.replace(" ", "_") if job else "Role"
+    filename = f"Deshraj_Jogiya_Cover_Letter_{comp}_{title}.pdf"
+    return FileResponse(pdf_path, media_type="application/pdf", filename=filename)
 
 @app.get("/api/logs")
 def get_activity_logs(db: Session = Depends(get_db)):

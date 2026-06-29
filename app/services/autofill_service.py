@@ -32,6 +32,27 @@ def compile_resume_to_pdf(job_id: int) -> str:
     print(f"Tailored PDF compiled at: {pdf_path}")
     return pdf_path
 
+def compile_cover_letter_to_pdf(job_id: int) -> str:
+    """Load the tailored HTML cover letter from the local web server and print it to a PDF file."""
+    pdf_path = os.path.abspath(f"./tailored_cover_letter_{job_id}.pdf")
+    
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context()
+        page = context.new_page()
+        
+        port = os.getenv("PORT", "8000")
+        url = f"http://localhost:{port}/cover-letters/render/{job_id}"
+        print(f"Compiling Cover Letter PDF from: {url}")
+        page.goto(url)
+        page.wait_for_timeout(1000)
+        
+        page.pdf(path=pdf_path, format="A4", print_background=True)
+        browser.close()
+        
+    print(f"Tailored Cover Letter PDF compiled at: {pdf_path}")
+    return pdf_path
+
 def handle_workday_signup(page, email, password, headless=True):
     """Automate sign-up screen navigation on Workday portal."""
     print("Navigating Workday registration flow...")
