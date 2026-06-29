@@ -156,29 +156,14 @@
   ],
   "projects": [
     {
-      "name": "CurioSync: Serverless Tech News & LinkedIn Publisher",
-      "description": "Built a scheduled serverless news curation and publisher pipeline running on GitHub Actions cron workflows (achieving a 100% hosting cost reduction), integrating LLM chains and LinkedIn APIs to automate daily posting. Designed a Jinja2/HTMX glassmorphic administrative control panel, implementing Fernet symmetric encryption to secure credentials. Developed custom Pillow image-processing engines to automatically render branding graphics.",
-      "technologies": ["FastAPI", "Python", "GitHub Actions", "Gemini LLM", "HTMX", "Cryptography", "Pillow"]
-    },
-    {
       "name": "Job Search CRM & AI Application Tailoring Center",
       "description": "Engineered a personal job placement command center designed to automate, tailor, and track the job application process. Built a responsive local web interface using FastAPI and Jinja2 templates. Deployed a local SQLite database using SQLAlchemy ORM to track application logs, recruiter follow-ups, and resume revisions. Integrated LLM prompt tailoring chains to align resumes with specific job description keywords.",
       "technologies": ["FastAPI", "Python", "SQLite", "OpenAI API", "Jinja2", "TailwindCSS"]
     },
     {
-      "name": "FinRisk Analytics & Credit Fraud Pipeline",
-      "description": "Designed and developed an end-to-end real-time credit risk analytics and transaction fraud detection pipeline. Engineered an end-to-end credit risk evaluation pipeline using FastAPI and Python, achieving sub-100ms API response latency for real-time transactional validation. Trained and optimized a Random Forest ensemble model in Scikit-Learn to predict loan default probability, achieving a 92% precision score. Deployed SQLite schemas and transactional fraud anomaly checks with Chart.js dashboard integration.",
-      "technologies": ["FastAPI", "Python", "SQLite", "Scikit-learn", "Chart.js"]
-    },
-    {
-      "name": "Automated Daily Data Insights",
-      "description": "Developed a fully automated daily data analysis and insights generation pipeline. Wrote Python scripts to fetch market and telemetry datasets, executing statistical anomaly detection models. Built a stateless serverless ETL pipeline using Python to ingest real-time market data from yFinance APIs with automated error handling and logging. Programmed rolling statistical Z-score algorithms to detect price anomalies, triggering automated email alerts and report updates. Configured GitHub Actions to run the pipeline daily on cron schedules.",
-      "technologies": ["Python", "yFinance", "Matplotlib", "GitHub Actions", "SQLite"]
-    },
-    {
-      "name": "IoT Telematics & Predictive Maintenance Pipeline",
-      "description": "Created an end-to-end telemetry pipeline designed to process high-frequency sensor streams from a fleet of machinery to schedule predictive maintenance. Engineered a streaming simulation pipeline in Python to ingest high-frequency EV battery and motor telemetry logs in micro-batches. Applied rolling statistical Z-score algorithms on sensor metrics to flag real-time anomalies and prevent device failures. Implemented degradation modeling using exponential decay equations to estimate battery Remaining Useful Life (RUL) and designed Power BI dashboards to track fleet health.",
-      "technologies": ["Python", "Z-Score Anomaly", "RUL Model", "Power BI", "SQL"]
+      "name": "CurioSync: Serverless Tech News & LinkedIn Publisher",
+      "description": "Built a scheduled serverless news curation and publisher pipeline running on GitHub Actions cron workflows (achieving a 100% hosting cost reduction), integrating LLM chains and LinkedIn APIs to automate daily posting. Designed a Jinja2/HTMX glassmorphic administrative control panel, implementing Fernet symmetric encryption to secure credentials. Developed custom Pillow image-processing engines to automatically render branding graphics.",
+      "technologies": ["FastAPI", "Python", "GitHub Actions", "Gemini LLM", "HTMX", "Cryptography", "Pillow"]
     },
     {
       "name": "AI Model Observability & Fairness Auditing Pipeline",
@@ -186,9 +171,9 @@
       "technologies": ["Python", "Drift Audit", "KS-Test", "Tableau", "SQL", "SQLite"]
     },
     {
-      "name": "Sales Analytics & RFM Customer Segmentation Pipeline",
-      "description": "Engineered a modular, end-to-end data engineering and clustering pipeline designed to analyze transactional histories. Designed and implemented a SQL database with an optimized Star Schema modeling 100k+ customer transactions. Automated RFM (Recency, Frequency, Monetary) scaling and K-Means clustering in Python, identifying 4 customer personas that captured 92% of variance. Developed a Power BI dashboard to track RFM metrics, helping marketing teams optimize campaign conversion rates by 15%.",
-      "technologies": ["Python", "SQLite", "K-Means", "PCA", "Power BI", "Seaborn"]
+      "name": "FinRisk Analytics & Credit Fraud Pipeline",
+      "description": "Designed and developed an end-to-end real-time credit risk analytics and transaction fraud detection pipeline. Engineered an end-to-end credit risk evaluation pipeline using FastAPI and Python, achieving sub-100ms API response latency for real-time transactional validation. Trained and optimized a Random Forest ensemble model in Scikit-Learn to predict loan default probability, achieving a 92% precision score. Deployed SQLite schemas and transactional fraud anomaly checks with Chart.js dashboard integration.",
+      "technologies": ["FastAPI", "Python", "SQLite", "Scikit-learn", "Chart.js"]
     },
     {
       "name": "Tax Anomaly Audit Pipeline",
@@ -201,9 +186,24 @@
       "technologies": ["Python", "SQL", "PostgreSQL", "Tableau", "ArcGIS"]
     },
     {
+      "name": "Automated Daily Data Insights",
+      "description": "Developed a fully automated daily data analysis and insights generation pipeline. Wrote Python scripts to fetch market and telemetry datasets, executing statistical anomaly detection models. Built a stateless serverless ETL pipeline using Python to ingest real-time market data from yFinance APIs with automated error handling and logging. Programmed rolling statistical Z-score algorithms to detect price anomalies, triggering automated email alerts and report updates. Configured GitHub Actions to run the pipeline daily on cron schedules.",
+      "technologies": ["Python", "yFinance", "Matplotlib", "GitHub Actions", "SQLite"]
+    },
+    {
+      "name": "Sales Analytics & RFM Customer Segmentation Pipeline",
+      "description": "Engineered a modular, end-to-end data engineering and clustering pipeline designed to analyze transactional histories. Designed and implemented a SQL database with an optimized Star Schema modeling 100k+ customer transactions. Automated RFM (Recency, Frequency, Monetary) scaling and K-Means clustering in Python, identifying 4 customer personas that captured 92% of variance. Developed a Power BI dashboard to track RFM metrics, helping marketing teams optimize campaign conversion rates by 15%.",
+      "technologies": ["Python", "SQLite", "K-Means", "PCA", "Power BI", "Seaborn"]
+    },
+    {
       "name": "Clinical Trials Outcomes & Efficacy Analysis Portfolio",
       "description": "Developed a data engineering and statistical analysis pipeline for a simulated Phase II oncology clinical trial. Developed a secure clinical trials data ingestion pipeline in SQL/Python to clean and track patient survival, vital signs, and dosage levels. Conducted survival analysis using Kaplan-Meier curves and computed Log-Rank test statistics in SciPy to evaluate treatment efficacy across 3 patient cohorts. Authored Tableau reports showcasing patient outcomes, improving decision reporting speed by 30%.",
       "technologies": ["Python", "SQL", "Kaplan-Meier", "Log-Rank", "Tableau", "SciPy"]
+    },
+    {
+      "name": "IoT Telematics & Predictive Maintenance Pipeline",
+      "description": "Created an end-to-end telemetry pipeline designed to process high-frequency sensor streams from a fleet of machinery to schedule predictive maintenance. Engineered a streaming simulation pipeline in Python to ingest high-frequency EV battery and motor telemetry logs in micro-batches. Applied rolling statistical Z-score algorithms on sensor metrics to flag real-time anomalies and prevent device failures. Implemented degradation modeling using exponential decay equations to estimate battery Remaining Useful Life (RUL) and designed Power BI dashboards to track fleet health.",
+      "technologies": ["Python", "Z-Score Anomaly", "RUL Model", "Power BI", "SQL"]
     },
     {
       "name": "AI-ML Data Science Simulation Project",
