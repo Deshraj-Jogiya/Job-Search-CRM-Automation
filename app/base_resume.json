@@ -6,7 +6,8 @@
     "phone": "(480) 876-2863",
     "email": "djogiya786@gmail.com",
     "linkedin": "https://linkedin.com/in/deshrajjogiya",
-    "github": "https://github.com/Deshraj-Jogiya"
+    "github": "https://github.com/Deshraj-Jogiya",
+    "portfolio": "https://deshraj-jogiya.github.io/"
   },
   "summary": "Detail-oriented and results-driven Applied Machine Learning Scientist with 5 years of extensive experience building scalable model pipelines, cleaning large-scale datasets, and interpreting complex economic patterns and workforce dynamics. Expert in Python, SQL, and machine learning libraries (Scikit-learn, PyTorch, TensorFlow) to deploy advanced algorithms, including time-series forecasting, clustering, and regression models. Proven track record of designing end-to-end data pipelines using cloud platforms (AWS) and orchestration engines (Apache Airflow), tracking models with MLflow, and translating complex data into strategic business insights for technical and non-technical stakeholders.",
   "skills": {
@@ -151,6 +152,23 @@
         "Data Quality & Insights: Cleaned and processed large-scale transaction datasets (500k+ rows) using SQL, reducing data query latency and preparation time by 30%.",
         "SQL Reporting & Visualization: Created interactive Tableau dashboards to track key performance indicators and regional customer acquisition trends, helping drive a 12% improvement in conversion rates."
       ]
+    }
+  ],
+  "projects": [
+    {
+      "name": "IoT Fleet Telematics Anomaly Detector",
+      "description": "Built a real-time anomaly detection pipeline using Apache Spark, Kafka, and Python to ingest and analyze high-frequency vehicle sensor logs, reducing maintenance alert latency from hours to seconds.",
+      "technologies": ["Apache Spark", "Kafka", "Python", "Docker"]
+    },
+    {
+      "name": "High-Throughput Credit Risk Command Center",
+      "description": "Developed a secure dashboard using React, PostgreSQL, and Python to aggregate and analyze credit fraud patterns and risk factors, accelerating audit processing speeds by 40%.",
+      "technologies": ["React", "PostgreSQL", "Python", "FastAPI"]
+    },
+    {
+      "name": "Benford's Law Tax Audit Pipeline",
+      "description": "Constructed an automated ETL data pipeline with Apache Airflow and SQL to perform statistical audits of financial logs for compliance, flagging anomalous patterns across millions of records.",
+      "technologies": ["Apache Airflow", "SQL", "Python", "Snowflake"]
     }
   ]
 }
