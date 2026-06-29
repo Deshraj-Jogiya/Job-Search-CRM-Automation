@@ -307,12 +307,8 @@ def tailor_application(job_id: int, db: Session = Depends(get_db)):
         
     resume_data = get_base_resume()
     
-    # 1. Tailor experience bullets (using multi-pass 95+ ATS optimizer)
-    tailored_experience = ai_service.tailor_resume(resume_data, job.job_description)
-    
-    # Compile a tailored copy of the resume profile JSON
-    tailored_resume_json = resume_data.copy()
-    tailored_resume_json["experience"] = tailored_experience
+    # 1. Tailor experience bullets, summary, skills, and projects
+    tailored_resume_json = ai_service.tailor_resume(resume_data, job.job_description)
     
     # Save or update tailored resume document
     resume_doc = db.query(TailoredDocument).filter(

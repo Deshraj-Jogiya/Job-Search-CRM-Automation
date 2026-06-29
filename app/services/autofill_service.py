@@ -19,8 +19,9 @@ def compile_resume_to_pdf(job_id: int) -> str:
         context = browser.new_context()
         page = context.new_page()
         
-        # Load the HTML resume print view
-        url = f"http://localhost:8000/resumes/render/{job_id}"
+        # Load the HTML resume print view dynamically binding the port
+        port = os.getenv("PORT", "8000")
+        url = f"http://localhost:{port}/resumes/render/{job_id}"
         print(f"Compiling PDF from: {url}")
         page.goto(url)
         page.wait_for_timeout(1000)
@@ -220,9 +221,7 @@ def autofill_job_application(job_id: int, auto_submit: bool = False):
         with open(base_resume_path, "r", encoding="utf-8") as f:
             base_resume = json.load(f)
         from . import ai_service
-        tailored_exp = ai_service.tailor_resume(base_resume, job.job_description)
-        tailored_resume = base_resume.copy()
-        tailored_resume["experience"] = tailored_exp
+        tailored_resume = ai_service.tailor_resume(base_resume, job.job_description)
         
         resume_doc = TailoredDocument(
             job_id=job_id,
