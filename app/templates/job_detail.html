@@ -89,6 +89,15 @@
                     
                     <ul class="meta-list">
                         <li><strong>Relocation/Location:</strong> {{ analysis.get('relocation_notes', 'N/A') }}</li>
+                        <li><strong>H-1B Visa Sponsorship:</strong> 
+                            {% if job.visa_sponsorship == 'Sponsors' %}
+                            <span style="color: #34d399; font-weight: bold; background-color: #065f46; padding: 0.1rem 0.4rem; border-radius: 4px; border: 1px solid #34d399;">Sponsors H-1B Visa</span>
+                            {% elif job.visa_sponsorship == 'No Sponsorship' %}
+                            <span style="color: #f87171; font-weight: bold; background-color: #7f1d1d; padding: 0.1rem 0.4rem; border-radius: 4px; border: 1px solid #f87171;">Does Not Sponsor</span>
+                            {% else %}
+                            <span style="color: var(--text-secondary);">Unknown / Not Explicitly Mentioned</span>
+                            {% endif %}
+                        </li>
                         <li><strong>Strengths:</strong> {{ analysis.get('strengths', 'N/A') }}</li>
                         <li><strong>Gaps / Needs:</strong> {{ analysis.get('gaps_analysis', 'N/A') }}</li>
                     </ul>
@@ -160,23 +169,28 @@
             <div style="display: flex; flex-direction: column; gap: 2rem;">
                 
                 <!-- Candidate Account Credentials -->
-                {% if job.account %}
                 <div class="detail-card">
                     <h2>🔑 Portal Credentials</h2>
                     <ul class="meta-list" style="margin: 0; padding: 0; list-style: none; font-size: 0.9rem;">
+                        {% if job.account %}
                         <li style="margin-bottom: 0.5rem;"><strong>Portal URL:</strong> <a href="{{ job.account.login_url }}" target="_blank" style="color: var(--accent-blue); text-decoration: none;">Go to Portal →</a></li>
                         <li style="margin-bottom: 0.5rem;"><strong>Username:</strong> {{ job.account.username }}</li>
                         <li style="margin-bottom: 0.5rem;"><strong>Password:</strong> <code>{{ job.account.password }}</code></li>
+                        {% else %}
+                        <li style="margin-bottom: 0.5rem;"><strong>Portal URL:</strong> <a href="{{ job.job_url }}" target="_blank" style="color: var(--accent-blue); text-decoration: none;">Go to Job Page →</a></li>
+                        <li style="margin-bottom: 0.5rem;"><strong>Username (Default):</strong> <code>djogiya786@gmail.com</code></li>
+                        <li style="margin-bottom: 0.5rem;"><strong>Password (Default):</strong> <code>DeshrajApply2026!</code></li>
+                        <li style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.5rem; font-style: italic;">Note: Used as standard default sign-up credentials.</li>
+                        {% endif %}
                     </ul>
                 </div>
-                {% endif %}
                 
                 <!-- Recruiter Outreach Box -->
                 <div class="detail-card">
-                    <h2>Recruiter Outreach (LinkedIn Premium)</h2>
+                    <h2>Recruiter Sourcing &amp; Outreach</h2>
                     
                     <div class="meta-list" style="margin-bottom: 1.5rem;">
-                        <li><strong>Target Recruiter Name:</strong> {{ job.recruiter_name or 'Not specified' }}</li>
+                        <li><strong>Target Recruiter Name:</strong> {{ job.recruiter_name or 'Not specified (Google site search pending)' }}</li>
                         {% if job.recruiter_linkedin %}
                         <li>
                             <strong>LinkedIn Profile:</strong> 
@@ -185,8 +199,26 @@
                             </a>
                         </li>
                         {% endif %}
+                        <li><strong>Guessed Corporate Email:</strong> <code>{{ job.recruiter_email or 'Heuristics pending...' }}</code></li>
+                        <li>
+                            <strong>Email Status:</strong> 
+                            {% if job.email_sent %}
+                            <span style="color: #34d399; font-weight: bold;">✅ Sent automatically</span>
+                            {% else %}
+                            <span style="color: var(--text-secondary); font-style: italic;">⏳ Not sent (SMTP config / target missing)</span>
+                            {% endif %}
+                        </li>
                     </div>
 
+                    <!-- Manual Senders -->
+                    <form action="/jobs/{{ job.id }}/send-manual-email" method="POST" style="margin-bottom: 1.5rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+                        <label for="email_addr" style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.5rem;">Send Outreach Email Manually:</label>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <input type="email" id="email_addr" name="email_addr" value="{{ job.recruiter_email or '' }}" placeholder="recruiter@company.com" style="flex-grow: 1; padding: 0.45rem 0.75rem; border-radius: 4px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-primary); font-size: 0.85rem;" required>
+                            <button type="submit" class="btn btn-secondary" style="padding: 0.45rem 1rem; font-size: 0.8rem; margin: 0; min-width: 100px;">Send Mail</button>
+                        </div>
+                    </form>
+                    
                     <div class="outreach-box">
                         <h4>Draft 1: LinkedIn Connection Note (&lt;300 chars)</h4>
                         <button class="copy-btn" onclick="copyText('short-note')">Copy</button>

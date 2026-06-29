@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from .database import Base
 
@@ -29,6 +29,9 @@ class JobApplication(Base):
     status = Column(String, default="Ingested")  # Ingested, Tailored, Applied, Interviewing, Offer, Rejected, Archived
     recruiter_name = Column(String, nullable=True)
     recruiter_linkedin = Column(String, nullable=True)
+    recruiter_email = Column(String, nullable=True)
+    email_sent = Column(Boolean, default=False)
+    visa_sponsorship = Column(String, default="Unknown")  # 'Sponsors', 'No Sponsorship', or 'Unknown'
     outreach_note_short = Column(String(500), nullable=True)  # Under 300-char LinkedIn connection request
     outreach_note_long = Column(Text, nullable=True)          # LinkedIn InMail / Email draft
     created_at = Column(DateTime, default=datetime.utcnow)

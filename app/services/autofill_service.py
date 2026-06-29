@@ -249,6 +249,14 @@ def autofill_job_application(job_id: int, auto_submit: bool = False):
                         db.commit()
                         print("Form submitted successfully (Greenhouse).")
                         
+                        from .networking_service import trigger_recruiter_sourcing_and_outreach
+                        import threading
+                        threading.Thread(
+                            target=trigger_recruiter_sourcing_and_outreach,
+                            args=(job_id,),
+                            daemon=True
+                        ).start()
+                        
             # C. LEVER FORM FLOW
             elif "lever.co" in job.job_url or page.locator("input[name='name']").count() > 0:
                 print("Autofilling Lever Form...")
@@ -274,6 +282,14 @@ def autofill_job_application(job_id: int, auto_submit: bool = False):
                         job.applied_at = datetime.utcnow()
                         db.commit()
                         print("Form submitted successfully (Lever).")
+                        
+                        from .networking_service import trigger_recruiter_sourcing_and_outreach
+                        import threading
+                        threading.Thread(
+                            target=trigger_recruiter_sourcing_and_outreach,
+                            args=(job_id,),
+                            daemon=True
+                        ).start()
                         
             # D. OTHER FORMS
             else:
