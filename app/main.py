@@ -13,7 +13,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy import text, func
 from sqlalchemy.orm import Session
 
-from .database import engine, Base, get_db
+from .database import engine, Base, get_db, SessionLocal
 from .models import JobApplication, TailoredDocument, SearchKeyword, ActivityLog
 from .services import ai_service, autofill_service
 from .services import scheduler as bg_scheduler
