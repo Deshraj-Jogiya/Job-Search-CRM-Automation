@@ -8,6 +8,7 @@ from fastapi import FastAPI, Depends, Form, Request, HTTPException
 from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .database import engine, Base, get_db
@@ -17,6 +18,31 @@ from .services import scheduler as bg_scheduler
 
 # Initialize Database tables
 Base.metadata.create_all(bind=engine)
+
+# DB Migrations for SQLite
+def run_migrations():
+    from sqlalchemy import inspect
+    inspector = inspect(engine)
+    columns = [c['name'] for c in inspector.get_columns('job_applications')]
+    
+    with engine.begin() as conn:
+        if 'recruiter_email' not in columns:
+            try:
+                conn.execute(text("ALTER TABLE job_applications ADD COLUMN recruiter_email VARCHAR;"))
+            except Exception:
+                pass
+        if 'email_sent' not in columns:
+            try:
+                conn.execute(text("ALTER TABLE job_applications ADD COLUMN email_sent BOOLEAN DEFAULT 0;"))
+            except Exception:
+                pass
+        if 'visa_sponsorship' not in columns:
+            try:
+                conn.execute(text("ALTER TABLE job_applications ADD COLUMN visa_sponsorship VARCHAR DEFAULT 'Unknown';"))
+            except Exception:
+                pass
+
+run_migrations()
 
 app = FastAPI(title="Job Search CRM & AI Application Tailoring Command Center")
 
@@ -113,6 +139,7 @@ def ingest_job(
         job_description=job_description,
         match_score=match_data.get("match_score", 50),
         match_analysis=json.dumps(match_data),
+        visa_sponsorship=match_data.get("visa_sponsorship", "Unknown"),
         status="Ingested",
         recruiter_name=recruiter_name,
         recruiter_linkedin=recruiter_linkedin,
@@ -249,8 +276,35 @@ def update_status(job_id: int, status: str = Form(...), db: Session = Depends(ge
     job.status = status
     if status == "Applied":
         job.applied_at = datetime.utcnow()
-    db.commit()
+        db.commit()
+        
+        # Trigger recruiter sourcing and outreach
+        from .services import networking_service
+        threading.Thread(
+            target=networking_service.trigger_recruiter_sourcing_and_outreach,
+            args=(job_id,),
+            daemon=True
+        ).start()
+    else:
+        db.commit()
     
+    return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
+
+@app.post("/jobs/{job_id}/send-manual-email")
+def send_manual_email(job_id: int, email_addr: str = Form(...), db: Session = Depends(get_db)):
+    job = db.query(JobApplication).filter(JobApplication.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+        
+    from .services import networking_service
+    subject = f"Applied Machine Learning Scientist Application - Deshraj Jogiya"
+    body = job.outreach_note_long or f"Dear Hiring Team,\\n\\nI recently applied for the {job.job_title} role at {job.company_name}. I wanted to briefly connect and share my portfolio..."
+    
+    success = networking_service.send_outreach_email(email_addr, subject, body)
+    if success:
+        job.recruiter_email = email_addr
+        job.email_sent = True
+        db.commit()
     return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
 
 @app.post("/jobs/{job_id}/update-notes")

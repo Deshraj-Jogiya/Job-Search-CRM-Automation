@@ -94,7 +94,7 @@ def search_linkedin_jobs(keywords="Data Engineer", location="United States", lim
 def run_daily_crawl_and_ingest(db: Session, base_resume: dict):
     """Main pipeline execution for job search and matching ingestion."""
     print("Initiating daily job crawler query...")
-    search_queries = ["Data Engineer", "Machine Learning Engineer"]
+    search_queries = ["Machine Learning Engineer", "Applied Machine Learning Scientist", "Data Engineer", "Data Scientist", "Data Analyst", "Business Intelligence Analyst", "Applied Scientist"]
     
     all_jobs_found = []
     for query in search_queries:
@@ -133,6 +133,7 @@ def run_daily_crawl_and_ingest(db: Session, base_resume: dict):
             job_description=jd_text,
             match_score=match_data.get("match_score", 50),
             match_analysis=json.dumps(match_data),
+            visa_sponsorship=match_data.get("visa_sponsorship", "Unknown"),
             status="Ingested",
             outreach_note_short=short_note,
             outreach_note_long=long_note
@@ -140,5 +141,10 @@ def run_daily_crawl_and_ingest(db: Session, base_resume: dict):
         db.add(job_app)
         db.commit()
         ingested_count += 1
+        
+        # Respect the Gemini API Free Tier 15 RPM rate limit
+        import time
+        print("Pacing API requests: sleeping 5 seconds...")
+        time.sleep(5)
         
     print(f"Job search finished. Ingested {ingested_count} new postings.")

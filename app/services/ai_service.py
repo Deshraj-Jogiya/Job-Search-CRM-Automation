@@ -41,6 +41,7 @@ Provide your response in EXACTLY the following JSON format:
   "matching_skills": ["Python", "SQL", "ETL"],
   "missing_keywords": ["Spark", "Docker"],
   "relocation_notes": "Mention if the job is remote, hybrid, local, or requires relocation.",
+  "visa_sponsorship": "Check if the JD mentions H-1B visa sponsorship. Return 'Sponsors' (if explicitly willing to sponsor), 'No Sponsorship' (if explicitly stating they will not sponsor), or 'Unknown' (if not mentioned).",
   "strengths": "Provide a 2-3 sentence overview of why the candidate is a strong fit.",
   "gaps_analysis": "Identify key gaps between candidates skills and the requirements."
 }}

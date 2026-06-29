@@ -75,6 +75,12 @@ DATABASE_URL=sqlite:///./crm.db
 OPENAI_API_KEY=your_gemini_api_key_here
 OPENAI_MODEL=gemini-3.5-flash
 OPENAI_API_BASE=https://generativelanguage.googleapis.com/v1beta/openai/
+
+# SMTP Email Outreach Config (Optional for auto-emailing recruiters)
+SMTP_USER=your_email@gmail.com
+SMTP_PASSWORD=your_gmail_app_password
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
 ```
 
 ### 2. Install and Run Locally
