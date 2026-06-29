@@ -4,6 +4,7 @@ import threading
 from apscheduler.schedulers.background import BackgroundScheduler
 from ..database import SessionLocal
 from . import crawler, autofill_service, email_monitor, ai_service, networking_service
+from .activity_logger import log_activity
 from ..models import JobApplication, TailoredDocument
 
 scheduler = BackgroundScheduler()
@@ -82,13 +83,13 @@ def run_instant_pipeline_for_job(job_id: int):
     finally:
         db.close()
 
-def trigger_crawling_and_apply_job():
+def trigger_crawling_and_apply_job(timeframe: str = "24h"):
     """Trigger the public job crawler, auto-tailor, auto-apply, and run email inbox scan."""
     db = SessionLocal()
     resume_data = get_base_resume()
     try:
-        # 1. Scrape new jobs
-        new_job_ids = crawler.run_daily_crawl_and_ingest(db, resume_data)
+        # 1. Scrape new jobs with timeframe filter
+        new_job_ids = crawler.run_daily_crawl_and_ingest(db, resume_data, timeframe=timeframe)
         
         # 2. Trigger instant pipeline sequentially for each new job to respect API rate limits
         import time
@@ -130,15 +131,17 @@ def process_stuck_ingested_jobs():
     try:
         stuck_jobs = db.query(JobApplication).filter_by(status="Ingested").all()
         if stuck_jobs:
-            print(f"Found {len(stuck_jobs)} stuck Ingested jobs. Launching background processing...")
+            log_activity(db, f"Found {len(stuck_jobs)} stuck Ingested jobs. Launching background processor...", "WARNING")
             import time
             for job in stuck_jobs:
                 try:
                     run_instant_pipeline_for_job(job.id)
                     time.sleep(3)
                 except Exception as e:
+                    log_activity(db, f"Error processing stuck job {job.id}: {e}", "ERROR")
                     print(f"Error processing stuck job {job.id}: {e}")
     except Exception as e:
+        log_activity(db, f"Error in stuck jobs processor: {e}", "ERROR")
         print(f"Error in stuck jobs processor: {e}")
     finally:
         db.close()

@@ -232,10 +232,11 @@ def ingest_job(
     return RedirectResponse(url="/", status_code=303)
 
 @app.post("/jobs/crawl")
-def trigger_manual_crawl():
+def trigger_manual_crawl(timeframe: str = Form("1m")):
     """Manually trigger job search, auto-apply, and email updates loop."""
     threading.Thread(
         target=bg_scheduler.trigger_crawling_and_apply_job,
+        args=(timeframe,),
         daemon=True
     ).start()
     return RedirectResponse(url="/", status_code=303)

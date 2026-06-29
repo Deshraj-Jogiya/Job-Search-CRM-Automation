@@ -197,8 +197,21 @@
         <div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
                 <h2 style="font-size: 1.25rem; border-left: 4px solid var(--accent-blue); padding-left: 0.75rem; margin: 0;">📋 Application Pipelines</h2>
-                <form action="/jobs/crawl" method="POST">
-                    <button type="submit" class="btn btn-secondary" style="padding: 0.5rem 1.25rem; font-size: 0.85rem;">🔍 Scan Active Jobs (Last 30 Days)</button>
+                <form action="/jobs/crawl" method="POST" style="display: flex; align-items: center; gap: 0.5rem; margin: 0; padding: 0;">
+                    <label for="timeframe" style="font-size: 0.8rem; color: var(--text-secondary); margin: 0;">Scan Window:</label>
+                    <select name="timeframe" id="timeframe" style="background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 6px; padding: 0.35rem 0.65rem; font-size: 0.8rem; outline: none; cursor: pointer; transition: all 0.2s;" onchange="this.style.borderColor='var(--accent-blue)';" onblur="this.style.borderColor='var(--border-color)';">
+                        <option value="2h">Past 2 Hours</option>
+                        <option value="12h">Past 12 Hours</option>
+                        <option value="24h">Past 24 Hours</option>
+                        <option value="3d">Past 3 Days</option>
+                        <option value="5d">Past 5 Days</option>
+                        <option value="7d">Past 7 Days</option>
+                        <option value="3w">Past 3 Weeks</option>
+                        <option value="1m" selected>Past 1 Month</option>
+                    </select>
+                    <button type="submit" class="btn btn-secondary" style="padding: 0.45rem 1rem; font-size: 0.8rem; margin: 0;">
+                        🔍 Scan Active Jobs
+                    </button>
                 </form>
             </div>
             <div class="kanban-board">

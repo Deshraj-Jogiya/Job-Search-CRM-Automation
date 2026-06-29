@@ -41,10 +41,40 @@ def scrape_job_description(job_url):
         print(f"Error scraping job description for {job_url}: {e}")
         return "Failed to download description."
 
-def search_linkedin_jobs(keywords="Data Engineer", location="United States", limit=5):
+def is_within_timeframe(datetime_text: str, time_text: str, timeframe: str) -> bool:
+    """Check if the job posting falls within the requested timeframe string."""
+    if not datetime_text:
+        return True # Default to include if date parsing fails
+        
+    try:
+        posted_date = datetime.strptime(datetime_text, "%Y-%m-%d").date()
+        current_date = datetime.now().date()
+        delta_days = (current_date - posted_date).days
+        
+        tf = timeframe.lower().strip()
+        if tf == "2h":
+            return delta_days == 0 and ("hour" in time_text or "minute" in time_text)
+        elif tf == "12h":
+            return delta_days == 0
+        elif tf == "24h":
+            return delta_days <= 1
+        elif tf == "3d":
+            return delta_days <= 3
+        elif tf == "5d":
+            return delta_days <= 5
+        elif tf == "7d":
+            return delta_days <= 7
+        elif tf == "3w":
+            return delta_days <= 21
+        elif tf == "1m":
+            return delta_days <= 30
+            
+    except Exception:
+        pass
+    return True
+
+def search_linkedin_jobs(keywords="Data Engineer", location="United States", limit=10):
     """Query LinkedIn public guest search for recent job postings."""
-    # f_TPR=r604800 restricts to past 24 * 7 * 3600 seconds (past 7 days)
-    # start=0 lists starting page
     url_keywords = urllib.parse.quote(keywords)
     url_location = urllib.parse.quote(location)
     url = f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={url_keywords}&location={url_location}&f_TPR=r2592000&start=0"
@@ -60,42 +90,48 @@ def search_linkedin_jobs(keywords="Data Engineer", location="United States", lim
         with urllib.request.urlopen(req, timeout=10) as response:
             html_content = response.read().decode('utf-8', errors='ignore')
             
-            # Use regex to find job listings
-            # Each card usually contains an href link and some details
-            cards = re.findall(r'<a class="base-card__full-link[^"]*" href="([^"]+)"[^>]*>.*?<span class="sr-only">\s*(.*?)\s*</span>', html_content, re.DOTALL)
-            
-            # Also find company names
-            companies = re.findall(r'<h4 class="base-search-card__subtitle">\s*<a[^>]*>\s*(.*?)\s*</a>', html_content, re.DOTALL)
-            if not companies:
-                companies = re.findall(r'<h4 class="base-search-card__subtitle">\s*(.*?)\s*</h4>', html_content, re.DOTALL)
-                
+            # Split HTML by list items to parse each card independently
+            card_blocks = html_content.split('<li')
             count = 0
-            for idx, (job_url, job_title) in enumerate(cards):
-                if count >= limit:
-                    break
+            for block in card_blocks[1:]:
+                # Extract URL & title
+                url_match = re.search(r'<a class="base-card__full-link[^"]*" href="([^"]+)"', block)
+                title_match = re.search(r'<span class="sr-only">\s*([^\n<]+)\s*</span>', block)
+                company_match = re.search(r'<h4 class="base-search-card__subtitle">\s*<a[^>]*>\s*([^\n<]+)\s*</a>', block)
+                if not company_match:
+                    company_match = re.search(r'<h4 class="base-search-card__subtitle">\s*([^\n<]+)\s*</h4>', block)
+                
+                # Extract posting time
+                time_match = re.search(r'<time[^>]*class="[^"]*"[^>]*>\s*([^\n<]+)\s*</time>', block)
+                datetime_match = re.search(r'<time[^>]*datetime="([^"]+)"', block)
+                
+                if url_match and title_match:
+                    url = url_match.group(1).split('?')[0]
+                    title = clean_html(title_match.group(1))
+                    company = clean_html(company_match.group(1)) if company_match else "Unknown Company"
                     
-                company = "Unknown Company"
-                if idx < len(companies):
-                    company = clean_html(companies[idx])
-                
-                # Trim tracking query parameters from job URL
-                clean_url = job_url.split('?')[0]
-                
-                jobs_list.append({
-                    "title": clean_html(job_title),
-                    "company": company,
-                    "url": clean_url
-                })
-                count += 1
-                
+                    time_text = clean_html(time_match.group(1)) if time_match else ""
+                    datetime_text = datetime_match.group(1).strip() if datetime_match else ""
+                    
+                    jobs_list.append({
+                        "title": title,
+                        "company": company,
+                        "url": url,
+                        "time_text": time_text,
+                        "datetime_text": datetime_text
+                    })
+                    count += 1
+                    if count >= limit:
+                        break
+                        
     except Exception as e:
         print(f"Error querying guest search: {e}")
         
     return jobs_list
 
-def run_daily_crawl_and_ingest(db: Session, base_resume: dict):
+def run_daily_crawl_and_ingest(db: Session, base_resume: dict, timeframe: str = "1m"):
     """Main pipeline execution for job search and matching ingestion."""
-    log_activity(db, "Initiating active job crawler query...", "INFO")
+    log_activity(db, f"Initiating active job crawler query (Timeframe: {timeframe})...", "INFO")
     
     # Load keywords from database configuration
     db_queries = db.query(SearchKeyword).filter(SearchKeyword.is_active == True).all()
@@ -107,16 +143,37 @@ def run_daily_crawl_and_ingest(db: Session, base_resume: dict):
         log_activity(db, "No custom search keywords configured. Using default target job roles.", "INFO")
     
     all_jobs_found = []
+    # If timeframe is narrow, crawl up to 15 jobs per keyword, otherwise 6 is enough
+    crawl_limit = 15 if timeframe in ["2h", "12h", "24h", "3d"] else 6
+    
     for query in search_queries:
         log_activity(db, f"Crawling public job posts for: '{query}'...", "INFO")
-        jobs = search_linkedin_jobs(keywords=query, limit=3)
+        jobs = search_linkedin_jobs(keywords=query, limit=crawl_limit)
         all_jobs_found.extend(jobs)
         
-    log_activity(db, f"Job crawl complete. Found {len(all_jobs_found)} potential roles. Evaluating duplicates and match criteria...", "INFO")
+    # Filter by timeframe
+    filtered_jobs = []
+    for j in all_jobs_found:
+        if is_within_timeframe(j["datetime_text"], j["time_text"], timeframe):
+            filtered_jobs.append(j)
+            
+    # Prioritize: Sort jobs by age (delta_days ascending) so that recent jobs (0-1 days) are processed first
+    def get_job_priority_key(job):
+        try:
+            if not job["datetime_text"]:
+                return 999
+            posted_date = datetime.strptime(job["datetime_text"], "%Y-%m-%d").date()
+            return (datetime.now().date() - posted_date).days
+        except Exception:
+            return 999
+            
+    filtered_jobs.sort(key=get_job_priority_key)
+    
+    log_activity(db, f"Job crawl complete. Found {len(all_jobs_found)} total, {len(filtered_jobs)} match timeframe. Evaluating duplicates...", "INFO")
     
     ingested_count = 0
     new_job_ids = []
-    for job in all_jobs_found:
+    for job in filtered_jobs:
         # Check duplicate (by URL or normalized company name and job title)
         exists = db.query(JobApplication).filter(
             (JobApplication.job_url == job["url"]) | 
