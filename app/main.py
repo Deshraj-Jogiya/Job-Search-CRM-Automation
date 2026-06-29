@@ -10,7 +10,7 @@ from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from sqlalchemy import text
+from sqlalchemy import text, func
 from sqlalchemy.orm import Session
 
 from .database import engine, Base, get_db
@@ -159,6 +159,15 @@ def ingest_job(
     recruiter_linkedin: str = Form(None),
     db: Session = Depends(get_db)
 ):
+    # Check duplicate (case-insensitive and trimmed)
+    exists = db.query(JobApplication).filter(
+        (func.lower(JobApplication.company_name) == company_name.lower().strip()) &
+        (func.lower(JobApplication.job_title) == job_title.lower().strip())
+    ).first()
+    if exists:
+        log_activity(db, f"Skipped duplicate manual ingestion: {job_title} at {company_name}", "INFO")
+        return RedirectResponse(url="/", status_code=303)
+
     # Retrieve base resume
     resume_data = get_base_resume()
     
@@ -363,6 +372,16 @@ def delete_job(job_id: int, db: Session = Depends(get_db)):
     db.delete(job)
     db.commit()
     return RedirectResponse(url="/", status_code=303)
+
+@app.post("/jobs/reset-database")
+def reset_database(db: Session = Depends(get_db)):
+    """Deletes all job application and tailored document records to clean the slate."""
+    db.query(TailoredDocument).delete()
+    db.query(JobApplication).delete()
+    log_activity(db, "Pipeline database was reset. Slate is clean.", "WARNING")
+    db.commit()
+    return RedirectResponse(url="/", status_code=303)
+
 
 @app.get("/resumes/render/{job_id}", response_class=HTMLResponse)
 def render_tailored_resume(job_id: int, request: Request, db: Session = Depends(get_db)):

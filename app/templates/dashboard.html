@@ -19,11 +19,16 @@
 
     <header>
         <h1>🎯 Job Placement Command Center</h1>
-        <div class="header-links" style="display: flex; gap: 1.5rem; align-items: center;">
+        <div class="header-links" style="display: flex; gap: 1.25rem; align-items: center;">
             <span style="color: #34d399; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.35rem;">
                 <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: #34d399; box-shadow: 0 0 8px #34d399; animation: pulse 2s infinite;"></span>
                 CRM PIPELINE ONLINE
             </span>
+            <form action="/jobs/reset-database" method="POST" onsubmit="return confirm('Are you sure you want to completely clear the slate? This will delete all jobs and documents!');" style="margin: 0; padding: 0; display: inline-block;">
+                <button type="submit" class="btn btn-secondary" style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); color: #f87171; padding: 0.35rem 0.75rem; font-size: 0.75rem; border-radius: 6px; cursor: pointer; font-weight: 600; transition: all 0.2s;" onmouseover="this.style.background='rgba(239, 68, 68, 0.25)';" onmouseout="this.style.background='rgba(239, 68, 68, 0.12)';">
+                    ⚠️ Reset Database
+                </button>
+            </form>
         </div>
     </header>
 
@@ -193,7 +198,7 @@
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
                 <h2 style="font-size: 1.25rem; border-left: 4px solid var(--accent-blue); padding-left: 0.75rem; margin: 0;">📋 Application Pipelines</h2>
                 <form action="/jobs/crawl" method="POST">
-                    <button type="submit" class="btn btn-secondary" style="padding: 0.5rem 1.25rem; font-size: 0.85rem;">🔍 Scan Active Jobs (Last 7 Days)</button>
+                    <button type="submit" class="btn btn-secondary" style="padding: 0.5rem 1.25rem; font-size: 0.85rem;">🔍 Scan Active Jobs (Last 30 Days)</button>
                 </form>
             </div>
             <div class="kanban-board">
