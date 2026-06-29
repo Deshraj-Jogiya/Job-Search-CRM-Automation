@@ -69,12 +69,26 @@
         .signature p {
             margin-bottom: 4px;
         }
+        @page {
+            size: letter;
+            margin: 0.5in;
+        }
+        
         @media print {
             body {
-                padding: 0;
+                padding: 0 !important;
+                margin: 0 !important;
             }
             .no-print {
                 display: none !important;
+                height: 0 !important;
+                width: 0 !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                border: none !important;
+                visibility: hidden !important;
+                opacity: 0 !important;
+                overflow: hidden !important;
             }
         }
     </style>

@@ -316,10 +316,37 @@ Do not wrap your output in markdown code blocks. Just return raw JSON.
         for key in ["contact", "education", "certifications"]:
             if key not in tailored_data and key in resume_data:
                 tailored_data[key] = resume_data[key]
+        if "projects" in tailored_data and isinstance(tailored_data["projects"], list):
+            tailored_data["projects"] = tailored_data["projects"][:3]
         return tailored_data
     except Exception as e:
         print(f"Error tailoring resume: {e}")
         return resume_data.copy()
+
+def clean_cover_letter(text: str) -> str:
+    if not text:
+        return text
+    lines = text.strip().split("\n")
+    cleaned_lines = []
+    
+    for line in lines:
+        l = line.strip().lower()
+        if not l:
+            cleaned_lines.append("")
+            continue
+        if l.startswith(("dear", "to the", "hello", "hi ", "attention:")) or l.endswith(("hiring team", "hiring manager", "team")):
+            continue
+        if l.startswith(("sincerely", "best regards", "warm regards", "respectfully", "thank you for your time", "thank you for considering", "thank you for the opportunity", "thanks,")):
+            continue
+        if "deshraj" in l or "jogiya" in l:
+            continue
+        cleaned_lines.append(line)
+        
+    cleaned_text = "\n".join(cleaned_lines).strip()
+    # Normalize double linebreaks
+    while "\n\n\n" in cleaned_text:
+        cleaned_text = cleaned_text.replace("\n\n\n", "\n\n")
+    return cleaned_text
 
 def generate_cover_letter(resume_data: dict, company_name: str, job_title: str, jd_text: str) -> str:
     """Generate a highly personalized 3-paragraph cover letter aligned with company mission and goals."""
@@ -366,12 +393,13 @@ Tone Rules:
         response = client.chat.completions.create(
             model=model_name,
             messages=[
-                {"role": "system", "content": "You are a professional cover letter writer."},
+                {"role": "system", "content": "You are a professional cover letter writer. You return ONLY the 3 body paragraphs, without any greetings, closings, or signatures."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.5
         )
-        return response.choices[0].message.content.strip()
+        raw_content = response.choices[0].message.content.strip()
+        return clean_cover_letter(raw_content)
     except Exception as e:
         print(f"Error generating cover letter: {e}")
         fallback_para = (
