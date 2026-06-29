@@ -313,3 +313,64 @@ Do not wrap your output in markdown code blocks. Just return raw JSON.
         fallback_short = f"Hi {recruiter}, I applied for the {job_title} role at {company_name}. I have 5+ years of experience in Python, SQL, and data engineering pipelines, and would love to connect to discuss how I can help your team."
         fallback_long = f"Dear {recruiter},\n\nI hope this message finds you well. I recently submitted my application for the {job_title} position at {company_name}.\n\nWith my background in building automated ETL pipelines and optimizing ML models, I am excited about the opportunity to bring these skills to your data team. I would welcome the chance to speak further.\n\nBest regards,\nDeshraj Jogiya"
         return fallback_short, fallback_long
+
+def classify_email_response(subject: str, body: str) -> dict:
+    """Classify the company's email response intent using AI."""
+    prompt = f"""
+You are an AI assistant for a career job tracking system. Analyze the following email subject and body received from a company.
+Classify the email into exactly ONE of the following categories:
+1. "confirmation" - The company is confirming they received the job application.
+2. "additional_requirements" - The company is asking for more info, transcripts, portfolio links, or questions to be answered.
+3. "assessment" - The company is requesting you to complete an Online Assessment (OA), HackerRank, LeetCode test, or coding challenge.
+4. "interview" - The company is inviting you to a phone screen, call scheduling, next-round interview, or chat.
+5. "rejection" - The company is rejecting your application or stating they are moving forward with other candidates.
+6. "other" - None of the above.
+
+Email Subject:
+{subject}
+
+Email Body:
+{body}
+
+Provide your response in EXACTLY the following JSON format:
+{{
+  "intent": "rejection" | "interview" | "assessment" | "additional_requirements" | "confirmation" | "other",
+  "reason": "Brief 1-sentence summary of the message context (e.g. 'Invited for 30-min phone screen with hiring manager')",
+  "action_required": true | false
+}}
+Ensure you return only raw JSON. Do not wrap it in markdown code blocks.
+"""
+    try:
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that returns only raw JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2
+        )
+        content = response.choices[0].message.content.strip()
+        if content.startswith("```"):
+            lines = content.splitlines()
+            if lines[0].startswith("```json") or lines[0].startswith("```"):
+                content = "\n".join(lines[1:-1]).strip()
+        return json.loads(content)
+    except Exception as e:
+        print(f"Error classifying email response: {e}")
+        # Return fallback parsing based on basic keywords if API fails
+        intent = "other"
+        combined = (subject + " " + body).lower()
+        if any(x in combined for x in ["unfortunate", "not select", "not move forward", "pursue other"]):
+            intent = "rejection"
+        elif any(x in combined for x in ["schedule", "interview", "phone screen", "chat about"]):
+            intent = "interview"
+        elif any(x in combined for x in ["assessment", "hackerrank", "coding challenge", "test"]):
+            intent = "assessment"
+        elif any(x in combined for x in ["confirm", "thank you for applying", "received"]):
+            intent = "confirmation"
+        return {
+            "intent": intent,
+            "reason": "Fallback parsing due to AI exception.",
+            "action_required": intent in ["interview", "assessment", "additional_requirements"]
+        }
+

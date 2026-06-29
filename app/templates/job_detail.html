@@ -242,18 +242,48 @@
 
         </div>
 
-    </div>
+    <!-- Toast Notification Container -->
+    <div id="toast-container" style="position: fixed; top: 1.5rem; right: 1.5rem; z-index: 10000; display: flex; flex-direction: column; gap: 0.5rem;"></div>
 
     <script>
+        function showToast(message) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.style.background = 'rgba(13, 18, 36, 0.85)';
+            toast.style.border = '1px solid rgba(16, 185, 129, 0.4)';
+            toast.style.color = '#34d399';
+            toast.style.padding = '0.75rem 1.25rem';
+            toast.style.borderRadius = '8px';
+            toast.style.backdropFilter = 'blur(12px)';
+            toast.style.boxShadow = '0 8px 32px rgba(0,0,0,0.35), 0 0 10px rgba(16,185,129,0.15)';
+            toast.style.fontSize = '0.85rem';
+            toast.style.fontWeight = '600';
+            toast.style.fontFamily = 'inherit';
+            toast.style.transition = 'all 0.3s ease';
+            toast.style.transform = 'translateY(-20px)';
+            toast.style.opacity = '0';
+            toast.innerHTML = `📋 ${message}`;
+            
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.transform = 'translateY(0)';
+                toast.style.opacity = '1';
+            }, 50);
+            
+            setTimeout(() => {
+                toast.style.transform = 'translateY(-20px)';
+                toast.style.opacity = '0';
+                setTimeout(() => {
+                    toast.remove();
+                }, 300);
+            }, 2500);
+        }
+
         function copyText(elementId) {
             const text = document.getElementById(elementId).innerText;
             navigator.clipboard.writeText(text).then(() => {
-                const btn = document.querySelector(`#${elementId} ~ .copy-btn`);
-                const originalText = btn.innerText;
-                btn.innerText = "Copied!";
-                setTimeout(() => {
-                    btn.innerText = originalText;
-                }, 2000);
+                showToast("Outreach template copied to clipboard!");
             });
         }
     </script>

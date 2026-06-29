@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from ..models import JobApplication
 from ..database import SessionLocal
+from .activity_logger import log_activity
 
 def decode_mime_words(s):
     """Clean MIME encoded strings."""
@@ -100,39 +101,50 @@ def scan_inbox_for_updates():
                 if company in combined_text:
                     print(f"Matched email from '{sender}' containing subject '{subject}' to company '{app.company_name}'")
                     
-                    # Keywords for rejections
-                    rejection_keywords = [
-                        "unfortunate", "not selected", "thank you for your interest", 
-                        "decision to move forward with other", "pursue other candidates", 
-                        "not moving forward", "decided not to proceed", "positions filled"
-                    ]
-                    
-                    # Keywords for interview calls
-                    interview_keywords = [
-                        "schedule a call", "interview", "phone screening", "availability to speak", 
-                        "chat about your application", "invitation to interview", "next steps in the process",
-                        "technical assessment", "online test"
-                    ]
+                    # Classify email using AI
+                    from . import ai_service
+                    classification = ai_service.classify_email_response(subject, body)
+                    intent = classification.get("intent", "other")
+                    reason = classification.get("reason", "No reason details extracted.")
                     
                     status_updated = False
-                    new_status = None
-                    reason_snippet = f"\n[Auto Email Status Update - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]\nSender: {sender}\nSubject: {subject}\n"
+                    new_status = app.status
                     
-                    # 1. Check rejections
-                    if any(key in combined_text for key in rejection_keywords):
+                    reason_snippet = f"\n[Auto Email Status Update - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]\n"
+                    reason_snippet += f"Sender: {sender}\nSubject: {subject}\n"
+                    reason_snippet += f"AI Intent Classification: {intent.upper()}\n"
+                    reason_snippet += f"Details: {reason}\n"
+                    
+                    # Map intents to pipeline statuses
+                    if intent == "rejection":
                         new_status = "Rejected"
                         status_updated = True
-                        reason_snippet += "Status auto-changed to 'Rejected' based on email keywords.\n"
-                    # 2. Check interviews
-                    elif any(key in combined_text for key in interview_keywords) and app.status == "Applied":
+                    elif intent == "interview":
                         new_status = "Interviewing"
                         status_updated = True
-                        reason_snippet += "Status auto-changed to 'Interviewing' based on email keywords.\n"
+                    elif intent == "assessment":
+                        new_status = "Needs Review"
+                        status_updated = True
+                        reason_snippet += "Action Required: Complete coding assessment/test.\n"
+                    elif intent == "additional_requirements":
+                        new_status = "Needs Review"
+                        status_updated = True
+                        reason_snippet += "Action Required: Provide additional application files/details.\n"
+                    elif intent == "confirmation":
+                        reason_snippet += "Status unchanged. Received application confirmation email.\n"
+                        status_updated = True # Log the confirmation in the notes
+                    else:
+                        reason_snippet += "Status unchanged. Generic notification email.\n"
+                        status_updated = True
                         
-                    if status_updated and new_status != app.status:
-                        print(f"Updating '{app.job_title}' at '{app.company_name}' status from '{app.status}' to '{new_status}'")
-                        app.status = new_status
-                        # Append email details to notes
+                    if status_updated:
+                        if new_status != app.status:
+                            log_activity(db, f"Updated '{app.job_title}' at '{app.company_name}' status from '{app.status}' to '{new_status}' (Intent: {intent.upper()})", "INFO")
+                            app.status = new_status
+                        else:
+                            log_activity(db, f"Logged company update email for '{app.job_title}' at '{app.company_name}' (Intent: {intent.upper()})", "INFO")
+                        
+                        # Append details to notes log
                         app.notes = (app.notes or "") + reason_snippet
                         db.commit()
                         

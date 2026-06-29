@@ -2,7 +2,7 @@ import urllib.request
 import re
 import html
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from ..models import JobApplication, SearchKeyword
 from . import ai_service
@@ -162,3 +162,36 @@ def run_daily_crawl_and_ingest(db: Session, base_resume: dict):
         time.sleep(5)
         
     log_activity(db, f"Job search crawl finished. Ingested {ingested_count} new postings.", "INFO")
+    
+    # Auto-archive low score ingested jobs (< 60%) or old stale ingested jobs (> 5 days old)
+    try:
+        log_activity(db, "Running pipeline quality checks and queue cleanup...", "INFO")
+        
+        # 1. Archive low match scores
+        low_score_jobs = db.query(JobApplication).filter(
+            JobApplication.status == "Ingested",
+            JobApplication.match_score < 60
+        ).all()
+        
+        for job in low_score_jobs:
+            log_activity(db, f"Auto-archiving low match role: {job.job_title} at {job.company_name} (Score: {job.match_score}%)", "INFO")
+            job.status = "Rejected"
+            job.notes = (job.notes or "") + f"\n[Auto Archive - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]\nMoved to Rejected: Match score {job.match_score}% is below the 60% pipeline quality threshold.\n"
+        
+        # 2. Archive stale ingested jobs (older than 5 days)
+        cutoff_date = datetime.now() - timedelta(days=5)
+        stale_jobs = db.query(JobApplication).filter(
+            JobApplication.status == "Ingested",
+            JobApplication.created_at < cutoff_date
+        ).all()
+        
+        for job in stale_jobs:
+            log_activity(db, f"Auto-archiving stale ingested role: {job.job_title} at {job.company_name} (Scraped on: {job.created_at.strftime('%Y-%m-%d')})", "INFO")
+            job.status = "Rejected"
+            job.notes = (job.notes or "") + f"\n[Auto Archive - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]\nMoved to Rejected: Role was unscored/inactive in the Ingested queue for more than 5 days.\n"
+            
+        db.commit()
+        log_activity(db, "Pipeline checks complete.", "INFO")
+    except Exception as e:
+        print(f"Error during auto-pruning: {e}")
+

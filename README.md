@@ -11,6 +11,9 @@ This is a personal job placement command center designed to automate, tailor, an
 3. **Tailored Cover Letter Generator:** Drafts a cohesive three-paragraph letter connecting your core projects (e.g., IoT telematics, credit risk models, tax compliance audits) to the specific problem statements of the hiring company.
 4. **LinkedIn Recruiter Outreach Note builder:** Automatically drafts both under 300-character connection notes and InMail outreach templates.
 5. **Interactive CRM Kanban Board:** Track pipelines visually across Ingested, Tailored, Applied, Interviewing, Offer, and Rejected stages.
+6. **AI Recruiter Email Reply Routing:** Automatically checks your inbox via IMAP and routes applicant updates (Rejection ➔ `Rejected`, Interview invite ➔ `Interviewing`, Coding test / assessment ➔ `Needs Review`) using LLM classification.
+7. **Automated Pipeline Funnel Chart:** Sleek analytics visual widget mapping conversion metrics from Ingestion through Offers.
+8. **Stale Queue Auto-Pruning:** Auto-archives low compatibility matches (<60%) and inactive ingested posts (>5 days old) to keep the pipeline optimized.
 
 ---
 
@@ -81,6 +84,11 @@ SMTP_USER=your_email@gmail.com
 SMTP_PASSWORD=your_gmail_app_password
 SMTP_SERVER=smtp.gmail.com
 SMTP_PORT=587
+
+# IMAP Email Status Tracker Config (Optional for auto-tracking replies)
+IMAP_HOST=imap.gmail.com
+IMAP_USER=your_email@gmail.com
+IMAP_PASSWORD=your_gmail_app_password
 ```
 
 ### 2. Install and Run Locally
@@ -97,3 +105,14 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 Open **[http://localhost:8000/](http://localhost:8000/)** in your browser.
+
+### 3. Run Automated Email Status Monitor
+To run the background task that checks your inbox periodically and routes recruiter replies:
+```powershell
+# Activate virtual environment
+.\venv\Scripts\activate
+
+# Run email monitor script
+python -m app.services.email_monitor
+```
+
