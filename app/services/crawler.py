@@ -157,8 +157,18 @@ def run_daily_crawl_and_ingest(db: Session, base_resume: dict):
         )
         db.add(job_app)
         db.commit()
+        db.refresh(job_app)
         ingested_count += 1
         log_activity(db, f"Ingested: {job['title']} at {job['company']} (Match score: {match_data.get('match_score', 50)}%)", "INFO")
+        
+        # Trigger instant tailoring and auto-apply pipeline in background
+        import threading
+        from .scheduler import run_instant_pipeline_for_job
+        threading.Thread(
+            target=run_instant_pipeline_for_job,
+            args=(job_app.id,),
+            daemon=True
+        ).start()
         
         # Respect the Gemini API Free Tier 15 RPM rate limit
         import time

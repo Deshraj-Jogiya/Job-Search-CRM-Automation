@@ -8,7 +8,7 @@ load_dotenv()
 
 api_key = os.getenv("OPENAI_API_KEY")
 api_base = os.getenv("OPENAI_API_BASE")
-model_name = os.getenv("OPENAI_MODEL", "gemini-3.5-flash")
+model_name = os.getenv("OPENAI_MODEL", "gemini-1.5-flash")
 
 # Initialize OpenAI client
 client = OpenAI(
