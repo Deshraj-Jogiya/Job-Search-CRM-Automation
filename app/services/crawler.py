@@ -4,8 +4,9 @@ import html
 import json
 from datetime import datetime
 from sqlalchemy.orm import Session
-from ..models import JobApplication
+from ..models import JobApplication, SearchKeyword
 from . import ai_service
+from .activity_logger import log_activity
 
 def clean_html(raw_html):
     """Remove HTML tags and clean up whitespace."""
@@ -93,14 +94,25 @@ def search_linkedin_jobs(keywords="Data Engineer", location="United States", lim
 
 def run_daily_crawl_and_ingest(db: Session, base_resume: dict):
     """Main pipeline execution for job search and matching ingestion."""
-    print("Initiating daily job crawler query...")
-    search_queries = ["Machine Learning Engineer", "Applied Machine Learning Scientist", "Data Engineer", "Data Scientist", "Data Analyst", "Business Intelligence Analyst", "Applied Scientist"]
+    log_activity(db, "Initiating active job crawler query...", "INFO")
+    
+    # Load keywords from database configuration
+    db_queries = db.query(SearchKeyword).filter(SearchKeyword.is_active == True).all()
+    if db_queries:
+        search_queries = [q.keyword for q in db_queries]
+        log_activity(db, f"Loaded {len(search_queries)} search keywords from configurations.", "INFO")
+    else:
+        search_queries = ["Machine Learning Engineer", "Applied Machine Learning Scientist", "Data Engineer", "Data Scientist", "Data Analyst", "Business Intelligence Analyst", "Applied Scientist"]
+        log_activity(db, "No custom search keywords configured. Using default target job roles.", "INFO")
     
     all_jobs_found = []
     for query in search_queries:
+        log_activity(db, f"Crawling public job posts for: '{query}'...", "INFO")
         jobs = search_linkedin_jobs(keywords=query, limit=3)
         all_jobs_found.extend(jobs)
         
+    log_activity(db, f"Job crawl complete. Found {len(all_jobs_found)} potential roles. Evaluating duplicates and match criteria...", "INFO")
+    
     ingested_count = 0
     for job in all_jobs_found:
         # Check duplicate
@@ -113,6 +125,7 @@ def run_daily_crawl_and_ingest(db: Session, base_resume: dict):
             continue
             
         print(f"Ingesting new role: {job['title']} at {job['company']}...")
+        log_activity(db, f"Analyzing and ingesting: {job['title']} at {job['company']}...", "INFO")
         # Scrape full job description
         jd_text = scrape_job_description(job["url"])
         if not jd_text or len(jd_text) < 100:
@@ -141,10 +154,11 @@ def run_daily_crawl_and_ingest(db: Session, base_resume: dict):
         db.add(job_app)
         db.commit()
         ingested_count += 1
+        log_activity(db, f"Ingested: {job['title']} at {job['company']} (Match score: {match_data.get('match_score', 50)}%)", "INFO")
         
         # Respect the Gemini API Free Tier 15 RPM rate limit
         import time
         print("Pacing API requests: sleeping 5 seconds...")
         time.sleep(5)
         
-    print(f"Job search finished. Ingested {ingested_count} new postings.")
+    log_activity(db, f"Job search crawl finished. Ingested {ingested_count} new postings.", "INFO")

@@ -1,5 +1,6 @@
 import os
 import json
+import secrets
 import threading
 import imaplib
 from datetime import datetime
@@ -8,13 +9,15 @@ from fastapi import FastAPI, Depends, Form, Request, HTTPException
 from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .database import engine, Base, get_db
-from .models import JobApplication, TailoredDocument
+from .models import JobApplication, TailoredDocument, SearchKeyword, ActivityLog
 from .services import ai_service, autofill_service
 from .services import scheduler as bg_scheduler
+from .services.activity_logger import log_activity
 
 # Initialize Database tables
 Base.metadata.create_all(bind=engine)
@@ -44,7 +47,37 @@ def run_migrations():
 
 run_migrations()
 
-app = FastAPI(title="Job Search CRM & AI Application Tailoring Command Center")
+security_basic = HTTPBasic()
+
+def verify_credentials(request: Request, credentials: HTTPBasicCredentials = Depends(security_basic)):
+    # Bypass check for internal localhost requests (e.g. Playwright compiling PDFs locally)
+    client_host = request.client.host if request.client else ""
+    if client_host in ["127.0.0.1", "localhost", "::1"]:
+        return "localhost"
+
+    dashboard_password = os.getenv("DASHBOARD_PASSWORD")
+    if not dashboard_password:
+        return "none"
+        
+    correct_username = secrets.compare_digest(credentials.username, "admin")
+    correct_password = secrets.compare_digest(credentials.password, dashboard_password)
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized access",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
+
+# Conditionally protect all routes if DASHBOARD_PASSWORD is set in environment
+app_dependencies = []
+if os.getenv("DASHBOARD_PASSWORD"):
+    app_dependencies.append(Depends(verify_credentials))
+
+app = FastAPI(
+    title="Job Search CRM & AI Application Tailoring Command Center",
+    dependencies=app_dependencies
+)
 
 # Static files and templates
 os.makedirs("app/static", exist_ok=True)
@@ -98,6 +131,9 @@ def index(request: Request, db: Session = Depends(get_db)):
         "Rejected": [j for j in jobs if j.status == "Rejected"]
     }
     
+    # Fetch search keywords
+    keywords = db.query(SearchKeyword).all()
+    
     return templates.TemplateResponse(
         request,
         "dashboard.html",
@@ -108,7 +144,8 @@ def index(request: Request, db: Session = Depends(get_db)):
             "avg_score": avg_score,
             "conversion_rate": conversion_rate,
             "offers": offers,
-            "kanban": kanban
+            "kanban": kanban,
+            "keywords": keywords
         }
     )
 
@@ -375,90 +412,55 @@ def render_tailored_cover_letter(job_id: int, request: Request, db: Session = De
         }
     )
 
-@app.get("/settings", response_class=HTMLResponse)
-def get_settings_page(request: Request):
-    load_dotenv()
-    return templates.TemplateResponse(
-        request,
-        "settings.html",
-        {
-            "imap_host": os.getenv("IMAP_HOST", "imap.gmail.com"),
-            "imap_user": os.getenv("IMAP_USER", ""),
-            "imap_password": os.getenv("IMAP_PASSWORD", ""),
-            "success": None,
-            "message": None
-        }
-    )
+@app.get("/api/logs")
+def get_activity_logs(db: Session = Depends(get_db)):
+    from .models import ActivityLog
+    logs = db.query(ActivityLog).order_by(ActivityLog.timestamp.desc()).limit(45).all()
+    return [{"message": l.message, "level": l.level, "timestamp": l.timestamp.strftime("%Y-%m-%d %H:%M:%S")} for l in logs]
 
-@app.post("/settings/update", response_class=HTMLResponse)
-def update_settings(
-    request: Request,
-    imap_host: str = Form(...),
-    imap_user: str = Form(...),
-    imap_password: str = Form(...)
-):
-    # Update .env file
-    env_path = ".env"
-    env_lines = []
+@app.get("/api/queries")
+def get_search_queries(db: Session = Depends(get_db)):
+    from .models import SearchKeyword
+    queries = db.query(SearchKeyword).all()
+    return [{"id": q.id, "keyword": q.keyword, "is_active": q.is_active} for q in queries]
+
+@app.post("/api/queries")
+def add_search_query(keyword: str = Form(...), db: Session = Depends(get_db)):
+    from .models import SearchKeyword
+    keyword_clean = keyword.strip()
+    if not keyword_clean:
+        raise HTTPException(status_code=400, detail="Keyword cannot be empty")
     
-    if os.path.exists(env_path):
-        with open(env_path, "r", encoding="utf-8") as f:
-            env_lines = f.readlines()
-            
-    # Parse existing variables
-    env_dict = {}
-    for line in env_lines:
-        if "=" in line and not line.strip().startswith("#"):
-            k, v = line.split("=", 1)
-            env_dict[k.strip()] = v.strip()
-            
-    # Update properties
-    env_dict["IMAP_HOST"] = imap_host
-    env_dict["IMAP_USER"] = imap_user
-    env_dict["IMAP_PASSWORD"] = imap_password
-    
-    # Rewrite file
-    with open(env_path, "w", encoding="utf-8") as f:
-        written_keys = set()
-        for line in env_lines:
-            if "=" in line and not line.strip().startswith("#"):
-                k, _ = line.split("=", 1)
-                k_clean = k.strip()
-                if k_clean in env_dict:
-                    f.write(f"{k_clean}={env_dict[k_clean]}\n")
-                    written_keys.add(k_clean)
-                else:
-                    f.write(line)
-            else:
-                f.write(line)
-                
-        for k_clean, val in env_dict.items():
-            if k_clean not in written_keys:
-                f.write(f"{k_clean}={val}\n")
-                
-    load_dotenv()
-    
-    success = False
-    message = ""
-    try:
-        print(f"Testing IMAP connection for {imap_user} at {imap_host}...")
-        mail = imaplib.IMAP4_SSL(imap_host, 993)
-        mail.login(imap_user, imap_password)
-        mail.logout()
-        success = True
-        message = "Connection successful! Email monitoring credentials are valid and active."
-    except Exception as e:
-        success = False
-        message = f"Connection failed: {e}. Please check your credentials and make sure App Passwords are enabled."
+    # Check duplicate
+    exists = db.query(SearchKeyword).filter(SearchKeyword.keyword == keyword_clean).first()
+    if exists:
+        return RedirectResponse(url="/", status_code=303)
         
-    return templates.TemplateResponse(
-        request,
-        "settings.html",
-        {
-            "imap_host": imap_host,
-            "imap_user": imap_user,
-            "imap_password": imap_password,
-            "success": success,
-            "message": message
-        }
-    )
+    q = SearchKeyword(keyword=keyword_clean, is_active=True)
+    db.add(q)
+    db.commit()
+    
+    log_activity(db, f"Added search query keyword: {keyword_clean}")
+    return RedirectResponse(url="/", status_code=303)
+
+@app.post("/api/queries/{query_id}/delete")
+def delete_search_query(query_id: int, db: Session = Depends(get_db)):
+    from .models import SearchKeyword
+    q = db.query(SearchKeyword).filter(SearchKeyword.id == query_id).first()
+    if q:
+        kw = q.keyword
+        db.delete(q)
+        db.commit()
+        log_activity(db, f"Deleted search query keyword: {kw}")
+    return RedirectResponse(url="/", status_code=303)
+
+@app.post("/api/queries/{query_id}/toggle")
+def toggle_search_query(query_id: int, db: Session = Depends(get_db)):
+    from .models import SearchKeyword
+    q = db.query(SearchKeyword).filter(SearchKeyword.id == query_id).first()
+    if q:
+        q.is_active = not q.is_active
+        db.commit()
+        log_activity(db, f"Toggled keyword '{q.keyword}' to {'Active' if q.is_active else 'Inactive'}")
+    return RedirectResponse(url="/", status_code=303)
+

@@ -56,3 +56,19 @@ class TailoredDocument(Base):
 
     # Relationships
     job = relationship("JobApplication", back_populates="documents")
+
+class SearchKeyword(Base):
+    __tablename__ = "search_keywords"
+
+    id = Column(Integer, primary_key=True, index=True)
+    keyword = Column(String, nullable=False, unique=True, index=True)
+    is_active = Column(Boolean, default=True)
+
+class ActivityLog(Base):
+    __tablename__ = "activity_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    message = Column(Text, nullable=False)
+    level = Column(String, default="INFO")
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
