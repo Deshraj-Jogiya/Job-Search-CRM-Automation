@@ -91,14 +91,35 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 templates = Jinja2Templates(directory="app/templates")
 
+def deduplicate_database(db: Session):
+    """Finds and removes duplicate applications based on case-insensitive company name and title."""
+    all_jobs = db.query(JobApplication).all()
+    seen = set()
+    duplicates_deleted = 0
+    for job in all_jobs:
+        key = (job.company_name.strip().lower(), job.job_title.strip().lower())
+        if key in seen:
+            # Delete duplicate documents and application record
+            db.query(TailoredDocument).filter_by(job_id=job.id).delete()
+            db.delete(job)
+            duplicates_deleted += 1
+        else:
+            seen.add(key)
+    if duplicates_deleted > 0:
+        db.commit()
+        print(f"Startup clean: Removed {duplicates_deleted} duplicate jobs from database.")
+
 @app.on_event("startup")
 def startup_event():
     # Start background scheduler for crawling new jobs
     bg_scheduler.start_scheduler()
     
-    # Conditional startup clean to wipe the 49 stale rejected jobs for development
     db = SessionLocal()
     try:
+        # 1. Run database deduplication
+        deduplicate_database(db)
+        
+        # 2. Conditional startup clean to wipe the 49 stale rejected jobs for development
         rejected_count = db.query(JobApplication).filter(JobApplication.status == "Rejected").count()
         if rejected_count > 15:
             print("Wiping stale rejected jobs list for clean development slate...")
@@ -107,7 +128,7 @@ def startup_event():
             db.query(ActivityLog).delete()
             db.commit()
     except Exception as e:
-        print(f"Error in startup clean check: {e}")
+        print(f"Error in startup checks: {e}")
     finally:
         db.close()
         

@@ -670,4 +670,27 @@ body.light-mode .theme-toggle-btn:hover {
     background: rgba(15, 23, 42, 0.1);
 }
 
+/* Light Mode Column overrides */
+body.light-mode .kanban-col {
+    background: rgba(15, 23, 42, 0.04) !important;
+    border-color: rgba(15, 23, 42, 0.08) !important;
+}
+
+body.light-mode .kanban-col-header h3 {
+    color: #0f172a !important;
+}
+
+body.light-mode .kanban-col-header .count {
+    background: rgba(15, 23, 42, 0.07) !important;
+    color: #334155 !important;
+}
+
+body.light-mode .progress-node {
+    background: rgba(15, 23, 42, 0.15);
+}
+
+body.light-mode .meta-row span:not(.badge) {
+    color: #64748b !important;
+}
+
 
