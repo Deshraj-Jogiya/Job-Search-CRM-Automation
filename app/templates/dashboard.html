@@ -297,7 +297,7 @@
 
     <script>
         function fetchLogs() {
-            fetch('/api/logs')
+            fetch('/api/logs?_t=' + new Date().getTime())
                 .then(response => response.json())
                 .then(data => {
                     const terminal = document.getElementById('logs-terminal');
@@ -358,7 +358,7 @@
         }
         let initialStatuses = null;
         function syncJobStatuses() {
-            fetch('/api/jobs/statuses')
+            fetch('/api/jobs/statuses?_t=' + new Date().getTime())
                 .then(response => response.json())
                 .then(statuses => {
                     if (initialStatuses === null) {
