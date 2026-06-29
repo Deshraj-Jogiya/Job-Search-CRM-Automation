@@ -69,6 +69,19 @@
             </div>
         </div>
 
+        {% if job.status == 'Needs Review' and job.attention_reason %}
+        <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); color: #f87171; border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 2rem; display: flex; align-items: flex-start; gap: 0.75rem; font-weight: 500; font-size: 0.95rem; line-height: 1.45;">
+            <span style="font-size: 1.2rem; line-height: 1; flex-shrink: 0; margin-top: 1px;">⚠️</span>
+            <div>
+                <strong style="display: block; font-size: 1rem; color: #ef4444; margin-bottom: 0.25rem;">Attention Needed: Pipeline Auto-Apply Action Required</strong>
+                {{ job.attention_reason }}
+                <div style="font-size: 0.8rem; margin-top: 0.5rem; color: var(--text-secondary);">
+                    Check the job details, complete missing form fields or security prompts on the portal, and mark this job as "Applied" once done.
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
         <div class="detail-grid">
             
             <!-- Left Column: Match Analysis & Actions -->

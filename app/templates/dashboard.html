@@ -255,6 +255,13 @@
                                 <div class="progress-node" title="Offer Received!" style="width: 7px; height: 7px; border-radius: 50%; background: {% if job.status == 'Offer' %}#10b981; box-shadow: 0 0 6px #10b981;{% else %}rgba(255, 255, 255, 0.15);{% endif %}; z-index: 2;"></div>
                             </div>
     
+                            {% if job.status == 'Needs Review' and job.attention_reason %}
+                            <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); color: #f87171; border-radius: 4px; padding: 0.3rem 0.45rem; font-size: 0.7rem; margin: 0.45rem 0 0.25rem 0; font-weight: 500; line-height: 1.25; display: flex; align-items: flex-start; gap: 0.3rem;">
+                                <span style="flex-shrink: 0; margin-top: 1px;">⚠️</span>
+                                <span>{{ job.attention_reason }}</span>
+                            </div>
+                            {% endif %}
+    
                             <div class="meta-row">
                                 {% if job.status == 'Ingested' %}
                                 <span class="badge" style="background: rgba(96, 165, 250, 0.15); border: 1px solid rgba(96, 165, 250, 0.3); color: #60a5fa;">🆕 New</span>

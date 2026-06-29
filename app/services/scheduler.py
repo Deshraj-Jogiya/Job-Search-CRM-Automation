@@ -90,13 +90,14 @@ def trigger_crawling_and_apply_job():
         # 1. Scrape new jobs
         new_job_ids = crawler.run_daily_crawl_and_ingest(db, resume_data)
         
-        # 2. Trigger instant pipeline for each new job
+        # 2. Trigger instant pipeline sequentially for each new job to respect API rate limits
+        import time
         for j_id in new_job_ids:
-            threading.Thread(
-                target=run_instant_pipeline_for_job,
-                args=(j_id,),
-                daemon=True
-            ).start()
+            try:
+                run_instant_pipeline_for_job(j_id)
+                time.sleep(3)
+            except Exception as pe:
+                print(f"Error executing sequential pipeline for job {j_id}: {pe}")
         
         # 2. Scan IMAP inbox for status updates (rejections, interviews)
         print("Starting scheduled email status updates check...")
@@ -122,3 +123,22 @@ def stop_scheduler():
     if scheduler.running:
         scheduler.shutdown()
         print("Background scheduler has shutdown.")
+
+def process_stuck_ingested_jobs():
+    """Wakes up and processes any jobs currently stuck in the Ingested queue."""
+    db = SessionLocal()
+    try:
+        stuck_jobs = db.query(JobApplication).filter_by(status="Ingested").all()
+        if stuck_jobs:
+            print(f"Found {len(stuck_jobs)} stuck Ingested jobs. Launching background processing...")
+            import time
+            for job in stuck_jobs:
+                try:
+                    run_instant_pipeline_for_job(job.id)
+                    time.sleep(3)
+                except Exception as e:
+                    print(f"Error processing stuck job {job.id}: {e}")
+    except Exception as e:
+        print(f"Error in stuck jobs processor: {e}")
+    finally:
+        db.close()

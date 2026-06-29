@@ -37,6 +37,7 @@ class JobApplication(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     applied_at = Column(DateTime, nullable=True)
     notes = Column(Text, nullable=True)
+    attention_reason = Column(String, nullable=True)
 
     # Portal Account Relation
     account_id = Column(Integer, ForeignKey("candidate_accounts.id"), nullable=True)
