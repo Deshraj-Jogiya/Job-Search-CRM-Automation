@@ -144,6 +144,12 @@ def scan_inbox_for_updates():
                         else:
                             log_activity(db, f"Logged company update email for '{app.job_title}' at '{app.company_name}' (Intent: {intent.upper()})", "INFO")
                         
+                        # Set or clear attention reason
+                        if new_status == "Needs Review":
+                            app.attention_reason = f"Recruiter {intent}: {reason[:200]}"
+                        else:
+                            app.attention_reason = None
+
                         # Append details to notes log
                         app.notes = (app.notes or "") + reason_snippet
                         db.commit()

@@ -333,6 +333,7 @@ def autofill_job_application(job_id: int, auto_submit: bool = False):
         job_err = db.query(JobApplication).filter_by(id=job_id).first()
         if job_err:
             job_err.status = "Needs Review"
+            job_err.attention_reason = str(e)[:250]
             err_log = f"\n[Auto Apply Needs Review - {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC]\n"
             err_log += f"Details: {str(e)[:250]}\n"
             err_log += "Action required: Complete submission manually.\n"

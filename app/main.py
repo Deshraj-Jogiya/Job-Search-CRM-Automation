@@ -44,6 +44,11 @@ def run_migrations():
                 conn.execute(text("ALTER TABLE job_applications ADD COLUMN visa_sponsorship VARCHAR DEFAULT 'Unknown';"))
             except Exception:
                 pass
+        if 'attention_reason' not in columns:
+            try:
+                conn.execute(text("ALTER TABLE job_applications ADD COLUMN attention_reason VARCHAR;"))
+            except Exception:
+                pass
 
 run_migrations()
 
@@ -105,6 +110,12 @@ def startup_event():
         print(f"Error in startup clean check: {e}")
     finally:
         db.close()
+        
+    # Process any stuck Ingested jobs sequentially in background
+    threading.Thread(
+        target=bg_scheduler.process_stuck_ingested_jobs,
+        daemon=True
+    ).start()
 
 @app.on_event("shutdown")
 def shutdown_event():
