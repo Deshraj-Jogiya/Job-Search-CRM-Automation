@@ -13,7 +13,7 @@ services:
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_MODEL
-        value: gemini-2.5-flash
+        value: gemini-3.1-flash-lite
       - key: OPENAI_API_BASE
         value: https://generativelanguage.googleapis.com/v1beta/openai/
       - key: IMAP_HOST
