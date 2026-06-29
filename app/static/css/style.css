@@ -295,6 +295,7 @@ textarea {
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
     text-decoration: none;
     color: inherit;
+    flex-shrink: 0;
 }
 
 .job-card:hover {
@@ -571,6 +572,102 @@ textarea {
         transform: scale(0.9);
         box-shadow: 0 0 0 0 rgba(52, 211, 153, 0);
     }
+}
+
+/* Select Option Visibility Fix */
+select option {
+    background-color: #0d1224;
+    color: #f8fafc;
+}
+
+/* Light Mode Styling */
+body.light-mode {
+    --bg-dark: #f8fafc;
+    --bg-card: rgba(255, 255, 255, 0.9);
+    --border-color: rgba(15, 23, 42, 0.08);
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    background-color: var(--bg-dark);
+    background-image: 
+        radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.05) 0px, transparent 40%),
+        radial-gradient(at 100% 100%, rgba(124, 58, 237, 0.05) 0px, transparent 40%);
+}
+
+body.light-mode header {
+    background: rgba(255, 255, 255, 0.85);
+}
+
+body.light-mode .form-panel, 
+body.light-mode .detail-card, 
+body.light-mode .job-card {
+    box-shadow: 0 4px 15px rgba(15, 23, 42, 0.05);
+    background: rgba(255, 255, 255, 0.85);
+}
+
+body.light-mode input, 
+body.light-mode select, 
+body.light-mode textarea {
+    background: rgba(15, 23, 42, 0.03) !important;
+    border-color: rgba(15, 23, 42, 0.1) !important;
+    color: #0f172a !important;
+}
+
+body.light-mode select option {
+    background-color: #ffffff;
+    color: #0f172a;
+}
+
+body.light-mode .activity-log-console {
+    background: rgba(15, 23, 42, 0.03);
+    border-color: rgba(15, 23, 42, 0.1);
+    color: #1e293b;
+}
+
+body.light-mode .btn-secondary {
+    background: rgba(15, 23, 42, 0.05);
+    border-color: rgba(15, 23, 42, 0.15);
+    color: #0f172a;
+}
+
+body.light-mode .btn-secondary:hover {
+    background: rgba(15, 23, 42, 0.1);
+}
+
+body.light-mode .kanban-cards::-webkit-scrollbar-thumb {
+    background: rgba(15, 23, 42, 0.12);
+}
+
+body.light-mode .kanban-cards::-webkit-scrollbar-thumb:hover {
+    background: rgba(15, 23, 42, 0.22);
+}
+
+/* Theme Toggle Button */
+.theme-toggle-btn {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 0.4rem 0.85rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.theme-toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+body.light-mode .theme-toggle-btn {
+    background: rgba(15, 23, 42, 0.05);
+    border-color: rgba(15, 23, 42, 0.1);
+}
+
+body.light-mode .theme-toggle-btn:hover {
+    background: rgba(15, 23, 42, 0.1);
 }
 
 

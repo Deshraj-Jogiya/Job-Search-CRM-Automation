@@ -273,21 +273,36 @@ def generate_outreach_templates(company_name: str, job_title: str, jd_text: str,
     """Generate connection notes and InMail outreach drafts."""
     recruiter = recruiter_name if recruiter_name else "hiring team member"
     prompt = f"""
-You are an expert networker. Write two outreach message drafts to a recruiter/hiring manager at {company_name} for the {job_title} role.
+You are an elite talent acquisition and networking specialist. Write two outreach message drafts to a recruiter at {company_name} for the {job_title} role.
+The drafts must sound 100% human-written, highly professional, direct, and completely devoid of generic buzzwords or typical AI transition templates (DO NOT use "hope this finds you well", "I wanted to reach out", "my passion for", or "feel free to").
+
+Candidate Profile:
+- Name: Deshraj Jogiya
+- Target: Data Engineer / Machine Learning Engineer
+- Core Value: 5+ years of experience building real-time data pipelines (ETL/ELT), database optimization, and orchestration (Airflow/Prefect).
+- Highlights: Custom IoT fleet telematics anomaly detector, high-throughput credit risk dashboard, and Benford's Law tax audit analysis pipelines.
 
 Job Details:
-Company: {company_name}
-Title: {job_title}
-JD Summary: {jd_text[:1000]}
-Recruiter Name: {recruiter}
+- Company: {company_name}
+- Title: {job_title}
+- JD Context: {jd_text[:1000]}
+- Recruiter Name: {recruiter}
 
-Draft 1 (LinkedIn Connection Request Note): Must be strict, high-converting, and under 300 characters.
-Draft 2 (LinkedIn InMail/Email note): Under 150 words, highlighting relevant data/AI engineering credentials.
+Draft 1 (LinkedIn Connection request note):
+- Must be under 300 characters.
+- Short, punchy, professional. Introduce your data engineering background and note your application.
+
+Draft 2 (LinkedIn InMail / Email body):
+- Keep it under 150 words.
+- Structure:
+  1. Direct, clean opening: Reference the {job_title} opening at {company_name} and immediately highlight relevant technical alignment.
+  2. The Hook: Explicitly state the candidate's value-add—specifically how their expertise in optimizing database latency, real-time telemetry, or ML pipeline orchestration solves concrete technical challenges.
+  3. Actionable closing: Offer a brief call or ask to connect regarding technical credentials.
 
 Provide your response in EXACTLY the following JSON format:
 {{
   "short_note": "Draft 1 connection note text here...",
-  "long_note": "Draft 2 InMail note text here..."
+  "long_note": "Draft 2 InMail/Email text here..."
 }}
 Ensure "short_note" is under 300 characters.
 Do not wrap your output in markdown code blocks. Just return raw JSON.
