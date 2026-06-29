@@ -87,8 +87,16 @@ def trigger_crawling_and_apply_job():
     db = SessionLocal()
     resume_data = get_base_resume()
     try:
-        # 1. Scrape new jobs (which will trigger the pipeline internally)
-        crawler.run_daily_crawl_and_ingest(db, resume_data)
+        # 1. Scrape new jobs
+        new_job_ids = crawler.run_daily_crawl_and_ingest(db, resume_data)
+        
+        # 2. Trigger instant pipeline for each new job
+        for j_id in new_job_ids:
+            threading.Thread(
+                target=run_instant_pipeline_for_job,
+                args=(j_id,),
+                daemon=True
+            ).start()
         
         # 2. Scan IMAP inbox for status updates (rejections, interviews)
         print("Starting scheduled email status updates check...")

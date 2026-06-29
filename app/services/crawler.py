@@ -115,6 +115,7 @@ def run_daily_crawl_and_ingest(db: Session, base_resume: dict):
     log_activity(db, f"Job crawl complete. Found {len(all_jobs_found)} potential roles. Evaluating duplicates and match criteria...", "INFO")
     
     ingested_count = 0
+    new_job_ids = []
     for job in all_jobs_found:
         # Check duplicate (by URL or normalized company name and job title)
         exists = db.query(JobApplication).filter(
@@ -161,14 +162,7 @@ def run_daily_crawl_and_ingest(db: Session, base_resume: dict):
         ingested_count += 1
         log_activity(db, f"Ingested: {job['title']} at {job['company']} (Match score: {match_data.get('match_score', 50)}%)", "INFO")
         
-        # Trigger instant tailoring and auto-apply pipeline in background
-        import threading
-        from .scheduler import run_instant_pipeline_for_job
-        threading.Thread(
-            target=run_instant_pipeline_for_job,
-            args=(job_app.id,),
-            daemon=True
-        ).start()
+        new_job_ids.append(job_app.id)
         
         # Respect the Gemini API Free Tier 15 RPM rate limit
         import time
@@ -210,4 +204,6 @@ def run_daily_crawl_and_ingest(db: Session, base_resume: dict):
         log_activity(db, "Pipeline checks complete.", "INFO")
     except Exception as e:
         print(f"Error during auto-pruning: {e}")
+        
+    return new_job_ids
 
