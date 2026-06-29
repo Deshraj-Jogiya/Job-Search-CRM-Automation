@@ -164,19 +164,16 @@
         <h2 class="section-title">Technical Skills</h2>
         <div class="skills-grid">
             <div class="skill-group">
-                <strong>Languages:</strong> {{ resume.get('skills', {}).get('languages')|join(', ') }}
+                <strong>Languages:</strong> {{ (resume.get('skills', {}).get('languages') or [])|join(', ') }}
             </div>
             <div class="skill-group">
-                <strong>Data Science &amp; ML:</strong> {{ resume.get('skills', {}).get('ml_data_science')|join(', ') }}
+                <strong>Data Science &amp; ML:</strong> {{ (resume.get('skills', {}).get('ml_data_science') or [])|join(', ') }}
             </div>
             <div class="skill-group">
-                <strong>Analytics &amp; Viz:</strong> {{ resume.get('skills', {}).get('analytics_viz')|join(', ') }}
-            </div>
-            <div class="skill-group">
-                <strong>Cloud &amp; Databases:</strong> {{ resume.get('skills', {}).get('cloud')|join(', ') }}
+                <strong>Cloud &amp; Data Engineering:</strong> {{ (resume.get('skills', {}).get('data_engineering_cloud') or [])|join(', ') }}
             </div>
             <div class="skill-group" style="grid-column: span 2;">
-                <strong>ETL &amp; Data Engineering:</strong> {{ resume.get('skills', {}).get('data_engineering')|join(', ') }}
+                <strong>Methodologies &amp; Tools:</strong> {{ (resume.get('skills', {}).get('methodologies_tools') or [])|join(', ') }}
             </div>
         </div>
     </div>

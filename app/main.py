@@ -253,11 +253,11 @@ def ingest_job(
     return RedirectResponse(url="/", status_code=303)
 
 @app.post("/jobs/crawl")
-def trigger_manual_crawl(timeframe: str = Form("1m")):
+def trigger_manual_crawl(timeframe: str = Form("1m"), location: str = Form("United States")):
     """Manually trigger job search, auto-apply, and email updates loop."""
     threading.Thread(
         target=bg_scheduler.trigger_crawling_and_apply_job,
-        args=(timeframe,),
+        args=(timeframe, location),
         daemon=True
     ).start()
     return RedirectResponse(url="/", status_code=303)
@@ -429,8 +429,12 @@ def delete_job(job_id: int, db: Session = Depends(get_db)):
     return RedirectResponse(url="/", status_code=303)
 
 @app.post("/jobs/reset-database")
-def reset_database(db: Session = Depends(get_db)):
+def reset_database(password: str = Form(""), db: Session = Depends(get_db)):
     """Deletes all job application and tailored document records to clean the slate."""
+    admin_pwd = os.getenv("ADMIN_PASSWORD", "admin123")
+    if password != admin_pwd:
+         raise HTTPException(status_code=403, detail="Unauthorized: Incorrect admin passcode.")
+         
     db.query(TailoredDocument).delete()
     db.query(JobApplication).delete()
     log_activity(db, "Pipeline database was reset. Slate is clean.", "WARNING")

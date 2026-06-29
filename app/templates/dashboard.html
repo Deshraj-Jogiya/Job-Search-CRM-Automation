@@ -25,7 +25,8 @@
                 <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: #34d399; box-shadow: 0 0 8px #34d399; animation: pulse 2s infinite;"></span>
                 CRM PIPELINE ONLINE
             </span>
-            <form action="/jobs/reset-database" method="POST" onsubmit="return confirm('Are you sure you want to completely clear the slate? This will delete all jobs and documents!');" style="margin: 0; padding: 0; display: inline-block;">
+            <form action="/jobs/reset-database" method="POST" id="resetDbForm" style="margin: 0; padding: 0; display: inline-block;">
+                <input type="hidden" name="password" id="resetPassword">
                 <button type="submit" class="btn btn-secondary" style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); color: #f87171; padding: 0.35rem 0.75rem; font-size: 0.75rem; border-radius: 6px; cursor: pointer; font-weight: 600; transition: all 0.2s;" onmouseover="this.style.background='rgba(239, 68, 68, 0.25)';" onmouseout="this.style.background='rgba(239, 68, 68, 0.12)';">
                     ⚠️ Reset Database
                 </button>
@@ -41,7 +42,7 @@
             
             <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; width: 100%; position: relative;">
                 <!-- Step 1: Scraped -->
-                <div style="flex: 1; text-align: center; background: rgba(13, 18, 36, 0.45); border: 1px solid var(--border-color); border-radius: 12px; padding: 0.75rem 0.5rem;">
+                <div class="funnel-card">
                     <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em;">1. Scraped</div>
                     <div style="font-size: 1.5rem; font-weight: 800; color: #60a5fa; margin-top: 0.25rem;">{{ total }}</div>
                 </div>
@@ -49,7 +50,7 @@
                 <div style="font-size: 1.25rem; color: rgba(255, 255, 255, 0.15); font-weight: bold;">➔</div>
                 
                 <!-- Step 2: Tailored -->
-                <div style="flex: 1; text-align: center; background: rgba(13, 18, 36, 0.45); border: 1px solid var(--border-color); border-radius: 12px; padding: 0.75rem 0.5rem;">
+                <div class="funnel-card">
                     <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em;">2. Tailored</div>
                     <div style="font-size: 1.5rem; font-weight: 800; color: #c084fc; margin-top: 0.25rem;">
                         {{ (kanban.get('Tailored', [])|length) + (kanban.get('Needs Review', [])|length) + (kanban.get('Applied', [])|length) + (kanban.get('Interviewing', [])|length) + (kanban.get('Offer', [])|length) }}
@@ -59,7 +60,7 @@
                 <div style="font-size: 1.25rem; color: rgba(255, 255, 255, 0.15); font-weight: bold;">➔</div>
                 
                 <!-- Step 3: Applied -->
-                <div style="flex: 1; text-align: center; background: rgba(13, 18, 36, 0.45); border: 1px solid var(--border-color); border-radius: 12px; padding: 0.75rem 0.5rem;">
+                <div class="funnel-card">
                     <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em;">3. Applied</div>
                     <div style="font-size: 1.5rem; font-weight: 800; color: #fbbf24; margin-top: 0.25rem;">
                         {{ (kanban.get('Applied', [])|length) + (kanban.get('Interviewing', [])|length) + (kanban.get('Offer', [])|length) }}
@@ -69,7 +70,7 @@
                 <div style="font-size: 1.25rem; color: rgba(255, 255, 255, 0.15); font-weight: bold;">➔</div>
                 
                 <!-- Step 4: Interviewing -->
-                <div style="flex: 1; text-align: center; background: rgba(13, 18, 36, 0.45); border: 1px solid var(--border-color); border-radius: 12px; padding: 0.75rem 0.5rem;">
+                <div class="funnel-card">
                     <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em;">4. Interviews</div>
                     <div style="font-size: 1.5rem; font-weight: 800; color: #34d399; margin-top: 0.25rem;">
                         {{ (kanban.get('Interviewing', [])|length) + (kanban.get('Offer', [])|length) }}
@@ -79,34 +80,10 @@
                 <div style="font-size: 1.25rem; color: rgba(255, 255, 255, 0.15); font-weight: bold;">➔</div>
                 
                 <!-- Step 5: Offers -->
-                <div style="flex: 1; text-align: center; background: rgba(13, 18, 36, 0.45); border: 1px solid var(--border-color); border-radius: 12px; padding: 0.75rem 0.5rem; box-shadow: 0 0 10px rgba(16, 185, 129, 0.1);">
+                <div class="funnel-card" style="box-shadow: 0 0 10px rgba(16, 185, 129, 0.1);">
                     <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em;">5. Offers</div>
                     <div style="font-size: 1.5rem; font-weight: 800; color: #10b981; margin-top: 0.25rem;">{{ offers }}</div>
                 </div>
-            </div>
-        </div>
-
-        <!-- Metrics Section -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <h3>Total Pipelines Ingested</h3>
-                <div class="value">{{ total }}</div>
-            </div>
-            <div class="stat-card">
-                <h3>Applied / Active</h3>
-                <div class="value">{{ applied }}</div>
-            </div>
-            <div class="stat-card">
-                <h3>Avg Profile Match</h3>
-                <div class="value">{{ avg_score }}%</div>
-            </div>
-            <div class="stat-card">
-                <h3>Interview Conversion</h3>
-                <div class="value">{{ conversion_rate }}%</div>
-            </div>
-            <div class="stat-card">
-                <h3>Offers Secured</h3>
-                <div class="value" style="background: linear-gradient(135deg, #34d399, #10b981); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">{{ offers }}</div>
             </div>
         </div>
 
@@ -210,6 +187,8 @@
                         <option value="3w">Past 3 Weeks</option>
                         <option value="1m" selected>Past 1 Month</option>
                     </select>
+                    <label for="location" style="font-size: 0.8rem; color: var(--text-secondary); margin: 0; margin-left: 0.5rem;">Location:</label>
+                    <input type="text" name="location" id="location" value="United States" style="background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 6px; padding: 0.35rem 0.65rem; font-size: 0.8rem; outline: none; width: 110px; transition: all 0.2s;" onfocus="this.style.borderColor='var(--accent-blue)';" onblur="this.style.borderColor='var(--border-color)';">
                     <button type="submit" class="btn btn-secondary" style="padding: 0.45rem 1rem; font-size: 0.8rem; margin: 0;">
                         🔍 Scan Active Jobs
                     </button>
@@ -369,6 +348,20 @@
             const currentTheme = body.classList.contains('light-mode') ? 'light' : 'dark';
             localStorage.setItem('theme', currentTheme);
         });
+        
+        // Reset Database Password Protection
+        const resetDbForm = document.getElementById('resetDbForm');
+        if (resetDbForm) {
+            resetDbForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                const proceed = confirm('Are you sure you want to completely clear the slate? This will delete all jobs and documents!');
+                if (!proceed) return;
+                const pwd = prompt('Enter Admin Password to authorize reset:');
+                if (pwd === null) return;
+                document.getElementById('resetPassword').value = pwd;
+                this.submit();
+            });
+        }
         
         // Poll logs every 5 seconds
         fetchLogs();
