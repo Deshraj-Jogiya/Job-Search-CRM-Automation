@@ -1,5 +1,8 @@
 import os
 import json
+import re
+import urllib.parse
+import requests
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -15,6 +18,27 @@ client = OpenAI(
     api_key=api_key,
     base_url=api_base if api_base else None
 )
+
+def fetch_company_info(company_name: str) -> str:
+    """Fetch search results for target company's mission and goals using DuckDuckGo HTML search."""
+    try:
+        query = urllib.parse.quote(f"{company_name} company mission motto values")
+        url = f"https://html.duckduckgo.com/html/?q={query}"
+        headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+        res = requests.get(url, headers=headers, timeout=5)
+        if res.status_code == 200:
+            html = res.text
+            snippets = re.findall(r'class="result__snippet"[^>]*>(.*?)</a>', html, re.DOTALL)
+            clean_snippets = []
+            for snip in snippets:
+                text = re.sub(r'<[^>]+>', '', snip).strip()
+                if text:
+                    clean_snippets.append(text)
+            if clean_snippets:
+                return "\n- ".join(clean_snippets[:3])
+    except Exception as e:
+        print(f"Error fetching company search details: {e}")
+    return f"Mission: Leading innovation in digital engineering and data solutions."
 
 def evaluate_match(resume_data: dict, jd_text: str) -> dict:
     """Compare resume data and job description to calculate a match score and details."""
@@ -211,49 +235,132 @@ Do not wrap your output in markdown code blocks. Just return raw JSON.
         return experience_list
 
 def tailor_resume(resume_data: dict, jd_text: str) -> dict:
-    """Tailor experience bullets using a multi-pass loops to target a 95+ ATS score."""
-    experience = resume_data.get('experience', [])
-    
-    # Pass 1: Initial tailoring
-    print("AI Resume Optimization - Pass 1: Inital rewrite...")
-    experience = run_tailoring_pass(experience, jd_text)
-    
-    # Loop for Multi-pass ATS target (max 2 additional passes)
-    for pass_num in range(2):
-        evaluation = verify_ats_score(experience, jd_text)
-        score = evaluation.get("score", 70)
-        missing = evaluation.get("missing_keywords", [])
-        
-        print(f"ATS Match Score after Pass {pass_num+1}: {score}%")
-        if score >= 95 or not missing:
-            print(f"Target score reached or no key gaps remaining.")
-            break
-            
-        print(f"Attempting to inject missing keywords: {missing}")
-        experience = run_refinement_pass(experience, jd_text, missing)
-        
-    return experience
+    """Tailor the entire resume context (experience, projects, summary, skills) to target a 95+ score and fit under a 2-page print layout."""
+    prompt = f"""
+You are an expert executive resume writer. Tailor the candidate's resume (summary, skills, experience, and projects) to perfectly align with the target Job Description (JD).
+Your goal is to maximize ATS compatibility (target 95%+) while keeping the total length strictly under a 2-page print layout (concise, high-impact phrasing).
+
+RULES:
+1. DO NOT fabricate any work history, dates, companies, education, or credentials. Keep all statements genuine.
+2. Select the top 2-3 projects from the candidate's projects list that are most relevant to the JD. Do not include all of them. Tailor their descriptions to emphasize target technologies and challenges in the JD.
+3. Tailor the professional experience bullets to weave in keywords from the JD (e.g. data pipelines, machine learning, cloud databases, dashboarding). Use action verbs and highlight metrics.
+4. Keep bullets concise: max 3 bullet points per recent job, and max 2 bullets for older roles. This ensures the output fits within the 2-page limit.
+5. Tailor the professional summary to align with target role priorities (e.g., machine learning focus vs. data engineering focus).
+
+Input Resume Data:
+{json.dumps(resume_data, indent=2)}
+
+Target Job Description:
+{jd_text}
+
+Provide your response in EXACTLY the following JSON format:
+{{
+  "name": "Candidate Name",
+  "title": "Tailored Professional Title",
+  "contact": {{
+    "location": "Location",
+    "phone": "Phone",
+    "email": "Email",
+    "linkedin": "LinkedIn URL",
+    "github": "GitHub URL",
+    "portfolio": "Portfolio URL"
+  }},
+  "summary": "Tailored Professional Summary",
+  "skills": {{
+    "languages": ["Python", "SQL", ...],
+    "ml_data_science": ["Random Forest", ...],
+    "data_engineering_cloud": ["Snowflake", ...],
+    "methodologies_tools": ["Git", ...]
+  }},
+  "experience": [
+    {{
+      "role": "Role Title",
+      "company": "Company",
+      "location": "Location",
+      "date": "Date Range",
+      "bullets": [
+        "Tailored bullet 1",
+        "Tailored bullet 2"
+      ]
+    }},
+    ...
+  ],
+  "projects": [
+    {{
+      "name": "Project Name",
+      "description": "Tailored project description",
+      "technologies": ["Spark", "Python", ...]
+    }},
+    ...
+  ],
+  "education": [ ... ],
+  "certifications": [ ... ]
+}}
+Do not wrap your output in markdown code blocks. Just return raw JSON.
+"""
+    try:
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that returns only raw JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3
+        )
+        content = response.choices[0].message.content.strip()
+        if content.startswith("```"):
+            lines = content.splitlines()
+            if lines[0].startswith("```json") or lines[0].startswith("```"):
+                content = "\n".join(lines[1:-1]).strip()
+        tailored_data = json.loads(content)
+        for key in ["contact", "education", "certifications"]:
+            if key not in tailored_data and key in resume_data:
+                tailored_data[key] = resume_data[key]
+        return tailored_data
+    except Exception as e:
+        print(f"Error tailoring resume: {e}")
+        return resume_data.copy()
 
 def generate_cover_letter(resume_data: dict, company_name: str, job_title: str, jd_text: str) -> str:
-    """Generate a highly personalized 3-paragraph cover letter."""
+    """Generate a highly personalized 3-paragraph cover letter aligned with company mission and goals."""
+    # Fetch target company background info
+    company_info = fetch_company_info(company_name)
+    
+    # Load projects list from base resume data
+    projects_list = resume_data.get("projects", [])
+    projects_context = ""
+    for proj in projects_list:
+        name = proj.get("name", "")
+        desc = proj.get("description", "")
+        techs = ", ".join(proj.get("technologies", []))
+        projects_context += f"- {name}: {desc} (Technologies: {techs})\n"
+        
     prompt = f"""
-You are a career coach. Write a compelling, concise cover letter (exactly 3 paragraphs, under 350 words total) for a candidate applying to a job.
-Paragraph 1: Hook showing enthusiasm for the role and the company.
-Paragraph 2: Directly link candidate's portfolio projects (e.g. IoT fleet telemetry, tax anomaly detection, or fintech credit fraud center) to the technical challenges described in the JD.
-Paragraph 3: Professional call-to-action and closing.
+You are an elite executive cover letter writer. Write an extremely professional, compelling, and tailored cover letter (exactly 3 paragraphs, under 300 words total) for a candidate applying to a job.
+You must showcase the candidate's core expertise, explain why they are a great technical fit, and show genuine enthusiasm for the company by aligning the letter with the company's mission/motto/goals based on recent search context.
 
 Candidate Info:
 Name: {resume_data.get('name')}
 Profile: {resume_data.get('summary')}
-Recent Projects: IoT telematics anomaly detection, Credit risk command center, Benford's Law tax audit pipeline.
+Recent Projects:
+{projects_context}
 
 Target Company: {company_name}
+Recent Target Company Context/Mission/Motto:
+{company_info}
+
 Target Role: {job_title}
 Job Description:
 {jd_text}
 
-Write in a professional, confident, and human tone. Do not use generic buzzwords or robotic transitions.
-Return ONLY the cover letter text, no metadata or greetings.
+Structure Rules:
+- Paragraph 1: Direct hook expressing strong interest in the specific position at {company_name}. Align with {company_name}'s mission, core values, or recent achievements. Make it clear, showing genuine enthusiasm for why you want to work with them!
+- Paragraph 2: Map the candidate's experience and specific projects (select 1 or 2 most relevant projects from the Recent Projects list) directly to the technical challenges/requirements of the job description. Show impact, numbers, and how your skills solve their specific problem.
+- Paragraph 3: Reiterate value and provide a professional call-to-action to discuss next steps.
+
+Tone Rules:
+- Highly professional, authentic, persuasive, and human-like.
+- Absolutely NO greetings (like "Dear...") or sign-offs (like "Sincerely...") because the template already renders them. Start directly with the body text of Paragraph 1 and end with Paragraph 3.
 """
     try:
         response = client.chat.completions.create(
