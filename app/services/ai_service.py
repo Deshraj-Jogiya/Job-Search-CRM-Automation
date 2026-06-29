@@ -242,7 +242,7 @@ Your goal is to maximize ATS compatibility (target 95%+) while keeping the total
 
 RULES:
 1. DO NOT fabricate any work history, dates, companies, education, or credentials. Keep all statements genuine.
-2. Select the top 2-3 projects from the candidate's projects list that are most relevant to the JD. Do not include all of them. Tailor their descriptions to emphasize target technologies and challenges in the JD.
+2. Select EXACTLY 3 projects from the candidate's projects list that are most relevant to the JD. Do not include more. For each selected project, rewrite its achievements into 2 concise, metrics-driven bullet points.
 3. Tailor the professional experience bullets to weave in keywords from the JD (e.g. data pipelines, machine learning, cloud databases, dashboarding). Use action verbs and highlight metrics.
 4. Keep bullets concise: max 3 bullet points per recent job, and max 2 bullets for older roles. This ensures the output fits within the 2-page limit.
 5. Tailor the professional summary to align with target role priorities (e.g., machine learning focus vs. data engineering focus).
@@ -288,7 +288,10 @@ Provide your response in EXACTLY the following JSON format:
   "projects": [
     {{
       "name": "Project Name",
-      "description": "Tailored project description",
+      "bullets": [
+        "Tailored achievement bullet 1",
+        "Tailored achievement bullet 2"
+      ],
       "technologies": ["Spark", "Python", ...]
     }},
     ...
@@ -318,6 +321,9 @@ Do not wrap your output in markdown code blocks. Just return raw JSON.
                 tailored_data[key] = resume_data[key]
         if "projects" in tailored_data and isinstance(tailored_data["projects"], list):
             tailored_data["projects"] = tailored_data["projects"][:3]
+            for proj in tailored_data["projects"]:
+                if "bullets" not in proj and "description" in proj:
+                    proj["bullets"] = [proj["description"]]
         return tailored_data
     except Exception as e:
         print(f"Error tailoring resume: {e}")
@@ -343,22 +349,22 @@ def clean_cover_letter(text: str) -> str:
         cleaned_lines.append(line)
         
     cleaned_text = "\n".join(cleaned_lines).strip()
-    # Normalize double linebreaks
     while "\n\n\n" in cleaned_text:
         cleaned_text = cleaned_text.replace("\n\n\n", "\n\n")
     return cleaned_text
 
 def generate_cover_letter(resume_data: dict, company_name: str, job_title: str, jd_text: str) -> str:
     """Generate a highly personalized 3-paragraph cover letter aligned with company mission and goals."""
-    # Fetch target company background info
     company_info = fetch_company_info(company_name)
     
-    # Load projects list from base resume data
     projects_list = resume_data.get("projects", [])
     projects_context = ""
     for proj in projects_list:
         name = proj.get("name", "")
-        desc = proj.get("description", "")
+        bullets = proj.get("bullets", [])
+        if not bullets and "description" in proj:
+            bullets = [proj["description"]]
+        desc = " ".join(bullets)
         techs = ", ".join(proj.get("technologies", []))
         projects_context += f"- {name}: {desc} (Technologies: {techs})\n"
         
@@ -388,6 +394,7 @@ Structure Rules:
 Tone Rules:
 - Highly professional, authentic, persuasive, and human-like.
 - Absolutely NO greetings (like "Dear...") or sign-offs (like "Sincerely...") because the template already renders them. Start directly with the body text of Paragraph 1 and end with Paragraph 3.
+- Do NOT use repetitive phrasing, generic template language (e.g. "I am excited to apply", "Please find my resume attached", "My qualifications make me a unique fit"), or passive sentences. Write in an active, direct voice of a seasoned staff engineer.
 """
     try:
         response = client.chat.completions.create(

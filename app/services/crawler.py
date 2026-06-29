@@ -241,9 +241,9 @@ def run_daily_crawl_and_ingest(db: Session, base_resume: dict, timeframe: str = 
         ).all()
         
         for job in low_score_jobs:
-            log_activity(db, f"Auto-archiving low match role: {job.job_title} at {job.company_name} (Score: {job.match_score}%)", "INFO")
-            job.status = "Rejected"
-            job.notes = (job.notes or "") + f"\n[Auto Archive - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]\nMoved to Rejected: Match score {job.match_score}% is below the 65% pipeline quality threshold.\n"
+            log_activity(db, f"Auto-deleting low match role: {job.job_title} at {job.company_name} (Score: {job.match_score}%)", "INFO")
+            db.query(TailoredDocument).filter(TailoredDocument.job_id == job.id).delete()
+            db.delete(job)
         
         # 2. Archive stale ingested jobs (older than 5 days)
         cutoff_date = datetime.now() - timedelta(days=5)
@@ -253,9 +253,9 @@ def run_daily_crawl_and_ingest(db: Session, base_resume: dict, timeframe: str = 
         ).all()
         
         for job in stale_jobs:
-            log_activity(db, f"Auto-archiving stale ingested role: {job.job_title} at {job.company_name} (Scraped on: {job.created_at.strftime('%Y-%m-%d')})", "INFO")
-            job.status = "Rejected"
-            job.notes = (job.notes or "") + f"\n[Auto Archive - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]\nMoved to Rejected: Role was unscored/inactive in the Ingested queue for more than 5 days.\n"
+            log_activity(db, f"Auto-deleting stale ingested role: {job.job_title} at {job.company_name} (Scraped on: {job.created_at.strftime('%Y-%m-%d')})", "INFO")
+            db.query(TailoredDocument).filter(TailoredDocument.job_id == job.id).delete()
+            db.delete(job)
             
         db.commit()
         log_activity(db, "Pipeline checks complete.", "INFO")
