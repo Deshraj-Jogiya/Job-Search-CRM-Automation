@@ -78,7 +78,7 @@ DATABASE_URL=sqlite:///./crm.db
 
 # LLM API Config (OpenAI or Gemini compatibility endpoint)
 OPENAI_API_KEY=your_gemini_api_key_here
-OPENAI_MODEL=gemini-3.5-flash
+OPENAI_MODEL=gemini-1.5-flash
 OPENAI_API_BASE=https://generativelanguage.googleapis.com/v1beta/openai/
 
 # SMTP Email Outreach Config (Optional for auto-emailing recruiters)
