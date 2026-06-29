@@ -3,6 +3,7 @@ import re
 import html
 import json
 from datetime import datetime, timedelta
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from ..models import JobApplication, SearchKeyword
 from . import ai_service
@@ -46,7 +47,7 @@ def search_linkedin_jobs(keywords="Data Engineer", location="United States", lim
     # start=0 lists starting page
     url_keywords = urllib.parse.quote(keywords)
     url_location = urllib.parse.quote(location)
-    url = f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={url_keywords}&location={url_location}&f_TPR=r604800&start=0"
+    url = f"https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={url_keywords}&location={url_location}&f_TPR=r2592000&start=0"
     
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
@@ -115,10 +116,13 @@ def run_daily_crawl_and_ingest(db: Session, base_resume: dict):
     
     ingested_count = 0
     for job in all_jobs_found:
-        # Check duplicate
+        # Check duplicate (by URL or normalized company name and job title)
         exists = db.query(JobApplication).filter(
-            JobApplication.company_name == job["company"],
-            JobApplication.job_title == job["title"]
+            (JobApplication.job_url == job["url"]) | 
+            (
+                (func.lower(JobApplication.company_name) == job["company"].lower().strip()) & 
+                (func.lower(JobApplication.job_title) == job["title"].lower().strip())
+            )
         ).first()
         if exists:
             print(f"Skipping duplicate: {job['title']} at {job['company']}")
@@ -163,20 +167,22 @@ def run_daily_crawl_and_ingest(db: Session, base_resume: dict):
         
     log_activity(db, f"Job search crawl finished. Ingested {ingested_count} new postings.", "INFO")
     
-    # Auto-archive low score ingested jobs (< 60%) or old stale ingested jobs (> 5 days old)
+    # Auto-archive low score ingested jobs (< 65%, older than 1 day) or old stale ingested jobs (> 5 days old)
     try:
         log_activity(db, "Running pipeline quality checks and queue cleanup...", "INFO")
         
-        # 1. Archive low match scores
+        # 1. Archive low match scores (older than 1 day to allow manual review of new ingestions)
+        cutoff_low_score = datetime.now() - timedelta(days=1)
         low_score_jobs = db.query(JobApplication).filter(
             JobApplication.status == "Ingested",
-            JobApplication.match_score < 60
+            JobApplication.match_score < 65,
+            JobApplication.created_at < cutoff_low_score
         ).all()
         
         for job in low_score_jobs:
             log_activity(db, f"Auto-archiving low match role: {job.job_title} at {job.company_name} (Score: {job.match_score}%)", "INFO")
             job.status = "Rejected"
-            job.notes = (job.notes or "") + f"\n[Auto Archive - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]\nMoved to Rejected: Match score {job.match_score}% is below the 60% pipeline quality threshold.\n"
+            job.notes = (job.notes or "") + f"\n[Auto Archive - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]\nMoved to Rejected: Match score {job.match_score}% is below the 65% pipeline quality threshold.\n"
         
         # 2. Archive stale ingested jobs (older than 5 days)
         cutoff_date = datetime.now() - timedelta(days=5)
