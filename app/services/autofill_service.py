@@ -6,6 +6,7 @@ from playwright.sync_api import sync_playwright
 from sqlalchemy.orm import Session
 from ..database import SessionLocal
 from ..models import JobApplication, TailoredDocument, CandidateAccount
+from .activity_logger import log_activity
 
 def compile_resume_to_pdf(job_id: int) -> str:
     """Load the tailored HTML resume from the local web server and print it to a PDF file."""
@@ -139,7 +140,7 @@ def autofill_job_application(job_id: int, auto_submit: bool = False):
         account = db.query(CandidateAccount).filter_by(company_name=job.company_name).first()
         
         headless_mode = os.getenv("PLAYWRIGHT_HEADLESS", "true").lower() == "true"
-        print(f"Launching Chromium (headless={headless_mode}) for application: {job.job_url}")
+        log_activity(db, f"Launching browser to autofill '{job.job_title}' at {job.company_name}...", "INFO")
         
         with sync_playwright() as p:
             launch_args = [] if headless_mode else ["--start-maximized"]
@@ -150,6 +151,22 @@ def autofill_job_application(job_id: int, auto_submit: bool = False):
             )
             page = context.new_page()
             page.goto(job.job_url, timeout=45000)
+            log_activity(db, "Application page loaded. Scanning page for security blockers...", "INFO")
+            
+            # Check for CAPTCHA on the page
+            captcha_selectors = [
+                "iframe[src*='recaptcha']", "iframe[src*='turnstile']", "iframe[src*='hcaptcha']",
+                "div[id*='captcha']", "div[class*='captcha']", "text=captcha", "text=security check",
+                "text=verify you are human"
+            ]
+            for sel in captcha_selectors:
+                try:
+                    if page.locator(sel).count() > 0:
+                        log_activity(db, "CAPTCHA/Security verification check detected on page. Redirecting card to Needs Review.", "WARNING")
+                        raise Exception("CAPTCHA security verification required on job application page.")
+                except Exception as ex:
+                    if "CAPTCHA" in str(ex):
+                        raise ex
             
             def fill_if_exists(selector, value):
                 try:
@@ -159,10 +176,9 @@ def autofill_job_application(job_id: int, auto_submit: bool = False):
                     pass
                     
             page.wait_for_timeout(3000)
-            
-            # A. WORKDAY PORTAL FLOW
+                     # A. WORKDAY PORTAL FLOW
             if "myworkdayjobs.com" in job.job_url:
-                print("Workday Portal detected.")
+                log_activity(db, f"Workday Portal detected for {job.company_name}. Initializing signup/login...", "INFO")
                 apply_btns = ["a:has-text('Apply')", "button:has-text('Apply')", "a[data-automation-id='adventureButton']"]
                 for btn in apply_btns:
                     if page.locator(btn).count() > 0:
@@ -187,7 +203,7 @@ def autofill_job_application(job_id: int, auto_submit: bool = False):
                         job.account_id = account.id
                         db.commit()
                     else:
-                        print("Signing in with existing logged credentials...")
+                        log_activity(db, f"Signing in to Workday with existing credentials for {job.company_name}.", "INFO")
                         fill_if_exists("input[type='email']", account.username)
                         fill_if_exists("input[type='password']", account.password)
                         
@@ -211,11 +227,12 @@ def autofill_job_application(job_id: int, auto_submit: bool = False):
                 
                 # Trigger a custom form error exception if headless since we can't manually finish workday forms reliably
                 if headless_mode:
+                    log_activity(db, "Workday form requires visual validation. Routing to Needs Review.", "WARNING")
                     raise Exception("Workday portal registration complete. Multi-step forms require manual visual check.")
                     
             # B. GREENHOUSE FORM FLOW
             elif "greenhouse" in job.job_url or page.locator("#first_name").count() > 0:
-                print("Autofilling Greenhouse Form...")
+                log_activity(db, f"Greenhouse portal form detected. Autofilling details...", "INFO")
                 fill_if_exists("#first_name", first_name)
                 fill_if_exists("#last_name", last_name)
                 fill_if_exists("#email", email)
@@ -247,7 +264,7 @@ def autofill_job_application(job_id: int, auto_submit: bool = False):
                         job.status = "Applied"
                         job.applied_at = datetime.utcnow()
                         db.commit()
-                        print("Form submitted successfully (Greenhouse).")
+                        log_activity(db, f"Greenhouse auto-apply submitted successfully.", "INFO")
                         
                         from .networking_service import trigger_recruiter_sourcing_and_outreach
                         import threading
@@ -259,7 +276,7 @@ def autofill_job_application(job_id: int, auto_submit: bool = False):
                         
             # C. LEVER FORM FLOW
             elif "lever.co" in job.job_url or page.locator("input[name='name']").count() > 0:
-                print("Autofilling Lever Form...")
+                log_activity(db, f"Lever portal form detected. Autofilling details...", "INFO")
                 fill_if_exists("input[name='name']", full_name)
                 fill_if_exists("input[name='email']", email)
                 fill_if_exists("input[name='phone']", phone)
@@ -281,7 +298,7 @@ def autofill_job_application(job_id: int, auto_submit: bool = False):
                         job.status = "Applied"
                         job.applied_at = datetime.utcnow()
                         db.commit()
-                        print("Form submitted successfully (Lever).")
+                        log_activity(db, f"Lever auto-apply submitted successfully.", "INFO")
                         
                         from .networking_service import trigger_recruiter_sourcing_and_outreach
                         import threading
@@ -293,11 +310,12 @@ def autofill_job_application(job_id: int, auto_submit: bool = False):
                         
             # D. OTHER FORMS
             else:
-                print("Autofilling generic inputs...")
+                log_activity(db, f"Generic portal detected. Autofilling standard details...", "INFO")
                 fill_if_exists("input[name*='name'], input[id*='name']", full_name)
                 fill_if_exists("input[type='email'], input[name*='email'], input[id*='email']", email)
                 fill_if_exists("input[type='tel'], input[name*='phone'], input[id*='phone']", phone)
                 if headless_mode:
+                    log_activity(db, "Generic form requires visual validation. Routing to Needs Review.", "WARNING")
                     raise Exception("Generic form filling complete. Submission requires manual verification.")
                 
             # Keep browser open locally
@@ -310,7 +328,7 @@ def autofill_job_application(job_id: int, auto_submit: bool = False):
                     page.wait_for_timeout(2000)
                     
     except Exception as e:
-        print(f"Error during application autofill: {e}")
+        log_activity(db, f"Autofill error: {str(e)[:150]}. Moved to Needs Review.", "ERROR")
         # Mark as Needs Review
         job_err = db.query(JobApplication).filter_by(id=job_id).first()
         if job_err:

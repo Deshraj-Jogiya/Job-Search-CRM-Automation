@@ -20,7 +20,6 @@
     <header>
         <h1>🎯 Job Placement Command Center</h1>
         <div class="header-links" style="display: flex; gap: 1.5rem; align-items: center;">
-            <a href="/settings" style="color: var(--text-primary); text-decoration: none; font-weight: 600; font-size: 0.9rem;">⚙️ Settings</a>
             <span style="color: var(--text-secondary); font-size: 0.9rem;">LinkedIn Premium &amp; JobRight Integrated</span>
         </div>
     </header>
@@ -51,42 +50,88 @@
             </div>
         </div>
 
-        <!-- Ingest Job Section -->
-        <div class="form-panel">
-            <h2>📥 Ingest New Role from JobRight / LinkedIn</h2>
-            <form action="/jobs/ingest" method="POST" class="form-grid" style="margin-top: 1rem;">
-                <div class="form-group">
-                    <label for="company_name">Company Name *</label>
-                    <input type="text" id="company_name" name="company_name" placeholder="e.g. Google, Stripe, Objectways" required>
-                </div>
-                <div class="form-group">
-                    <label for="job_title">Job Title *</label>
-                    <input type="text" id="job_title" name="job_title" placeholder="e.g. Data Engineer, Applied ML Engineer" required>
-                </div>
-                <div class="form-group">
-                    <label for="job_url">Job Details URL</label>
-                    <input type="url" id="job_url" name="job_url" placeholder="https://linkedin.com/jobs/view/... or JobRight URL">
-                </div>
-                <div class="form-group">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                        <div class="form-group">
-                            <label for="recruiter_name">Recruiter Name</label>
-                            <input type="text" id="recruiter_name" name="recruiter_name" placeholder="e.g. Sarah Jenkins">
-                        </div>
-                        <div class="form-group">
-                            <label for="recruiter_linkedin">Recruiter LinkedIn URL</label>
-                            <input type="url" id="recruiter_linkedin" name="recruiter_linkedin" placeholder="https://linkedin.com/in/... ">
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
+            <!-- Ingest Job Section -->
+            <div class="form-panel" style="margin: 0;">
+                <h2>📥 Manual Job Ingestion</h2>
+                <form action="/jobs/ingest" method="POST" class="form-grid" style="margin-top: 1rem;">
+                    <div class="form-group">
+                        <label for="company_name">Company Name *</label>
+                        <input type="text" id="company_name" name="company_name" placeholder="e.g. Google, Stripe, Objectways" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="job_title">Job Title *</label>
+                        <input type="text" id="job_title" name="job_title" placeholder="e.g. Data Engineer, Applied ML Engineer" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="job_url">Job Details URL</label>
+                        <input type="url" id="job_url" name="job_url" placeholder="Paste the job posting URL (any platform)">
+                    </div>
+                    <div class="form-group">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                            <div class="form-group">
+                                <label for="recruiter_name">Recruiter Name</label>
+                                <input type="text" id="recruiter_name" name="recruiter_name" placeholder="e.g. Sarah Jenkins">
+                            </div>
+                            <div class="form-group">
+                                <label for="recruiter_linkedin">Recruiter LinkedIn URL</label>
+                                <input type="url" id="recruiter_linkedin" name="recruiter_linkedin" placeholder="https://linkedin.com/in/... ">
+                            </div>
                         </div>
                     </div>
+                    <div class="form-group full-width">
+                        <label for="job_description">Job Description (Paste raw text here) *</label>
+                        <textarea id="job_description" name="job_description" placeholder="Paste the full job requirements, qualifications, and role description..." required></textarea>
+                    </div>
+                    <div class="form-group full-width" style="margin-top: 0.5rem;">
+                        <button type="submit" class="btn">Analyze Match &amp; Ingest Role</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Job Crawl Queries Manager Section -->
+            <div class="form-panel" style="margin: 0; display: flex; flex-direction: column; justify-content: space-between;">
+                <div>
+                    <h2>⚙️ Job Crawl Queries</h2>
+                    <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.5rem; margin-bottom: 1.25rem; line-height: 1.4;">
+                        Configure search keywords for the automatic daily job crawler.
+                    </p>
+                    
+                    <!-- Add Keyword Form -->
+                    <form action="/api/queries" method="POST" style="display: flex; gap: 0.5rem; margin-bottom: 1.25rem;">
+                        <input type="text" name="keyword" placeholder="e.g. Data Engineer" required style="flex: 1; padding: 0.5rem; border-radius: 6px; background: rgba(15, 23, 42, 0.4); border: 1px solid var(--border-color); color: white;">
+                        <button type="submit" class="btn" style="padding: 0.5rem 1rem; width: auto; font-size: 0.85rem; margin: 0;">Add</button>
+                    </form>
+                    
+                    <!-- Keywords List -->
+                    <div style="max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem;">
+                        {% for kw in keywords %}
+                        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.3); border: 1px solid var(--border-color); padding: 0.5rem 0.75rem; border-radius: 8px;">
+                            <span style="font-size: 0.9rem; font-weight: 500; {% if not kw.is_active %}text-decoration: line-through; color: var(--text-secondary);{% endif %}">{{ kw.keyword }}</span>
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <!-- Toggle Form -->
+                                <form action="/api/queries/{{ kw.id }}/toggle" method="POST" style="margin: 0; padding: 0;">
+                                    <button type="submit" style="background: none; border: none; cursor: pointer; font-size: 0.85rem; padding: 0;" title="Toggle Active">
+                                        {% if kw.is_active %}🟢{% else %}⚫{% endif %}
+                                    </button>
+                                </form>
+                                <!-- Delete Form -->
+                                <form action="/api/queries/{{ kw.id }}/delete" method="POST" style="margin: 0; padding: 0;">
+                                    <button type="submit" style="background: none; border: none; cursor: pointer; font-size: 0.85rem; padding: 0;" title="Delete Keyword">
+                                        🗑️
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                        {% endfor %}
+                        {% if keywords|length == 0 %}
+                        <div style="text-align: center; color: var(--text-secondary); font-size: 0.85rem; padding: 1rem 0; border: 1px dashed var(--border-color); border-radius: 8px;">
+                            Using default target keywords.
+                        </div>
+                        {% endif %}
+                    </div>
                 </div>
-                <div class="form-group full-width">
-                    <label for="job_description">Job Description (Paste raw text here) *</label>
-                    <textarea id="job_description" name="job_description" placeholder="Paste the full job requirements, qualifications, and role description..." required></textarea>
-                </div>
-                <div class="form-group full-width" style="margin-top: 0.5rem;">
-                    <button type="submit" class="btn">Analyze Match &amp; Ingest Role</button>
-                </div>
-            </form>
+            </div>
         </div>
 
         <!-- Kanban Board Section -->
@@ -129,9 +174,55 @@
                 {% endfor %}
                 
             </div>
+        <!-- Live System Logs Terminal -->
+        <div class="form-panel" style="margin-top: 2rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                <h2 style="font-size: 1.1rem; border-left: 4px solid #10b981; padding-left: 0.5rem; margin: 0; color: #10b981;">📟 Live System Activity Logs</h2>
+                <span style="font-size: 0.8rem; color: var(--text-secondary);" id="logs-sync-status">Connected</span>
+            </div>
+            <div id="logs-terminal" style="background: #090d16; border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; font-family: 'Courier New', Courier, monospace; font-size: 0.85rem; height: 180px; overflow-y: auto; color: #34d399; line-height: 1.45; text-align: left;">
+                <div style="color: #94a3b8; font-style: italic;">Loading active stream logs...</div>
+            </div>
         </div>
 
     </div>
+
+    <script>
+        function fetchLogs() {
+            fetch('/api/logs')
+                .then(response => response.json())
+                .then(data => {
+                    const terminal = document.getElementById('logs-terminal');
+                    const status = document.getElementById('logs-sync-status');
+                    
+                    if (data.length === 0) {
+                        terminal.innerHTML = '<div style="color: #94a3b8; font-style: italic;">No activity logs recorded yet.</div>';
+                        return;
+                    }
+                    
+                    let html = '';
+                    // Reverse logs to display newest at bottom
+                    data.reverse().forEach(log => {
+                        let color = '#34d399'; // green for INFO
+                        if (log.level === 'WARNING') color = '#fbbf24'; // yellow
+                        if (log.level === 'ERROR') color = '#f87171'; // red
+                        
+                        html += `<div><span style="color: #6366f1;">[${log.timestamp}]</span> <span style="color: ${color}; font-weight: bold;">[${log.level}]</span> ${log.message}</div>`;
+                    });
+                    terminal.innerHTML = html;
+                    terminal.scrollTop = terminal.scrollHeight; // Auto-scroll to bottom
+                    status.textContent = 'Sync: Active (' + new Date().toLocaleTimeString() + ')';
+                })
+                .catch(err => {
+                    console.error('Error fetching logs:', err);
+                    document.getElementById('logs-sync-status').textContent = 'Sync: Disconnected';
+                });
+        }
+        
+        // Poll logs every 5 seconds
+        fetchLogs();
+        setInterval(fetchLogs, 5000);
+    </script>
 
 </body>
 </html>
