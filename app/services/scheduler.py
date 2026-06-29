@@ -3,8 +3,8 @@ import json
 import threading
 from apscheduler.schedulers.background import BackgroundScheduler
 from ..database import SessionLocal
-from . import crawler, autofill_service, email_monitor
-from ..models import JobApplication
+from . import crawler, autofill_service, email_monitor, ai_service, networking_service
+from ..models import JobApplication, TailoredDocument
 
 scheduler = BackgroundScheduler()
 
@@ -16,32 +16,81 @@ def get_base_resume():
             return json.load(f)
     return {}
 
+def run_instant_pipeline_for_job(job_id: int):
+    """End-to-end background pipeline for a single ingested job:
+    Sourcing Recruiter -> AI Resume/CL Tailoring -> Playwright Autofill Application.
+    """
+    db = SessionLocal()
+    try:
+        job = db.query(JobApplication).filter_by(id=job_id).first()
+        if not job:
+            return
+            
+        log_activity(db, f"Starting automation pipeline for: {job.job_title} at {job.company_name}", "INFO")
+        
+        # 1. Recruiter Sourcing
+        if not job.recruiter_name or not job.recruiter_email:
+            recruiter_name, recruiter_url = networking_service.search_recruiter(job.company_name)
+            if recruiter_name:
+                job.recruiter_name = recruiter_name
+                job.recruiter_linkedin = recruiter_url
+                email_guess = networking_service.guess_recruiter_email(recruiter_name, job.company_name)
+                job.recruiter_email = email_guess
+                log_activity(db, f"Sourced recruiter: {recruiter_name} ({email_guess})", "INFO")
+                db.commit()
+                
+        # 2. AI Resume & Cover Letter Tailoring
+        existing_res = db.query(TailoredDocument).filter_by(job_id=job.id, document_type="resume").first()
+        if not existing_res:
+            resume_data = get_base_resume()
+            log_activity(db, f"Tailoring resume experiences for {job.company_name}...", "INFO")
+            tailored_experience = ai_service.tailor_resume(resume_data, job.job_description)
+            
+            tailored_resume_json = resume_data.copy()
+            tailored_resume_json["experience"] = tailored_experience
+            
+            res_doc = TailoredDocument(
+                job_id=job.id,
+                document_type="resume",
+                content=json.dumps(tailored_resume_json)
+            )
+            db.add(res_doc)
+            
+            log_activity(db, f"Generating custom cover letter for {job.company_name}...", "INFO")
+            cl_text = ai_service.generate_cover_letter(resume_data, job.company_name, job.job_title, job.job_description)
+            cl_doc = TailoredDocument(
+                job_id=job.id,
+                document_type="cover_letter",
+                content=cl_text
+            )
+            db.add(cl_doc)
+            
+            job.status = "Tailored"
+            db.commit()
+            log_activity(db, f"Tailored documents successfully generated.", "INFO")
+            
+        # 3. Playwright Autofill Auto-Apply
+        if job.match_score >= 65:
+            log_activity(db, f"High match ({job.match_score}%). Triggering Playwright auto-apply...", "INFO")
+            autofill_service.autofill_job_application(job.id, auto_submit=True)
+        else:
+            log_activity(db, f"Match score {job.match_score}% is below 65%. Keeping in queue for manual review.", "INFO")
+            
+    except Exception as e:
+        log_activity(db, f"Error running automation pipeline for job {job_id}: {e}", "ERROR")
+        print(f"Error in instant pipeline: {e}")
+    finally:
+        db.close()
+
 def trigger_crawling_and_apply_job():
     """Trigger the public job crawler, auto-tailor, auto-apply, and run email inbox scan."""
     db = SessionLocal()
     resume_data = get_base_resume()
     try:
-        # 1. Scrape new jobs
+        # 1. Scrape new jobs (which will trigger the pipeline internally)
         crawler.run_daily_crawl_and_ingest(db, resume_data)
         
-        # 2. Check for high-matching ingested jobs to auto-tailor & autofill
-        # Find jobs ingested in this run (Status: Ingested) with Score >= 85
-        high_matches = db.query(JobApplication).filter(
-            JobApplication.status == "Ingested",
-            JobApplication.match_score >= 85
-        ).all()
-        
-        for job in high_matches:
-            print(f"🔥 Found high compatibility match: '{job.job_title}' at '{job.company_name}' ({job.match_score}%). Triggering instant auto-apply...")
-            # Trigger Playwright autofill in a background thread so it doesn't block the scheduler loop
-            # Sets auto_submit=True to automate Greenhouse/Lever submissions
-            threading.Thread(
-                target=autofill_service.autofill_job_application,
-                args=(job.id, True),
-                daemon=True
-            ).start()
-            
-        # 3. Scan IMAP inbox for status updates (rejections, interviews)
+        # 2. Scan IMAP inbox for status updates (rejections, interviews)
         print("Starting scheduled email status updates check...")
         email_monitor.scan_inbox_for_updates()
         

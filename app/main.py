@@ -90,6 +90,21 @@ templates = Jinja2Templates(directory="app/templates")
 def startup_event():
     # Start background scheduler for crawling new jobs
     bg_scheduler.start_scheduler()
+    
+    # Conditional startup clean to wipe the 49 stale rejected jobs for development
+    db = SessionLocal()
+    try:
+        rejected_count = db.query(JobApplication).filter(JobApplication.status == "Rejected").count()
+        if rejected_count > 15:
+            print("Wiping stale rejected jobs list for clean development slate...")
+            db.query(TailoredDocument).delete()
+            db.query(JobApplication).delete()
+            db.query(ActivityLog).delete()
+            db.commit()
+    except Exception as e:
+        print(f"Error in startup clean check: {e}")
+    finally:
+        db.close()
 
 @app.on_event("shutdown")
 def shutdown_event():
@@ -195,6 +210,13 @@ def ingest_job(
     db.add(job_app)
     db.commit()
     db.refresh(job_app)
+    
+    # Trigger instant tailoring and auto-apply pipeline in background
+    threading.Thread(
+        target=bg_scheduler.run_instant_pipeline_for_job,
+        args=(job_app.id,),
+        daemon=True
+    ).start()
     
     return RedirectResponse(url="/", status_code=303)
 
