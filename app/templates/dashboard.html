@@ -356,10 +356,30 @@
                 this.submit();
             });
         }
-        
-        // Poll logs every 5 seconds
+        let initialStatuses = null;
+        function syncJobStatuses() {
+            fetch('/api/jobs/statuses')
+                .then(response => response.json())
+                .then(statuses => {
+                    if (initialStatuses === null) {
+                        initialStatuses = JSON.stringify(statuses);
+                        return;
+                    }
+                    if (initialStatuses !== JSON.stringify(statuses)) {
+                        console.log("Detect status changes, reloading board...");
+                        window.location.reload();
+                    }
+                })
+                .catch(err => console.error('Error syncing job statuses:', err));
+        }
+
+        // Poll logs and job statuses every 5 seconds
         fetchLogs();
-        setInterval(fetchLogs, 5000);
+        syncJobStatuses();
+        setInterval(() => {
+            fetchLogs();
+            syncJobStatuses();
+        }, 5000);
     </script>
 
 </body>

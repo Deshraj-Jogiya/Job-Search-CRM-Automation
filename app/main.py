@@ -495,6 +495,11 @@ def get_activity_logs(db: Session = Depends(get_db)):
     logs = db.query(ActivityLog).order_by(ActivityLog.timestamp.desc()).limit(45).all()
     return [{"message": l.message, "level": l.level, "timestamp": l.timestamp.strftime("%Y-%m-%d %H:%M:%S")} for l in logs]
 
+@app.get("/api/jobs/statuses")
+def get_job_statuses(db: Session = Depends(get_db)):
+    jobs = db.query(JobApplication).all()
+    return {str(j.id): j.status for j in jobs}
+
 @app.get("/api/queries")
 def get_search_queries(db: Session = Depends(get_db)):
     from .models import SearchKeyword
