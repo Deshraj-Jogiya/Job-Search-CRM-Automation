@@ -20,12 +20,66 @@
     <header>
         <h1>🎯 Job Placement Command Center</h1>
         <div class="header-links" style="display: flex; gap: 1.5rem; align-items: center;">
-            <span style="color: var(--text-secondary); font-size: 0.9rem;">LinkedIn Premium &amp; JobRight Integrated</span>
+            <span style="color: #34d399; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.35rem;">
+                <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: #34d399; box-shadow: 0 0 8px #34d399; animation: pulse 2s infinite;"></span>
+                CRM PIPELINE ONLINE
+            </span>
         </div>
     </header>
 
     <div class="container dashboard-layout">
         
+        <!-- Conversion Funnel Section -->
+        <div class="form-panel" style="margin-bottom: 2rem; padding: 1.5rem 2rem;">
+            <h2 style="font-size: 1.15rem; margin-bottom: 1.25rem; border-left: 4px solid var(--accent-purple); padding-left: 0.75rem; color: var(--text-primary);">📊 Automated Pipeline Funnel Conversion</h2>
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; width: 100%; position: relative;">
+                <!-- Step 1: Scraped -->
+                <div style="flex: 1; text-align: center; background: rgba(13, 18, 36, 0.45); border: 1px solid var(--border-color); border-radius: 12px; padding: 0.75rem 0.5rem;">
+                    <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em;">1. Scraped</div>
+                    <div style="font-size: 1.5rem; font-weight: 800; color: #60a5fa; margin-top: 0.25rem;">{{ total }}</div>
+                </div>
+                
+                <div style="font-size: 1.25rem; color: rgba(255, 255, 255, 0.15); font-weight: bold;">➔</div>
+                
+                <!-- Step 2: Tailored -->
+                <div style="flex: 1; text-align: center; background: rgba(13, 18, 36, 0.45); border: 1px solid var(--border-color); border-radius: 12px; padding: 0.75rem 0.5rem;">
+                    <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em;">2. Tailored</div>
+                    <div style="font-size: 1.5rem; font-weight: 800; color: #c084fc; margin-top: 0.25rem;">
+                        {{ (kanban.get('Tailored', [])|length) + (kanban.get('Needs Review', [])|length) + (kanban.get('Applied', [])|length) + (kanban.get('Interviewing', [])|length) + (kanban.get('Offer', [])|length) }}
+                    </div>
+                </div>
+                
+                <div style="font-size: 1.25rem; color: rgba(255, 255, 255, 0.15); font-weight: bold;">➔</div>
+                
+                <!-- Step 3: Applied -->
+                <div style="flex: 1; text-align: center; background: rgba(13, 18, 36, 0.45); border: 1px solid var(--border-color); border-radius: 12px; padding: 0.75rem 0.5rem;">
+                    <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em;">3. Applied</div>
+                    <div style="font-size: 1.5rem; font-weight: 800; color: #fbbf24; margin-top: 0.25rem;">
+                        {{ (kanban.get('Applied', [])|length) + (kanban.get('Interviewing', [])|length) + (kanban.get('Offer', [])|length) }}
+                    </div>
+                </div>
+                
+                <div style="font-size: 1.25rem; color: rgba(255, 255, 255, 0.15); font-weight: bold;">➔</div>
+                
+                <!-- Step 4: Interviewing -->
+                <div style="flex: 1; text-align: center; background: rgba(13, 18, 36, 0.45); border: 1px solid var(--border-color); border-radius: 12px; padding: 0.75rem 0.5rem;">
+                    <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em;">4. Interviews</div>
+                    <div style="font-size: 1.5rem; font-weight: 800; color: #34d399; margin-top: 0.25rem;">
+                        {{ (kanban.get('Interviewing', [])|length) + (kanban.get('Offer', [])|length) }}
+                    </div>
+                </div>
+                
+                <div style="font-size: 1.25rem; color: rgba(255, 255, 255, 0.15); font-weight: bold;">➔</div>
+                
+                <!-- Step 5: Offers -->
+                <div style="flex: 1; text-align: center; background: rgba(13, 18, 36, 0.45); border: 1px solid var(--border-color); border-radius: 12px; padding: 0.75rem 0.5rem; box-shadow: 0 0 10px rgba(16, 185, 129, 0.1);">
+                    <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em;">5. Offers</div>
+                    <div style="font-size: 1.5rem; font-weight: 800; color: #10b981; margin-top: 0.25rem;">{{ offers }}</div>
+                </div>
+            </div>
+        </div>
+
         <!-- Metrics Section -->
         <div class="stats-grid">
             <div class="stat-card">
@@ -151,25 +205,80 @@
                         <span class="count">{{ job_list|length }}</span>
                     </div>
                     
-                    {% for job in job_list %}
-                    <a href="/jobs/{{ job.id }}" class="job-card">
-                        <div class="company">{{ job.company_name }}</div>
-                        <div class="title">{{ job.job_title }}</div>
-                        <div class="meta-row">
-                            <span class="badge badge-score">Match: {{ job.match_score }}%</span>
-                            {% if job.visa_sponsorship == 'Sponsors' %}
-                            <span class="badge" style="background-color: #065f46; color: #34d399; border: 1px solid #34d399; font-size: 0.7rem; font-weight: 700; padding: 0.1rem 0.35rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.25rem;">H-1B</span>
-                            {% endif %}
-                            <span style="color: var(--text-secondary);">{{ job.created_at.strftime('%m/%d') }}</span>
+                    <div class="kanban-cards" style="display: flex; flex-direction: column; gap: 1rem; flex: 1; overflow-y: auto; padding-right: 0.15rem; max-height: 550px;">
+                        {% for job in job_list %}
+                        <a href="/jobs/{{ job.id }}" class="job-card" style="position: relative;">
+                            <!-- Hover Quick Actions Panel -->
+                            <div class="card-hover-actions" style="position: absolute; top: 0.5rem; right: 0.5rem; display: flex; gap: 0.35rem; z-index: 10; opacity: 0; transition: opacity 0.2s;">
+                                <!-- Auto Apply Trigger -->
+                                {% if job.status in ['Ingested', 'Tailored', 'Needs Review'] and job.job_url %}
+                                <form action="/jobs/{{ job.id }}/autofill" method="POST" onclick="event.stopPropagation();" style="margin: 0; padding: 0;">
+                                    <button type="submit" style="background: rgba(59, 130, 246, 0.25); border: 1px solid rgba(59, 130, 246, 0.45); border-radius: 4px; padding: 0.2rem 0.35rem; color: #60a5fa; cursor: pointer; font-size: 0.75rem; display: flex; align-items: center; justify-content: center;" title="Trigger Auto-Apply">
+                                        ⚡
+                                    </button>
+                                </form>
+                                {% endif %}
+                                <!-- Archive/Delete Trigger -->
+                                <form action="/jobs/{{ job.id }}/delete" method="POST" onclick="event.stopPropagation();" style="margin: 0; padding: 0;">
+                                    <button type="submit" style="background: rgba(248, 113, 113, 0.25); border: 1px solid rgba(248, 113, 113, 0.45); border-radius: 4px; padding: 0.2rem 0.35rem; color: #f87171; cursor: pointer; font-size: 0.75rem; display: flex; align-items: center; justify-content: center;" title="Archive Job">
+                                        🗑️
+                                    </button>
+                                </form>
+                            </div>
+    
+                            <div class="company">{{ job.company_name }}</div>
+                            <div class="title">{{ job.job_title }}</div>
+                            
+                            <!-- Automation Progress Path -->
+                            <div class="progress-bar-path" style="display: flex; justify-content: space-between; align-items: center; margin: 0.55rem 0 0.4rem 0; padding: 0 0.25rem; position: relative;">
+                                <!-- Connector Line -->
+                                <div style="position: absolute; top: 50%; left: 5%; right: 5%; height: 2px; background: rgba(255, 255, 255, 0.08); z-index: 1;"></div>
+                                
+                                <!-- Scraped Node (always active) -->
+                                <div class="progress-node active" title="Ingested/Scraped" style="width: 7px; height: 7px; border-radius: 50%; background: #60a5fa; box-shadow: 0 0 6px #60a5fa; z-index: 2;"></div>
+                                
+                                <!-- Tailored Node -->
+                                <div class="progress-node" title="Resume Tailored" style="width: 7px; height: 7px; border-radius: 50%; background: {% if job.status in ['Tailored', 'Needs Review', 'Applied', 'Interviewing', 'Offer'] %}#c084fc; box-shadow: 0 0 6px #c084fc;{% else %}rgba(255, 255, 255, 0.15);{% endif %}; z-index: 2;"></div>
+                                
+                                <!-- Applied Node -->
+                                <div class="progress-node" title="Application Sent" style="width: 7px; height: 7px; border-radius: 50%; background: {% if job.status in ['Applied', 'Interviewing', 'Offer'] %}#fbbf24; box-shadow: 0 0 6px #fbbf24;{% else %}rgba(255, 255, 255, 0.15);{% endif %}; z-index: 2;"></div>
+                                
+                                <!-- Interviewing Node -->
+                                <div class="progress-node" title="Recruiter Outreach / Interviewing" style="width: 7px; height: 7px; border-radius: 50%; background: {% if job.status in ['Interviewing', 'Offer'] %}#34d399; box-shadow: 0 0 6px #34d399;{% else %}rgba(255, 255, 255, 0.15);{% endif %}; z-index: 2;"></div>
+                                
+                                <!-- Offer Node -->
+                                <div class="progress-node" title="Offer Received!" style="width: 7px; height: 7px; border-radius: 50%; background: {% if job.status == 'Offer' %}#10b981; box-shadow: 0 0 6px #10b981;{% else %}rgba(255, 255, 255, 0.15);{% endif %}; z-index: 2;"></div>
+                            </div>
+    
+                            <div class="meta-row">
+                                {% if job.status == 'Ingested' %}
+                                <span class="badge" style="background: rgba(96, 165, 250, 0.15); border: 1px solid rgba(96, 165, 250, 0.3); color: #60a5fa;">🆕 New</span>
+                                {% else %}
+                                <span class="badge badge-score" style="
+                                    {% if job.match_score >= 80 %}
+                                        background: rgba(52, 211, 153, 0.15); border: 1px solid rgba(52, 211, 153, 0.3); color: #34d399;
+                                    {% elif job.match_score >= 65 %}
+                                        background: rgba(251, 191, 36, 0.15); border: 1px solid rgba(251, 191, 36, 0.3); color: #fbbf24;
+                                    {% else %}
+                                        background: rgba(148, 163, 184, 0.15); border: 1px solid rgba(148, 163, 184, 0.3); color: #94a3b8;
+                                    {% endif %}
+                                ">Match: {{ job.match_score }}%</span>
+                                {% endif %}
+                                
+                                {% if job.visa_sponsorship == 'Sponsors' %}
+                                <span class="badge" style="background-color: #065f46; color: #34d399; border: 1px solid #34d399; font-size: 0.7rem; font-weight: 700; padding: 0.1rem 0.35rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.25rem;">H-1B</span>
+                                {% endif %}
+                                <span style="color: var(--text-secondary);">{{ job.created_at.strftime('%m/%d') }}</span>
+                            </div>
+                        </a>
+                        {% endfor %}
+                        
+                        {% if job_list|length == 0 %}
+                        <div style="text-align: center; color: var(--text-secondary); font-size: 0.8rem; margin-top: 2rem; border: 1px dashed var(--border-color); padding: 1.5rem 0.5rem; border-radius: 8px;">
+                            Empty Column
                         </div>
-                    </a>
-                    {% endfor %}
-                    
-                    {% if job_list|length == 0 %}
-                    <div style="text-align: center; color: var(--text-secondary); font-size: 0.8rem; margin-top: 2rem; border: 1px dashed var(--border-color); padding: 1.5rem 0.5rem; border-radius: 8px;">
-                        Empty Column
+                        {% endif %}
                     </div>
-                    {% endif %}
                 </div>
                 {% endfor %}
                 
