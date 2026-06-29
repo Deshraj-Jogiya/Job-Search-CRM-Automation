@@ -270,7 +270,7 @@
                             </div>
     
                             {% if job.status == 'Needs Review' and job.attention_reason %}
-                            <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); color: #f87171; border-radius: 4px; padding: 0.3rem 0.45rem; font-size: 0.7rem; margin: 0.45rem 0 0.25rem 0; font-weight: 500; line-height: 1.25; display: flex; align-items: flex-start; gap: 0.3rem;">
+                            <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); color: #f87171; border-radius: 4px; padding: 0.3rem 0.45rem; font-size: 0.7rem; margin: 0.45rem 0 0.25rem 0; font-weight: 500; line-height: 1.25; display: flex; align-items: flex-start; gap: 0.3rem; word-break: break-all; overflow-wrap: break-word; overflow: hidden; max-width: 100%;">
                                 <span style="flex-shrink: 0; margin-top: 1px;">⚠️</span>
                                 <span>{{ job.attention_reason }}</span>
                             </div>
