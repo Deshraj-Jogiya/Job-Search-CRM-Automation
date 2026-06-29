@@ -74,7 +74,7 @@
                 padding: 0;
             }
             .no-print {
-                display: none;
+                display: none !important;
             }
         }
     </style>
@@ -97,6 +97,9 @@
             <span>📍 {{ resume.get('contact', {}).get('location') }}</span>
             <span>📞 {{ resume.get('contact', {}).get('phone') }}</span>
             <span>✉️ {{ resume.get('contact', {}).get('email') }}</span>
+            {% if resume.get('contact', {}).get('portfolio') %}
+            <span>🌐 <a href="{{ resume.get('contact', {}).get('portfolio') }}" style="color: inherit; text-decoration: none;" target="_blank">Portfolio</a></span>
+            {% endif %}
         </div>
     </div>
 

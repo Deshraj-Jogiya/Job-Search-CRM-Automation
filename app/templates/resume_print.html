@@ -127,7 +127,7 @@
                 padding: 0;
             }
             .no-print {
-                display: none;
+                display: none !important;
             }
         }
     </style>
@@ -151,8 +151,11 @@
             <span>📍 {{ resume.get('contact', {}).get('location') }}</span>
             <span>📞 {{ resume.get('contact', {}).get('phone') }}</span>
             <span>✉️ {{ resume.get('contact', {}).get('email') }}</span>
-            <span>🔗 <a href="{{ resume.get('contact', {}).get('linkedin') }}" style="color: inherit; text-decoration: none;">LinkedIn</a></span>
-            <span>🐙 <a href="{{ resume.get('contact', {}).get('github') }}" style="color: inherit; text-decoration: none;">GitHub</a></span>
+            {% if resume.get('contact', {}).get('portfolio') %}
+            <span>🌐 <a href="{{ resume.get('contact', {}).get('portfolio') }}" style="color: inherit; text-decoration: none;" target="_blank">Portfolio</a></span>
+            {% endif %}
+            <span>🔗 <a href="{{ resume.get('contact', {}).get('linkedin') }}" style="color: inherit; text-decoration: none;" target="_blank">LinkedIn</a></span>
+            <span>🐙 <a href="{{ resume.get('contact', {}).get('github') }}" style="color: inherit; text-decoration: none;" target="_blank">GitHub</a></span>
         </div>
     </div>
 
@@ -198,30 +201,44 @@
         
     </div>
 
-    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-top: 6px;">
-        
-        <div class="section">
-            <h2 class="section-title">Education</h2>
-            {% for edu in resume.get('education', []) %}
-            <div class="edu-item">
-                <div>
-                    <strong>{{ edu.degree }}</strong> in <span class="edu-inst">{{ edu.institution }}</span>
-                </div>
-                <div>{{ edu.date }} {% if edu.gpa %}| GPA: {{ edu.gpa }}{% endif %}</div>
+    <!-- Projects Section -->
+    {% if resume.get('projects') %}
+    <div class="section" style="margin-top: 6px;">
+        <h2 class="section-title">Academic & Personal Projects</h2>
+        {% for project in resume.get('projects') %}
+        <div style="margin-bottom: 8px;">
+            <div style="display: flex; justify-content: space-between; font-weight: 600; color: #0f172a; font-size: 8.8pt;">
+                <h4>{{ project.name }}</h4>
+                <span style="font-weight: 500; font-size: 8pt; color: #475569;">{{ (project.technologies or [])|join(', ') }}</span>
             </div>
-            {% endfor %}
+            <p style="font-size: 8pt; color: #334155; margin-top: 2px; text-align: justify;">{{ project.description }}</p>
         </div>
+        {% endfor %}
+    </div>
+    {% endif %}
 
-        <div class="section">
-            <h2 class="section-title">Certifications</h2>
-            {% for cert in resume.get('certifications', []) %}
-            <div style="display: flex; justify-content: space-between; font-size: 7.8pt; margin-bottom: 2px;">
-                <span style="font-weight: 600; color: #0f172a;">{{ cert.name }}</span>
-                <span style="color: #64748b;">{{ cert.date }}</span>
+    <!-- Education Section -->
+    <div class="section" style="margin-top: 6px;">
+        <h2 class="section-title">Education</h2>
+        {% for edu in resume.get('education', []) %}
+        <div class="edu-item">
+            <div>
+                <strong>{{ edu.degree }}</strong> in <span class="edu-inst">{{ edu.institution }}</span>
             </div>
-            {% endfor %}
+            <div>{{ edu.date }} {% if edu.gpa %}| GPA: {{ edu.gpa }}{% endif %}</div>
         </div>
+        {% endfor %}
+    </div>
 
+    <!-- Certifications Section -->
+    <div class="section" style="margin-top: 6px;">
+        <h2 class="section-title">Certifications</h2>
+        {% for cert in resume.get('certifications', []) %}
+        <div style="display: flex; justify-content: space-between; font-size: 8pt; margin-bottom: 2px;">
+            <span style="font-weight: 600; color: #0f172a;">{{ cert.name }}</span>
+            <span style="color: #475569;">{{ cert.date }}</span>
+        </div>
+        {% endfor %}
     </div>
 
 </body>
