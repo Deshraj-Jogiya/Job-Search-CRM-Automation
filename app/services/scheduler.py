@@ -71,11 +71,11 @@ def run_instant_pipeline_for_job(job_id: int):
             log_activity(db, f"Tailored documents successfully generated.", "INFO")
             
         # 3. Playwright Autofill Auto-Apply
-        if job.match_score >= 65:
-            log_activity(db, f"High match ({job.match_score}%). Triggering Playwright auto-apply...", "INFO")
+        if job.match_score >= 50:
+            log_activity(db, f"Triggering Playwright auto-apply for match score: {job.match_score}%...", "INFO")
             autofill_service.autofill_job_application(job.id, auto_submit=True)
         else:
-            log_activity(db, f"Match score {job.match_score}% is below 65%. Keeping in queue for manual review.", "INFO")
+            log_activity(db, f"Match score {job.match_score}% is below 50%. Keeping in queue for manual review.", "INFO")
             
     except Exception as e:
         log_activity(db, f"Error running automation pipeline for job {job_id}: {e}", "ERROR")

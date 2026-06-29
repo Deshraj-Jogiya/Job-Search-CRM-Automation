@@ -121,15 +121,42 @@ def trigger_recruiter_sourcing_and_outreach(job_id: int):
             
         db.commit()
         
-        # 4. Trigger SMTP auto-email outreach if email was guessed
+        # 4. Trigger SMTP auto-email outreach if email was guessed and verified
         if job.recruiter_email and not job.email_sent:
-            subject = f"Applied Machine Learning Scientist Application - Deshraj Jogiya"
-            body = job.outreach_note_long or f"Dear {job.recruiter_name or 'Hiring Manager'},\n\nI recently submitted my application for the {job.job_title} role at {job.company_name}.\n\nWith my background in machine learning and data pipeline orchestration, I would love to connect. Please find my portfolio at https://deshraj-jogiya.github.io/\n\nSincerely,\nDeshraj Jogiya"
+            # Security check 1: Ensure recruiter name is a real person and not a generic placeholder
+            recruiter_name_lower = (job.recruiter_name or "").lower()
+            generic_names = ["hiring", "manager", "unknown", "talent", "team", "recruiter", "careers", "hr", "support"]
+            is_generic = any(name in recruiter_name_lower for name in generic_names) or len(recruiter_name_lower.split()) < 2
             
-            success = send_outreach_email(job.recruiter_email, subject, body)
-            if success:
-                job.email_sent = True
-                db.commit()
+            # Security check 2: Verify email syntax
+            import re
+            email_syntax_ok = bool(re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', job.recruiter_email))
+            
+            # Security check 3: Verify target domain is active and resolves via DNS
+            domain = job.recruiter_email.split("@")[-1] if "@" in job.recruiter_email else ""
+            import socket
+            domain_active = False
+            if domain:
+                try:
+                    socket.gethostbyname(domain)
+                    domain_active = True
+                except Exception:
+                    pass
+                    
+            if is_generic:
+                print(f"Skipping automated email: recruiter name '{job.recruiter_name}' is generic/placeholder.")
+            elif not email_syntax_ok:
+                print(f"Skipping automated email: email syntax '{job.recruiter_email}' is invalid.")
+            elif not domain_active:
+                print(f"Skipping automated email: domain '{domain}' does not resolve (inactive address).")
+            else:
+                subject = f"Data / Machine Learning Engineering Opportunities - Deshraj Jogiya"
+                body = job.outreach_note_long or f"Dear {job.recruiter_name},\n\nI recently submitted my application for the {job.job_title} role at {job.company_name}.\n\nWith my background in machine learning and data pipeline orchestration, I would love to connect. Please find my portfolio at https://deshraj-jogiya.github.io/\n\nSincerely,\nDeshraj Jogiya"
+                
+                success = send_outreach_email(job.recruiter_email, subject, body)
+                if success:
+                    job.email_sent = True
+                    db.commit()
                 
     except Exception as e:
         print(f"Error in recruiter sourcing and outreach workflow: {e}")

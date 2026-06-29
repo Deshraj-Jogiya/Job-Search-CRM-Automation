@@ -20,6 +20,7 @@
     <header>
         <h1>🎯 Job Placement Command Center</h1>
         <div class="header-links" style="display: flex; gap: 1.25rem; align-items: center;">
+            <button id="themeToggle" class="theme-toggle-btn">🌓 Toggle Theme</button>
             <span style="color: #34d399; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.35rem;">
                 <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: #34d399; box-shadow: 0 0 8px #34d399; animation: pulse 2s infinite;"></span>
                 CRM PIPELINE ONLINE
@@ -352,6 +353,22 @@
                     document.getElementById('logs-sync-status').textContent = 'Sync: Disconnected';
                 });
         }
+        
+        // Theme Management
+        const body = document.body;
+        const themeToggle = document.getElementById('themeToggle');
+        
+        // Load saved theme
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        if (savedTheme === 'light') {
+            body.classList.add('light-mode');
+        }
+        
+        themeToggle.addEventListener('click', () => {
+            body.classList.toggle('light-mode');
+            const currentTheme = body.classList.contains('light-mode') ? 'light' : 'dark';
+            localStorage.setItem('theme', currentTheme);
+        });
         
         // Poll logs every 5 seconds
         fetchLogs();
