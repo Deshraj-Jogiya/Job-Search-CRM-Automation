@@ -1,7 +1,5 @@
 # 🎯 Job Search CRM & AI Application Tailoring Command Center
 
-This is a personal job placement command center designed to automate, tailor, and track your job application process. You can check my personal live pipeline at: https://job-search-crm.onrender.com.
-
 It operates locally as a FastAPI web dashboard and SQLite database. By loading your candidate profile and pasting any target job description, the system calculates a semantic compatibility match score, highlights keyword gaps, tailors your experience bullet points and cover letters, drafts recruiter outreach messages for LinkedIn (maximizing your LinkedIn Premium subscription), and tracks the status of each pipeline on a Kanban board.
 
 ---
