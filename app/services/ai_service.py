@@ -241,7 +241,7 @@ You are an expert executive resume writer. Tailor the candidate's resume (summar
 Your goal is to maximize ATS compatibility (target 95%+) while keeping the total length strictly under a 2-page print layout (concise, high-impact phrasing).
 
 RULES:
-1. DO NOT fabricate any work history, dates, companies, education, or credentials. Keep all statements genuine.
+1. DO NOT fabricate any work history, dates, companies, education, or credentials. Keep all statements genuine. Preserve ALL professional experience roles/jobs in the exact order and dates provided; do not remove, merge, or omit any jobs.
 2. Select EXACTLY 3 projects from the candidate's projects list that are most relevant to the JD. Do not include more. For each selected project, rewrite its achievements into 2 concise, metrics-driven bullet points.
 3. Tailor the professional experience bullets to weave in keywords from the JD (e.g. data pipelines, machine learning, cloud databases, dashboarding). Use action verbs and highlight metrics.
 4. Keep bullets concise: max 3 bullet points per recent job, and max 2 bullets for older roles. This ensures the output fits within the 2-page limit.

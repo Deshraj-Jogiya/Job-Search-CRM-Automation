@@ -450,7 +450,6 @@ def autofill_job_application(job_id: int, auto_submit: bool = False):
                             daemon=True
                         ).start()
                         
-            # D. OTHER FORMS
             else:
                 log_activity(db, f"Generic portal detected. Autofilling standard details...", "INFO")
                 fill_if_exists("input[name*='name'], input[id*='name']", full_name)
@@ -459,9 +458,35 @@ def autofill_job_application(job_id: int, auto_submit: bool = False):
                 
                 fill_custom_form_fields(page, db, resume_data.get("summary", ""))
                 
-                if headless_mode:
-                    log_activity(db, "Generic form requires visual validation. Routing to Needs Review.", "WARNING")
-                    raise Exception("Generic form filling complete. Submission requires manual verification.")
+                if auto_submit:
+                    submit_selectors = [
+                        "button[type='submit']", "input[type='submit']",
+                        "button:has-text('Submit')", "button:has-text('Apply')",
+                        "input[value='Submit']", "input[value='Apply']"
+                    ]
+                    submitted = False
+                    for sel in submit_selectors:
+                        try:
+                            if page.locator(sel).count() > 0:
+                                page.locator(sel).first.click()
+                                page.wait_for_timeout(3000)
+                                submitted = True
+                                break
+                        except Exception:
+                            pass
+                    
+                    if submitted:
+                        job.status = "Applied"
+                        job.applied_at = datetime.utcnow()
+                        db.commit()
+                        log_activity(db, f"Generic auto-apply submitted successfully.", "INFO")
+                    else:
+                        if headless_mode:
+                            raise Exception("Generic form filling complete. Submission button not found for auto-submit.")
+                else:
+                    if headless_mode:
+                        log_activity(db, "Generic form requires visual validation. Routing to Needs Review.", "WARNING")
+                        raise Exception("Generic form filling complete. Submission requires manual verification.")
                 
             # Keep browser open locally
             if not headless_mode:
