@@ -2,385 +2,76 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Job Search CRM & AI Application Command Center</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <title>Career Pilot</title>
     <link rel="stylesheet" href="/static/css/style.css">
-    <style>
-        /* Extra dashboard specific styles */
-        .dashboard-layout {
-            display: flex;
-            flex-direction: column;
-            gap: 2rem;
-        }
-    </style>
 </head>
 <body>
-
-    <header>
-        <h1>🎯 Job Placement Command Center</h1>
-        <div class="header-links" style="display: flex; gap: 1.25rem; align-items: center;">
-            <button id="themeToggle" class="theme-toggle-btn">🌓 Toggle Theme</button>
-            <span style="color: #34d399; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.05em; display: flex; align-items: center; gap: 0.35rem;">
-                <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: #34d399; box-shadow: 0 0 8px #34d399; animation: pulse 2s infinite;"></span>
-                CRM PIPELINE ONLINE
-            </span>
-            <form action="/jobs/reset-database" method="POST" onsubmit="const p = prompt('Enter Admin Password to authorize database reset:'); if (p) { document.getElementById('resetPassword').value = p; return true; } return false;" style="margin: 0; padding: 0; display: inline-block;">
-                <input type="hidden" name="password" id="resetPassword">
-                <button type="submit" class="btn btn-secondary" style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); color: #f87171; padding: 0.35rem 0.75rem; font-size: 0.75rem; border-radius: 6px; cursor: pointer; font-weight: 600; transition: all 0.2s;" onmouseover="this.style.background='rgba(239, 68, 68, 0.25)';" onmouseout="this.style.background='rgba(239, 68, 68, 0.12)';">
-                    ⚠️ Reset Database
-                </button>
-            </form>
-        </div>
+    <header class="topbar">
+        <h1>Career Pilot</h1>
+        <form method="post" action="/settings/automation/toggle" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="{{ 'btn-on' if settings.automation_enabled else 'btn-off' }}">
+                Automation: {{ "ON" if settings.automation_enabled else "OFF" }}
+            </button>
+        </form>
     </header>
 
-    <div class="container dashboard-layout">
-        
-        <!-- Conversion Funnel Section -->
-        <div class="form-panel" style="margin-bottom: 2rem; padding: 1.5rem 2rem;">
-            <h2 style="font-size: 1.15rem; margin-bottom: 1.25rem; border-left: 4px solid var(--accent-purple); padding-left: 0.75rem; color: var(--text-primary);">📊 Automated Pipeline Funnel Conversion</h2>
-            
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; width: 100%; position: relative;">
-                <!-- Step 1: Scraped -->
-                <div class="funnel-card">
-                    <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em;">1. Scraped</div>
-                    <div style="font-size: 1.5rem; font-weight: 800; color: #60a5fa; margin-top: 0.25rem;">{{ total }}</div>
-                </div>
-                
-                <div style="font-size: 1.25rem; color: rgba(255, 255, 255, 0.15); font-weight: bold;">➔</div>
-                
-                <!-- Step 2: Tailored -->
-                <div class="funnel-card">
-                    <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em;">2. Tailored</div>
-                    <div style="font-size: 1.5rem; font-weight: 800; color: #c084fc; margin-top: 0.25rem;">
-                        {{ (kanban.get('Tailored', [])|length) + (kanban.get('Needs Review', [])|length) + (kanban.get('Applied', [])|length) + (kanban.get('Interviewing', [])|length) + (kanban.get('Offer', [])|length) }}
-                    </div>
-                </div>
-                
-                <div style="font-size: 1.25rem; color: rgba(255, 255, 255, 0.15); font-weight: bold;">➔</div>
-                
-                <!-- Step 3: Applied -->
-                <div class="funnel-card">
-                    <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em;">3. Applied</div>
-                    <div style="font-size: 1.5rem; font-weight: 800; color: #fbbf24; margin-top: 0.25rem;">
-                        {{ (kanban.get('Applied', [])|length) + (kanban.get('Interviewing', [])|length) + (kanban.get('Offer', [])|length) }}
-                    </div>
-                </div>
-                
-                <div style="font-size: 1.25rem; color: rgba(255, 255, 255, 0.15); font-weight: bold;">➔</div>
-                
-                <!-- Step 4: Interviewing -->
-                <div class="funnel-card">
-                    <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em;">4. Interviews</div>
-                    <div style="font-size: 1.5rem; font-weight: 800; color: #34d399; margin-top: 0.25rem;">
-                        {{ (kanban.get('Interviewing', [])|length) + (kanban.get('Offer', [])|length) }}
-                    </div>
-                </div>
-                
-                <div style="font-size: 1.25rem; color: rgba(255, 255, 255, 0.15); font-weight: bold;">➔</div>
-                
-                <!-- Step 5: Offers -->
-                <div class="funnel-card" style="box-shadow: 0 0 10px rgba(16, 185, 129, 0.1);">
-                    <div style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em;">5. Offers</div>
-                    <div style="font-size: 1.5rem; font-weight: 800; color: #10b981; margin-top: 0.25rem;">{{ offers }}</div>
-                </div>
+    <main>
+        <section class="summary-cards">
+            <div class="card">
+                <span class="card-label">Total Applications</span>
+                <span class="card-value">{{ total_applications }}</span>
             </div>
-        </div>
-
-        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
-            <!-- Ingest Job Section -->
-            <div class="form-panel" style="margin: 0;">
-                <h2>📥 Manual Job Ingestion</h2>
-                <form action="/jobs/ingest" method="POST" class="form-grid" style="margin-top: 1rem;">
-                    <div class="form-group">
-                        <label for="company_name">Company Name *</label>
-                        <input type="text" id="company_name" name="company_name" placeholder="e.g. Google, Stripe, Objectways" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="job_title">Job Title *</label>
-                        <input type="text" id="job_title" name="job_title" placeholder="e.g. Data Engineer, Applied ML Engineer" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="job_url">Job Details URL</label>
-                        <input type="url" id="job_url" name="job_url" placeholder="Paste the job posting URL (any platform)">
-                    </div>
-                    <div class="form-group">
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                            <div class="form-group">
-                                <label for="recruiter_name">Recruiter Name</label>
-                                <input type="text" id="recruiter_name" name="recruiter_name" placeholder="e.g. Sarah Jenkins">
-                            </div>
-                            <div class="form-group">
-                                <label for="recruiter_linkedin">Recruiter LinkedIn URL</label>
-                                <input type="url" id="recruiter_linkedin" name="recruiter_linkedin" placeholder="https://linkedin.com/in/... ">
-                            </div>
-                        </div>
-                    </div>
-                    <div class="form-group full-width">
-                        <label for="job_description">Job Description (Paste raw text here) *</label>
-                        <textarea id="job_description" name="job_description" placeholder="Paste the full job requirements, qualifications, and role description..." required></textarea>
-                    </div>
-                    <div class="form-group full-width" style="margin-top: 0.5rem;">
-                        <button type="submit" class="btn">Analyze Match &amp; Ingest Role</button>
-                    </div>
-                </form>
+            <div class="card">
+                <span class="card-label">Profile Variants</span>
+                <span class="card-value">{{ profile_variants|length }}</span>
             </div>
+        </section>
 
-            <!-- Job Crawl Queries Manager Section -->
-            <div class="form-panel" style="margin: 0; display: flex; flex-direction: column; justify-content: space-between;">
-                <div>
-                    <h2>⚙️ Job Crawl Queries</h2>
-                    <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.5rem; margin-bottom: 1.25rem; line-height: 1.4;">
-                        Configure search keywords for the automatic daily job crawler.
-                    </p>
-                    
-                    <!-- Add Keyword Form -->
-                    <form action="/api/queries" method="POST" style="display: flex; gap: 0.5rem; margin-bottom: 1.25rem;">
-                        <input type="text" name="keyword" placeholder="e.g. Data Engineer" required style="flex: 1; padding: 0.5rem; border-radius: 6px; background: rgba(15, 23, 42, 0.4); border: 1px solid var(--border-color); color: white;">
-                        <button type="submit" class="btn" style="padding: 0.5rem 1rem; width: auto; font-size: 0.85rem; margin: 0;">Add</button>
-                    </form>
-                    
-                    <!-- Keywords List -->
-                    <div style="max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem;">
-                        {% for kw in keywords %}
-                        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.3); border: 1px solid var(--border-color); padding: 0.5rem 0.75rem; border-radius: 8px;">
-                            <span style="font-size: 0.9rem; font-weight: 500; {% if not kw.is_active %}text-decoration: line-through; color: var(--text-secondary);{% endif %}">{{ kw.keyword }}</span>
-                            <div style="display: flex; gap: 0.5rem; align-items: center;">
-                                <!-- Toggle Form -->
-                                <form action="/api/queries/{{ kw.id }}/toggle" method="POST" style="margin: 0; padding: 0;">
-                                    <button type="submit" style="background: none; border: none; cursor: pointer; font-size: 0.85rem; padding: 0;" title="Toggle Active">
-                                        {% if kw.is_active %}🟢{% else %}⚫{% endif %}
-                                    </button>
-                                </form>
-                                <!-- Delete Form -->
-                                <form action="/api/queries/{{ kw.id }}/delete" method="POST" style="margin: 0; padding: 0;">
-                                    <button type="submit" style="background: none; border: none; cursor: pointer; font-size: 0.85rem; padding: 0;" title="Delete Keyword">
-                                        🗑️
-                                    </button>
-                                </form>
-                            </div>
-                        </div>
-                        {% endfor %}
-                        {% if keywords|length == 0 %}
-                        <div style="text-align: center; color: var(--text-secondary); font-size: 0.85rem; padding: 1rem 0; border: 1px dashed var(--border-color); border-radius: 8px;">
-                            Using default target keywords.
-                        </div>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-        </div>
+        <section class="empty-state">
+            <p>Foundation is running. Job intake, tailoring, and the confirmation queue land in the next build phases.</p>
+        </section>
 
-        <!-- Kanban Board Section -->
-        <div>
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-                <h2 style="font-size: 1.25rem; border-left: 4px solid var(--accent-blue); padding-left: 0.75rem; margin: 0;">📋 Application Pipelines</h2>
-                <form action="/jobs/crawl" method="POST" style="display: flex; align-items: center; gap: 0.5rem; margin: 0; padding: 0;">
-                    <label for="timeframe" style="font-size: 0.8rem; color: var(--text-secondary); margin: 0;">Scan Window:</label>
-                    <select name="timeframe" id="timeframe" style="background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 6px; padding: 0.35rem 0.65rem; font-size: 0.8rem; outline: none; cursor: pointer; transition: all 0.2s;" onchange="this.style.borderColor='var(--accent-blue)';" onblur="this.style.borderColor='var(--border-color)';">
-                        <option value="2h">Past 2 Hours</option>
-                        <option value="12h">Past 12 Hours</option>
-                        <option value="24h">Past 24 Hours</option>
-                        <option value="3d">Past 3 Days</option>
-                        <option value="5d">Past 5 Days</option>
-                        <option value="7d">Past 7 Days</option>
-                        <option value="3w">Past 3 Weeks</option>
-                        <option value="1m" selected>Past 1 Month</option>
-                    </select>
-                    <label for="location" style="font-size: 0.8rem; color: var(--text-secondary); margin: 0; margin-left: 0.5rem;">Location:</label>
-                    <input type="text" name="location" id="location" value="United States" style="background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 6px; padding: 0.35rem 0.65rem; font-size: 0.8rem; outline: none; width: 110px; transition: all 0.2s;" onfocus="this.style.borderColor='var(--accent-blue)';" onblur="this.style.borderColor='var(--border-color)';">
-                    <button type="submit" class="btn btn-secondary" style="padding: 0.45rem 1rem; font-size: 0.8rem; margin: 0;">
-                        🔍 Scan Active Jobs
-                    </button>
-                </form>
-            </div>
-            <div class="kanban-board">
-                
-                {% for status_name, job_list in kanban.items() %}
-                <div class="kanban-col" data-status="{{ status_name }}">
-                    <div class="kanban-col-header">
-                        <h3>{{ status_name }}</h3>
-                        <span class="count">{{ job_list|length }}</span>
-                    </div>
-                    
-                    <div class="kanban-cards" style="display: flex; flex-direction: column; gap: 1rem; flex: 1; overflow-y: auto; padding-right: 0.15rem; max-height: 550px;">
-                        {% for job in job_list %}
-                        <a href="/jobs/{{ job.id }}" class="job-card" style="position: relative;">
-                            <!-- Hover Quick Actions Panel -->
-                            <div class="card-hover-actions" style="position: absolute; top: 0.5rem; right: 0.5rem; display: flex; gap: 0.35rem; z-index: 10; opacity: 0; transition: opacity 0.2s;">
-                                <!-- Auto Apply Trigger -->
-                                {% if job.status in ['Ingested', 'Tailored', 'Needs Review'] and job.job_url %}
-                                <form action="/jobs/{{ job.id }}/autofill" method="POST" onclick="event.stopPropagation();" style="margin: 0; padding: 0;">
-                                    <button type="submit" style="background: rgba(59, 130, 246, 0.25); border: 1px solid rgba(59, 130, 246, 0.45); border-radius: 4px; padding: 0.2rem 0.35rem; color: #60a5fa; cursor: pointer; font-size: 0.75rem; display: flex; align-items: center; justify-content: center;" title="Trigger Auto-Apply">
-                                        ⚡
-                                    </button>
-                                </form>
-                                {% endif %}
-                            </div>
-    
-                            <div class="company">{{ job.company_name }}</div>
-                            <div class="title">{{ job.job_title }}</div>
-                            
-                            <!-- Automation Progress Path -->
-                            <div class="progress-bar-path" style="display: flex; justify-content: space-between; align-items: center; margin: 0.55rem 0 0.4rem 0; padding: 0 0.25rem; position: relative;">
-                                <!-- Connector Line -->
-                                <div style="position: absolute; top: 50%; left: 5%; right: 5%; height: 2px; background: rgba(255, 255, 255, 0.08); z-index: 1;"></div>
-                                
-                                <!-- Scraped Node (always active) -->
-                                <div class="progress-node active" title="Ingested/Scraped" style="width: 7px; height: 7px; border-radius: 50%; background: #60a5fa; box-shadow: 0 0 6px #60a5fa; z-index: 2;"></div>
-                                
-                                <!-- Tailored Node -->
-                                <div class="progress-node" title="Resume Tailored" style="width: 7px; height: 7px; border-radius: 50%; background: {% if job.status in ['Tailored', 'Needs Review', 'Applied', 'Interviewing', 'Offer'] %}#c084fc; box-shadow: 0 0 6px #c084fc;{% else %}rgba(255, 255, 255, 0.15);{% endif %}; z-index: 2;"></div>
-                                
-                                <!-- Applied Node -->
-                                <div class="progress-node" title="Application Sent" style="width: 7px; height: 7px; border-radius: 50%; background: {% if job.status in ['Applied', 'Interviewing', 'Offer'] %}#fbbf24; box-shadow: 0 0 6px #fbbf24;{% else %}rgba(255, 255, 255, 0.15);{% endif %}; z-index: 2;"></div>
-                                
-                                <!-- Interviewing Node -->
-                                <div class="progress-node" title="Recruiter Outreach / Interviewing" style="width: 7px; height: 7px; border-radius: 50%; background: {% if job.status in ['Interviewing', 'Offer'] %}#34d399; box-shadow: 0 0 6px #34d399;{% else %}rgba(255, 255, 255, 0.15);{% endif %}; z-index: 2;"></div>
-                                
-                                <!-- Offer Node -->
-                                <div class="progress-node" title="Offer Received!" style="width: 7px; height: 7px; border-radius: 50%; background: {% if job.status == 'Offer' %}#10b981; box-shadow: 0 0 6px #10b981;{% else %}rgba(255, 255, 255, 0.15);{% endif %}; z-index: 2;"></div>
-                            </div>
-    
-                            {% if job.status == 'Needs Review' and job.attention_reason %}
-                            <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); color: #f87171; border-radius: 4px; padding: 0.3rem 0.45rem; font-size: 0.7rem; margin: 0.45rem 0 0.25rem 0; font-weight: 500; line-height: 1.25; display: flex; align-items: flex-start; gap: 0.3rem; word-break: break-all; overflow-wrap: break-word; overflow: hidden; max-width: 100%;">
-                                <span style="flex-shrink: 0; margin-top: 1px;">⚠️</span>
-                                <span>{{ job.attention_reason }}</span>
-                            </div>
-                            {% endif %}
-    
-                            <div class="meta-row">
-                                {% if job.status == 'Ingested' %}
-                                <span class="badge" style="background: rgba(96, 165, 250, 0.15); border: 1px solid rgba(96, 165, 250, 0.3); color: #60a5fa;">🆕 New</span>
-                                {% else %}
-                                <span class="badge badge-score" style="
-                                    {% if job.match_score >= 80 %}
-                                        background: rgba(52, 211, 153, 0.15); border: 1px solid rgba(52, 211, 153, 0.3); color: #34d399;
-                                    {% elif job.match_score >= 65 %}
-                                        background: rgba(251, 191, 36, 0.15); border: 1px solid rgba(251, 191, 36, 0.3); color: #fbbf24;
-                                    {% else %}
-                                        background: rgba(148, 163, 184, 0.15); border: 1px solid rgba(148, 163, 184, 0.3); color: #94a3b8;
-                                    {% endif %}
-                                ">Match: {{ job.match_score }}%</span>
-                                {% endif %}
-                                
-                                {% if job.visa_sponsorship == 'Sponsors' %}
-                                <span class="badge" style="background-color: #065f46; color: #34d399; border: 1px solid #34d399; font-size: 0.7rem; font-weight: 700; padding: 0.1rem 0.35rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 0.25rem;">H-1B</span>
-                                {% endif %}
-                                <span style="color: var(--text-secondary);">{{ job.created_at.strftime('%m/%d') }}</span>
-                            </div>
-                        </a>
-                        {% endfor %}
-                        
-                        {% if job_list|length == 0 %}
-                        <div style="text-align: center; color: var(--text-secondary); font-size: 0.8rem; margin-top: 2rem; border: 1px dashed var(--border-color); padding: 1.5rem 0.5rem; border-radius: 8px;">
-                            Empty Column
-                        </div>
-                        {% endif %}
-                    </div>
-                </div>
-                {% endfor %}
-                
-            </div>
-        <!-- Live System Logs Terminal -->
-        <div class="form-panel" style="margin-top: 2rem;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
-                <h2 style="font-size: 1.1rem; border-left: 4px solid #10b981; padding-left: 0.5rem; margin: 0; color: #10b981;">📟 Live System Activity Logs</h2>
-                <span style="font-size: 0.8rem; color: var(--text-secondary);" id="logs-sync-status">Connected</span>
-            </div>
-            <div id="logs-terminal" style="background: #090d16; border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem; font-family: 'Courier New', Courier, monospace; font-size: 0.85rem; height: 180px; overflow-y: auto; color: #34d399; line-height: 1.45; text-align: left;">
-                <div style="color: #94a3b8; font-style: italic;">Loading active stream logs...</div>
-            </div>
-        </div>
+        <section class="settings-panel">
+            <h2>Tunable Settings</h2>
+            <form method="post" action="/settings/update">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
-    </div>
+                <label>Fast poll interval (minutes)
+                    <input type="number" name="fast_poll_interval_minutes" value="{{ settings.fast_poll_interval_minutes }}" min="1">
+                </label>
 
-    <script>
-        function fetchLogs() {
-            fetch('/api/logs?_t=' + new Date().getTime())
-                .then(response => response.json())
-                .then(data => {
-                    const terminal = document.getElementById('logs-terminal');
-                    const status = document.getElementById('logs-sync-status');
-                    
-                    if (data.length === 0) {
-                        terminal.innerHTML = '<div style="color: #94a3b8; font-style: italic;">No activity logs recorded yet.</div>';
-                        return;
-                    }
-                    
-                    let html = '';
-                    // Reverse logs to display newest at bottom
-                    data.reverse().forEach(log => {
-                        let color = '#34d399'; // green for INFO
-                        if (log.level === 'WARNING') color = '#fbbf24'; // yellow
-                        if (log.level === 'ERROR') color = '#f87171'; // red
-                        
-                        html += `<div><span style="color: #6366f1;">[${log.timestamp}]</span> <span style="color: ${color}; font-weight: bold;">[${log.level}]</span> ${log.message}</div>`;
-                    });
-                    terminal.innerHTML = html;
-                    terminal.scrollTop = terminal.scrollHeight; // Auto-scroll to bottom
-                    status.textContent = 'Sync: Active (' + new Date().toLocaleTimeString() + ')';
-                })
-                .catch(err => {
-                    console.error('Error fetching logs:', err);
-                    document.getElementById('logs-sync-status').textContent = 'Sync: Disconnected';
-                });
-        }
-        
-        // Theme Management
-        const body = document.body;
-        const themeToggle = document.getElementById('themeToggle');
-        
-        // Load saved theme
-        const savedTheme = localStorage.getItem('theme') || 'dark';
-        if (savedTheme === 'light') {
-            body.classList.add('light-mode');
-        }
-        
-        themeToggle.addEventListener('click', () => {
-            body.classList.toggle('light-mode');
-            const currentTheme = body.classList.contains('light-mode') ? 'light' : 'dark';
-            localStorage.setItem('theme', currentTheme);
-        });
-        
-        // Reset Database Password Protection
-        const resetDbForm = document.getElementById('resetDbForm');
-        if (resetDbForm) {
-            resetDbForm.addEventListener('submit', function(e) {
-                e.preventDefault();
-                const proceed = confirm('Are you sure you want to completely clear the slate? This will delete all jobs and documents!');
-                if (!proceed) return;
-                const pwd = prompt('Enter Admin Password to authorize reset:');
-                if (pwd === null) return;
-                document.getElementById('resetPassword').value = pwd;
-                this.submit();
-            });
-        }
-        let initialStatuses = null;
-        function syncJobStatuses() {
-            fetch('/api/jobs/statuses?_t=' + new Date().getTime())
-                .then(response => response.json())
-                .then(statuses => {
-                    if (initialStatuses === null) {
-                        initialStatuses = JSON.stringify(statuses);
-                        return;
-                    }
-                    if (initialStatuses !== JSON.stringify(statuses)) {
-                        console.log("Detect status changes, reloading board...");
-                        window.location.reload();
-                    }
-                })
-                .catch(err => console.error('Error syncing job statuses:', err));
-        }
+                <label>Full ingest interval (minutes)
+                    <input type="number" name="full_ingest_interval_minutes" value="{{ settings.full_ingest_interval_minutes }}" min="1">
+                </label>
 
-        // Poll logs and job statuses every 5 seconds
-        fetchLogs();
-        syncJobStatuses();
-        setInterval(() => {
-            fetchLogs();
-            syncJobStatuses();
-        }, 5000);
-    </script>
+                <label>Confirmation window (hours)
+                    <input type="number" step="0.5" name="confirmation_window_hours" value="{{ settings.confirmation_window_hours }}" min="0.5">
+                </label>
 
+                <label>Fast-track score threshold
+                    <input type="number" name="fast_track_score_threshold" value="{{ settings.fast_track_score_threshold }}" min="0" max="100">
+                </label>
+
+                <label>Fast-track freshness window (minutes)
+                    <input type="number" name="fast_track_freshness_minutes" value="{{ settings.fast_track_freshness_minutes }}" min="1">
+                </label>
+
+                <label>Fast-track confirmation window (hours)
+                    <input type="number" step="0.5" name="fast_track_window_hours" value="{{ settings.fast_track_window_hours }}" min="0.1">
+                </label>
+
+                <label>Rejected job retention (days)
+                    <input type="number" name="rejected_retention_days" value="{{ settings.rejected_retention_days }}" min="1">
+                </label>
+
+                <label>Daily outreach cap
+                    <input type="number" name="daily_outreach_cap" value="{{ settings.daily_outreach_cap }}" min="0">
+                </label>
+
+                <button type="submit">Save Settings</button>
+            </form>
+        </section>
+    </main>
 </body>
 </html>
