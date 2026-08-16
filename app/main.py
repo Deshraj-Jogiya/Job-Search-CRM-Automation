@@ -1,61 +1,26 @@
 import os
-import json
 import secrets
-import threading
-import imaplib
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from fastapi import FastAPI, Depends, Form, Request, HTTPException
-from fastapi.responses import RedirectResponse, HTMLResponse, FileResponse
+from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from sqlalchemy import text, func
 from sqlalchemy.orm import Session
 
-from .database import engine, Base, get_db, SessionLocal
-from .models import JobApplication, TailoredDocument, SearchKeyword, ActivityLog
-from .services import ai_service, autofill_service
-from .services import scheduler as bg_scheduler
-from .services.activity_logger import log_activity
+from .database import engine, Base, get_db
+from .models import GlobalSettings, get_or_create_settings, JobApplication, ProfileVariant
+from .csrf import CSRFMiddleware, get_csrf_token
 
-# Initialize Database tables
+load_dotenv()
+
 Base.metadata.create_all(bind=engine)
-
-# DB Migrations for SQLite
-def run_migrations():
-    from sqlalchemy import inspect
-    inspector = inspect(engine)
-    columns = [c['name'] for c in inspector.get_columns('job_applications')]
-    
-    with engine.begin() as conn:
-        if 'recruiter_email' not in columns:
-            try:
-                conn.execute(text("ALTER TABLE job_applications ADD COLUMN recruiter_email VARCHAR;"))
-            except Exception:
-                pass
-        if 'email_sent' not in columns:
-            try:
-                conn.execute(text("ALTER TABLE job_applications ADD COLUMN email_sent BOOLEAN DEFAULT 0;"))
-            except Exception:
-                pass
-        if 'visa_sponsorship' not in columns:
-            try:
-                conn.execute(text("ALTER TABLE job_applications ADD COLUMN visa_sponsorship VARCHAR DEFAULT 'Unknown';"))
-            except Exception:
-                pass
-        if 'attention_reason' not in columns:
-            try:
-                conn.execute(text("ALTER TABLE job_applications ADD COLUMN attention_reason VARCHAR;"))
-            except Exception:
-                pass
-
-run_migrations()
 
 security_basic = HTTPBasic()
 
+
 def verify_credentials(request: Request, credentials: HTTPBasicCredentials = Depends(security_basic)):
-    # Bypass check for internal localhost requests (e.g. Playwright compiling PDFs locally)
     client_host = request.client.host if request.client else ""
     if client_host in ["127.0.0.1", "localhost", "::1"]:
         return "localhost"
@@ -63,527 +28,93 @@ def verify_credentials(request: Request, credentials: HTTPBasicCredentials = Dep
     dashboard_password = os.getenv("DASHBOARD_PASSWORD")
     if not dashboard_password:
         return "none"
-        
+
     correct_username = secrets.compare_digest(credentials.username, "admin")
     correct_password = secrets.compare_digest(credentials.password, dashboard_password)
     if not (correct_username and correct_password):
-        raise HTTPException(
-            status_code=401,
-            detail="Unauthorized access",
-            headers={"WWW-Authenticate": "Basic"},
-        )
+        raise HTTPException(status_code=401, detail="Unauthorized", headers={"WWW-Authenticate": "Basic"})
     return credentials.username
 
-# Conditionally protect all routes if DASHBOARD_PASSWORD is set in environment
+
+def get_admin_password() -> str:
+    pwd = os.getenv("ADMIN_PASSWORD")
+    if not pwd:
+        raise HTTPException(status_code=503, detail="ADMIN_PASSWORD is not configured. Destructive actions are disabled.")
+    return pwd
+
+
 app_dependencies = []
 if os.getenv("DASHBOARD_PASSWORD"):
     app_dependencies.append(Depends(verify_credentials))
 
-app = FastAPI(
-    title="Job Search CRM & AI Application Tailoring Command Center",
-    dependencies=app_dependencies
-)
+app = FastAPI(title="Career Pilot -- Job Search Command Center", dependencies=app_dependencies)
+app.add_middleware(CSRFMiddleware)
 
-# Static files and templates
-os.makedirs("app/static", exist_ok=True)
 os.makedirs("app/static/css", exist_ok=True)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
-
 templates = Jinja2Templates(directory="app/templates")
 
-def deduplicate_database(db: Session):
-    """Finds and removes duplicate applications based on case-insensitive company name and title."""
-    all_jobs = db.query(JobApplication).all()
-    seen = set()
-    duplicates_deleted = 0
-    for job in all_jobs:
-        key = (job.company_name.strip().lower(), job.job_title.strip().lower())
-        if key in seen:
-            # Delete duplicate documents and application record
-            db.query(TailoredDocument).filter_by(job_id=job.id).delete()
-            db.delete(job)
-            duplicates_deleted += 1
-        else:
-            seen.add(key)
-    if duplicates_deleted > 0:
-        db.commit()
-        print(f"Startup clean: Removed {duplicates_deleted} duplicate jobs from database.")
 
-@app.on_event("startup")
-def startup_event():
-    # Start background scheduler for crawling new jobs
-    bg_scheduler.start_scheduler()
-    
-    db = SessionLocal()
-    try:
-        # 1. Run database deduplication
-        deduplicate_database(db)
-        
-        # 2. Conditional startup clean to wipe the 49 stale rejected jobs for development
-        rejected_count = db.query(JobApplication).filter(JobApplication.status == "Rejected").count()
-        if rejected_count > 15:
-            print("Wiping stale rejected jobs list for clean development slate...")
-            db.query(TailoredDocument).delete()
-            db.query(JobApplication).delete()
-            db.query(ActivityLog).delete()
-            db.commit()
-    except Exception as e:
-        print(f"Error in startup checks: {e}")
-    finally:
-        db.close()
-        
-    # Process any stuck Ingested jobs sequentially in background
-    threading.Thread(
-        target=bg_scheduler.process_stuck_ingested_jobs,
-        daemon=True
-    ).start()
+def render(request: Request, template_name: str, context: dict):
+    context["csrf_token"] = get_csrf_token(request)
+    return templates.TemplateResponse(request, template_name, context)
 
-@app.middleware("http")
-async def add_no_cache_headers(request: Request, call_next):
-    response = await call_next(request)
-    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-    response.headers["Pragma"] = "no-cache"
-    response.headers["Expires"] = "0"
-    return response
 
-@app.on_event("shutdown")
-def shutdown_event():
-    # Stop background scheduler
-    bg_scheduler.stop_scheduler()
+@app.get("/api/health")
+def health_check():
+    return {"status": "ok", "time": datetime.utcnow().isoformat()}
 
-def get_base_resume():
-    """Helper to load the default base resume data."""
-    base_resume_path = os.path.join(os.path.dirname(__file__), "base_resume.json")
-    if os.path.exists(base_resume_path):
-        with open(base_resume_path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
 
 @app.get("/", response_class=HTMLResponse)
-def index(request: Request, db: Session = Depends(get_db)):
-    # Fetch all job applications
-    jobs = db.query(JobApplication).order_by(JobApplication.created_at.desc()).all()
-    
-    # Calculate quick metrics
-    total = len(jobs)
-    applied = sum(1 for j in jobs if j.status in ["Applied", "Interviewing", "Offer"])
-    interviewing = sum(1 for j in jobs if j.status == "Interviewing")
-    offers = sum(1 for j in jobs if j.status == "Offer")
-    
-    scores = [j.match_score for j in jobs if j.match_score > 0]
-    avg_score = round(sum(scores) / len(scores)) if scores else 0
-    
-    conversion_rate = round((interviewing / applied) * 100) if applied else 0
-    
-    # Group jobs for the Kanban columns
-    kanban = {
-        "Ingested": [j for j in jobs if j.status == "Ingested"],
-        "Tailored": [j for j in jobs if j.status == "Tailored"],
-        "Needs Review": [j for j in jobs if j.status == "Needs Review"],
-        "Applied": [j for j in jobs if j.status == "Applied"],
-        "Interviewing": [j for j in jobs if j.status == "Interviewing"],
-        "Offer": [j for j in jobs if j.status == "Offer"],
-        "Rejected": [j for j in jobs if j.status == "Rejected"]
-    }
-    
-    # Fetch search keywords
-    keywords = db.query(SearchKeyword).all()
-    
-    return templates.TemplateResponse(
+def dashboard(request: Request, db: Session = Depends(get_db)):
+    settings = get_or_create_settings(db)
+    total_applications = db.query(JobApplication).count()
+    profile_variants = db.query(ProfileVariant).all()
+
+    return render(
         request,
         "dashboard.html",
         {
-            "jobs": jobs,
-            "total": total,
-            "applied": applied,
-            "avg_score": avg_score,
-            "conversion_rate": conversion_rate,
-            "offers": offers,
-            "kanban": kanban,
-            "keywords": keywords
-        }
+            "settings": settings,
+            "total_applications": total_applications,
+            "profile_variants": profile_variants,
+        },
     )
 
-@app.post("/jobs/ingest")
-def ingest_job(
-    company_name: str = Form(...),
-    job_title: str = Form(...),
-    job_url: str = Form(None),
-    job_description: str = Form(...),
-    recruiter_name: str = Form(None),
-    recruiter_linkedin: str = Form(None),
-    db: Session = Depends(get_db)
+
+@app.post("/settings/automation/toggle")
+def toggle_automation(db: Session = Depends(get_db)):
+    """Global kill switch -- halts crawling, tailoring, auto-apply, and
+    outreach the moment it's flipped off. Every background job checks
+    this fresh from the DB before doing real work."""
+    settings = get_or_create_settings(db)
+    settings.automation_enabled = not settings.automation_enabled
+    db.commit()
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/settings/update")
+def update_settings(
+    fast_poll_interval_minutes: int = Form(...),
+    full_ingest_interval_minutes: int = Form(...),
+    confirmation_window_hours: float = Form(...),
+    fast_track_score_threshold: int = Form(...),
+    fast_track_freshness_minutes: int = Form(...),
+    fast_track_window_hours: float = Form(...),
+    rejected_retention_days: int = Form(...),
+    daily_outreach_cap: int = Form(...),
+    db: Session = Depends(get_db),
 ):
-    # Check duplicate (case-insensitive and trimmed)
-    exists = db.query(JobApplication).filter(
-        (func.lower(JobApplication.company_name) == company_name.lower().strip()) &
-        (func.lower(JobApplication.job_title) == job_title.lower().strip())
-    ).first()
-    if exists:
-        log_activity(db, f"Skipped duplicate manual ingestion: {job_title} at {company_name}", "INFO")
-        return RedirectResponse(url="/", status_code=303)
-
-    # Retrieve base resume
-    resume_data = get_base_resume()
-    
-    # Run AI evaluation & generate outreach drafts
-    match_data = ai_service.evaluate_match(resume_data, job_description)
-    short_note, long_note = ai_service.generate_outreach_templates(
-        company_name, job_title, job_description, recruiter_name
-    )
-    
-    # Create application record
-    job_app = JobApplication(
-        company_name=company_name,
-        job_title=job_title,
-        job_url=job_url,
-        job_description=job_description,
-        match_score=match_data.get("match_score", 50),
-        match_analysis=json.dumps(match_data),
-        visa_sponsorship=match_data.get("visa_sponsorship", "Unknown"),
-        status="Ingested",
-        recruiter_name=recruiter_name,
-        recruiter_linkedin=recruiter_linkedin,
-        outreach_note_short=short_note,
-        outreach_note_long=long_note
-    )
-    db.add(job_app)
-    db.commit()
-    db.refresh(job_app)
-    
-    # Trigger instant tailoring and auto-apply pipeline in background
-    threading.Thread(
-        target=bg_scheduler.run_instant_pipeline_for_job,
-        args=(job_app.id,),
-        daemon=True
-    ).start()
-    
-    return RedirectResponse(url="/", status_code=303)
-
-@app.post("/jobs/crawl")
-def trigger_manual_crawl(timeframe: str = Form("1m"), location: str = Form("United States")):
-    """Manually trigger job search, auto-apply, and email updates loop."""
-    threading.Thread(
-        target=bg_scheduler.trigger_crawling_and_apply_job,
-        args=(timeframe, location),
-        daemon=True
-    ).start()
-    return RedirectResponse(url="/", status_code=303)
-
-@app.get("/jobs/{job_id}", response_class=HTMLResponse)
-def job_detail(job_id: int, request: Request, db: Session = Depends(get_db)):
-    job = db.query(JobApplication).filter(JobApplication.id == job_id).first()
-    if not job:
-        raise HTTPException(status_code=4404, detail="Job not found")
-        
-    analysis = {}
-    if job.match_analysis:
-        try:
-            analysis = json.loads(job.match_analysis)
-        except Exception:
-            pass
-            
-    # Load tailored documents
-    resume_doc = db.query(TailoredDocument).filter(
-        TailoredDocument.job_id == job_id, 
-        TailoredDocument.document_type == "resume"
-    ).first()
-    
-    cl_doc = db.query(TailoredDocument).filter(
-        TailoredDocument.job_id == job_id, 
-        TailoredDocument.document_type == "cover_letter"
-    ).first()
-    
-    return templates.TemplateResponse(
-        request,
-        "job_detail.html",
-        {
-            "job": job,
-            "analysis": analysis,
-            "has_tailored_resume": resume_doc is not None,
-            "has_tailored_cl": cl_doc is not None,
-            "tailored_resume": resume_doc,
-            "tailored_cl": cl_doc
-        }
-    )
-
-@app.post("/jobs/{job_id}/tailor")
-def tailor_application(job_id: int, db: Session = Depends(get_db)):
-    job = db.query(JobApplication).filter(JobApplication.id == job_id).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-        
-    resume_data = get_base_resume()
-    
-    # 1. Tailor experience bullets, summary, skills, and projects
-    tailored_resume_json = ai_service.tailor_resume(resume_data, job.job_description)
-    
-    # Save or update tailored resume document
-    resume_doc = db.query(TailoredDocument).filter(
-        TailoredDocument.job_id == job_id, 
-        TailoredDocument.document_type == "resume"
-    ).first()
-    
-    if not resume_doc:
-        resume_doc = TailoredDocument(
-            job_id=job_id,
-            document_type="resume",
-            content=json.dumps(tailored_resume_json)
-        )
-        db.add(resume_doc)
-    else:
-        resume_doc.content = json.dumps(tailored_resume_json)
-        resume_doc.generated_at = datetime.utcnow()
-        
-    # 2. Tailor cover letter
-    cl_text = ai_service.generate_cover_letter(
-        resume_data, job.company_name, job.job_title, job.job_description
-    )
-    
-    cl_doc = db.query(TailoredDocument).filter(
-        TailoredDocument.job_id == job_id, 
-        TailoredDocument.document_type == "cover_letter"
-    ).first()
-    
-    if not cl_doc:
-        cl_doc = TailoredDocument(
-            job_id=job_id,
-            document_type="cover_letter",
-            content=cl_text
-        )
-        db.add(cl_doc)
-    else:
-        cl_doc.content = cl_text
-        cl_doc.generated_at = datetime.utcnow()
-        
-    # Update job status to Tailored
-    job.status = "Tailored"
-    db.commit()
-    
-    return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
-
-@app.post("/jobs/{job_id}/autofill")
-def trigger_autofill(job_id: int):
-    """Run Playwright headed browser form filler in a background thread."""
-    threading.Thread(
-        target=autofill_service.autofill_job_application,
-        args=(job_id,),
-        daemon=True
-    ).start()
-    return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
-
-@app.post("/jobs/{job_id}/update-status")
-def update_status(job_id: int, status: str = Form(...), db: Session = Depends(get_db)):
-    job = db.query(JobApplication).filter(JobApplication.id == job_id).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-        
-    if status in ["Rejected", "Archived", "Auto-Archived"]:
-        comp = job.company_name
-        title = job.job_title
-        db.query(TailoredDocument).filter(TailoredDocument.job_id == job_id).delete()
-        db.delete(job)
-        db.commit()
-        log_activity(db, f"Deleted application for {title} at {comp} because it was marked as {status}.", "INFO")
-        return RedirectResponse(url="/", status_code=303)
-        
-    job.status = status
-    if status == "Applied":
-        job.applied_at = datetime.utcnow()
-        db.commit()
-        
-        # Trigger recruiter sourcing and outreach
-        from .services import networking_service
-        threading.Thread(
-            target=networking_service.trigger_recruiter_sourcing_and_outreach,
-            args=(job_id,),
-            daemon=True
-        ).start()
-    else:
-        db.commit()
-    
-    return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
-
-@app.post("/jobs/{job_id}/send-manual-email")
-def send_manual_email(job_id: int, email_addr: str = Form(...), db: Session = Depends(get_db)):
-    job = db.query(JobApplication).filter(JobApplication.id == job_id).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-        
-    from .services import networking_service
-    subject = f"Applied Machine Learning Scientist Application - Deshraj Jogiya"
-    body = job.outreach_note_long or f"Dear Hiring Team,\\n\\nI recently applied for the {job.job_title} role at {job.company_name}. I wanted to briefly connect and share my portfolio..."
-    
-    success = networking_service.send_outreach_email(email_addr, subject, body)
-    if success:
-        job.recruiter_email = email_addr
-        job.email_sent = True
-        db.commit()
-    return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
-
-@app.post("/jobs/{job_id}/update-notes")
-def update_notes(job_id: int, notes: str = Form(...), db: Session = Depends(get_db)):
-    job = db.query(JobApplication).filter(JobApplication.id == job_id).first()
-    if not job:
-        raise HTTPException(status_code=4404, detail="Job not found")
-        
-    job.notes = notes
-    db.commit()
-    
-    return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
-
-@app.post("/jobs/{job_id}/delete")
-def delete_job(job_id: int, password: str = Form(""), db: Session = Depends(get_db)):
-    admin_pwd = os.getenv("ADMIN_PASSWORD", "admin123")
-    if password != admin_pwd:
-        raise HTTPException(status_code=403, detail="Unauthorized: Incorrect admin passcode.")
-    job = db.query(JobApplication).filter(JobApplication.id == job_id).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    db.delete(job)
+    """Every tunable number in the product is editable here -- nothing
+    from our design discussion is hardcoded into the app itself."""
+    settings = get_or_create_settings(db)
+    settings.fast_poll_interval_minutes = fast_poll_interval_minutes
+    settings.full_ingest_interval_minutes = full_ingest_interval_minutes
+    settings.confirmation_window_hours = confirmation_window_hours
+    settings.fast_track_score_threshold = fast_track_score_threshold
+    settings.fast_track_freshness_minutes = fast_track_freshness_minutes
+    settings.fast_track_window_hours = fast_track_window_hours
+    settings.rejected_retention_days = rejected_retention_days
+    settings.daily_outreach_cap = daily_outreach_cap
     db.commit()
     return RedirectResponse(url="/", status_code=303)
-
-@app.post("/jobs/reset-database")
-def reset_database(password: str = Form(""), db: Session = Depends(get_db)):
-    """Deletes all job application and tailored document records to clean the slate."""
-    admin_pwd = os.getenv("ADMIN_PASSWORD", "admin123")
-    if password != admin_pwd:
-         raise HTTPException(status_code=403, detail="Unauthorized: Incorrect admin passcode.")
-         
-    db.query(TailoredDocument).delete()
-    db.query(JobApplication).delete()
-    log_activity(db, "Pipeline database was reset. Slate is clean.", "WARNING")
-    db.commit()
-    return RedirectResponse(url="/", status_code=303)
-
-
-@app.get("/resumes/render/{job_id}", response_class=HTMLResponse)
-def render_tailored_resume(job_id: int, request: Request, db: Session = Depends(get_db)):
-    resume_doc = db.query(TailoredDocument).filter(
-        TailoredDocument.job_id == job_id, 
-        TailoredDocument.document_type == "resume"
-    ).first()
-    
-    if not resume_doc:
-        resume_data = get_base_resume()
-    else:
-        resume_data = json.loads(resume_doc.content)
-        
-    job = db.query(JobApplication).filter(JobApplication.id == job_id).first()
-    
-    return templates.TemplateResponse(
-        request,
-        "resume_print.html",
-        {
-            "resume": resume_data,
-            "job": job
-        }
-    )
-
-@app.get("/cover-letters/render/{job_id}", response_class=HTMLResponse)
-def render_tailored_cover_letter(job_id: int, request: Request, db: Session = Depends(get_db)):
-    cl_doc = db.query(TailoredDocument).filter(
-        TailoredDocument.job_id == job_id, 
-        TailoredDocument.document_type == "cover_letter"
-    ).first()
-    
-    if not cl_doc:
-        raise HTTPException(status_code=404, detail="Cover letter not generated yet.")
-        
-    resume_data = get_base_resume()
-    job = db.query(JobApplication).filter(JobApplication.id == job_id).first()
-    paragraphs = cl_doc.content.split("\n\n")
-    
-    return templates.TemplateResponse(
-        request,
-        "cover_letter_print.html",
-        {
-            "paragraphs": paragraphs,
-            "resume": resume_data,
-            "job": job,
-            "date_today": datetime.utcnow().strftime("%B %d, %Y")
-        }
-    )
-
-@app.get("/jobs/{job_id}/download-resume")
-def download_resume(job_id: int, db: Session = Depends(get_db)):
-    from .services.autofill_service import compile_resume_to_pdf
-    pdf_path = compile_resume_to_pdf(job_id)
-    if not os.path.exists(pdf_path):
-        raise HTTPException(status_code=500, detail="Failed to compile PDF")
-    job = db.query(JobApplication).filter_by(id=job_id).first()
-    comp = job.company_name.replace(" ", "_") if job else "Company"
-    title = job.job_title.replace(" ", "_") if job else "Role"
-    filename = f"Deshraj_Jogiya_Resume_{comp}_{title}.pdf"
-    return FileResponse(pdf_path, media_type="application/pdf", filename=filename)
-
-@app.get("/jobs/{job_id}/download-cover-letter")
-def download_cover_letter(job_id: int, db: Session = Depends(get_db)):
-    from .services.autofill_service import compile_cover_letter_to_pdf
-    pdf_path = compile_cover_letter_to_pdf(job_id)
-    if not os.path.exists(pdf_path):
-        raise HTTPException(status_code=500, detail="Failed to compile PDF")
-    job = db.query(JobApplication).filter_by(id=job_id).first()
-    comp = job.company_name.replace(" ", "_") if job else "Company"
-    title = job.job_title.replace(" ", "_") if job else "Role"
-    filename = f"Deshraj_Jogiya_Cover_Letter_{comp}_{title}.pdf"
-    return FileResponse(pdf_path, media_type="application/pdf", filename=filename)
-
-@app.get("/api/logs")
-def get_activity_logs(db: Session = Depends(get_db)):
-    from .models import ActivityLog
-    logs = db.query(ActivityLog).order_by(ActivityLog.timestamp.desc()).limit(45).all()
-    return [{"message": l.message, "level": l.level, "timestamp": l.timestamp.strftime("%Y-%m-%d %H:%M:%S")} for l in logs]
-
-@app.get("/api/jobs/statuses")
-def get_job_statuses(db: Session = Depends(get_db)):
-    jobs = db.query(JobApplication).all()
-    return {str(j.id): j.status for j in jobs}
-
-@app.get("/api/queries")
-def get_search_queries(db: Session = Depends(get_db)):
-    from .models import SearchKeyword
-    queries = db.query(SearchKeyword).all()
-    return [{"id": q.id, "keyword": q.keyword, "is_active": q.is_active} for q in queries]
-
-@app.post("/api/queries")
-def add_search_query(keyword: str = Form(...), db: Session = Depends(get_db)):
-    from .models import SearchKeyword
-    keyword_clean = keyword.strip()
-    if not keyword_clean:
-        raise HTTPException(status_code=400, detail="Keyword cannot be empty")
-    
-    # Check duplicate
-    exists = db.query(SearchKeyword).filter(SearchKeyword.keyword == keyword_clean).first()
-    if exists:
-        return RedirectResponse(url="/", status_code=303)
-        
-    q = SearchKeyword(keyword=keyword_clean, is_active=True)
-    db.add(q)
-    db.commit()
-    
-    log_activity(db, f"Added search query keyword: {keyword_clean}")
-    return RedirectResponse(url="/", status_code=303)
-
-@app.post("/api/queries/{query_id}/delete")
-def delete_search_query(query_id: int, db: Session = Depends(get_db)):
-    from .models import SearchKeyword
-    q = db.query(SearchKeyword).filter(SearchKeyword.id == query_id).first()
-    if q:
-        kw = q.keyword
-        db.delete(q)
-        db.commit()
-        log_activity(db, f"Deleted search query keyword: {kw}")
-    return RedirectResponse(url="/", status_code=303)
-
-@app.post("/api/queries/{query_id}/toggle")
-def toggle_search_query(query_id: int, db: Session = Depends(get_db)):
-    from .models import SearchKeyword
-    q = db.query(SearchKeyword).filter(SearchKeyword.id == query_id).first()
-    if q:
-        q.is_active = not q.is_active
-        db.commit()
-        log_activity(db, f"Toggled keyword '{q.keyword}' to {'Active' if q.is_active else 'Inactive'}")
-    return RedirectResponse(url="/", status_code=303)
-
