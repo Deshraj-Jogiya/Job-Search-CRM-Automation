@@ -104,6 +104,12 @@ not a patch of the old repo. Don't reintroduce those patterns.
 - [ ] **Phase 2**: Multi-source job intake — LinkedIn + Adzuna + direct
       Greenhouse/Lever/Ashby, tiered polling (cheap check vs. full
       ingest), fuzzy dedup, scam/repost/staleness flagging, company memory.
+      (Slice 1 done: LinkedIn + Adzuna, dedup, repost/scam/staleness
+      flagging, company memory via `Company` rows, keyword management,
+      kill-switch-gated scheduler. Direct Greenhouse/Lever/Ashby board
+      discovery is slice 2 -- deferred since it needs a target-company
+      strategy, most naturally built once slice 1's `Company` table has
+      real data to auto-detect board slugs against.)
 - [ ] **Phase 3**: Matching/tailoring/scoring — wire in the multi-pass
       refine-and-verify tailoring loop, independent cover-letter scoring,
       real recomputed post-tailor score (no placeholder/random score).
