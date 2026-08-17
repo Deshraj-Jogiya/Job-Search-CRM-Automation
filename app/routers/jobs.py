@@ -21,7 +21,8 @@ from sqlalchemy.orm import Session
 
 from ..database import SessionLocal, get_db
 from ..models import JobApplication, JobPosting, JobSource, SearchKeyword, TailoredDocument, get_or_create_settings
-from ..services import intake_service, matching_service, tailoring_service
+from ..services import confirmation_service, intake_service, matching_service, tailoring_service
+from ..services.confirmation_service import ConfirmationServiceError
 from ..services.matching_service import MatchingServiceError
 from ..templating import render
 
@@ -211,3 +212,30 @@ def tailor_application_now(application_id: int, db: Session = Depends(get_db)):
     return _redirect_detail(
         application_id, message="Tailoring started -- this runs several AI passes, refresh in ~30-60s."
     )
+
+
+@router.post("/{application_id}/approve")
+def approve_application_now(application_id: int, db: Session = Depends(get_db)):
+    try:
+        confirmation_service.approve_application(db, application_id)
+        return _redirect_detail(application_id, message="Approved.")
+    except ConfirmationServiceError as e:
+        return _redirect_detail(application_id, error=str(e))
+
+
+@router.post("/{application_id}/reject")
+def reject_application_now(application_id: int, db: Session = Depends(get_db)):
+    try:
+        confirmation_service.reject_application(db, application_id)
+        return _redirect_detail(application_id, message="Rejected.")
+    except ConfirmationServiceError as e:
+        return _redirect_detail(application_id, error=str(e))
+
+
+@router.post("/{application_id}/mark-applied")
+def mark_applied_now(application_id: int, db: Session = Depends(get_db)):
+    try:
+        confirmation_service.mark_applied(db, application_id)
+        return _redirect_detail(application_id, message="Marked as Applied.")
+    except ConfirmationServiceError as e:
+        return _redirect_detail(application_id, error=str(e))

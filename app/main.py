@@ -17,6 +17,7 @@ from .csrf import CSRFMiddleware
 from .templating import render
 from .routers import profile as profile_router
 from .routers import jobs as jobs_router
+from .routers import confirmation as confirmation_router
 from .services import scheduler as bg_scheduler
 
 Base.metadata.create_all(bind=engine)
@@ -58,6 +59,7 @@ os.makedirs("app/static/css", exist_ok=True)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(profile_router.router)
 app.include_router(jobs_router.router)
+app.include_router(confirmation_router.router)
 
 
 @app.on_event("startup")
@@ -114,6 +116,10 @@ def update_settings(
     fast_track_window_hours: float = Form(...),
     rejected_retention_days: int = Form(...),
     daily_outreach_cap: int = Form(...),
+    quiet_hours_enabled: bool = Form(False),
+    quiet_hours_start_hour: int = Form(...),
+    quiet_hours_end_hour: int = Form(...),
+    local_timezone: str = Form(...),
     db: Session = Depends(get_db),
 ):
     """Every tunable number in the product is editable here -- nothing
@@ -128,5 +134,9 @@ def update_settings(
     settings.fast_track_window_hours = fast_track_window_hours
     settings.rejected_retention_days = rejected_retention_days
     settings.daily_outreach_cap = daily_outreach_cap
+    settings.quiet_hours_enabled = quiet_hours_enabled
+    settings.quiet_hours_start_hour = quiet_hours_start_hour
+    settings.quiet_hours_end_hour = quiet_hours_end_hour
+    settings.local_timezone = local_timezone.strip()
     db.commit()
     return RedirectResponse(url="/", status_code=303)

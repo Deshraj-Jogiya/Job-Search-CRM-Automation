@@ -77,6 +77,23 @@
                     <input type="number" name="daily_outreach_cap" value="{{ settings.daily_outreach_cap }}" min="0">
                 </label>
 
+                <label class="checkbox-label">
+                    <input type="checkbox" name="quiet_hours_enabled" value="true" {{ "checked" if settings.quiet_hours_enabled }}>
+                    Quiet hours enabled (push deadlines past this window)
+                </label>
+
+                <label>Quiet hours start (local, 0-23)
+                    <input type="number" name="quiet_hours_start_hour" value="{{ settings.quiet_hours_start_hour }}" min="0" max="23">
+                </label>
+
+                <label>Quiet hours end (local, 0-23)
+                    <input type="number" name="quiet_hours_end_hour" value="{{ settings.quiet_hours_end_hour }}" min="0" max="23">
+                </label>
+
+                <label>Local timezone (IANA name)
+                    <input type="text" name="local_timezone" value="{{ settings.local_timezone }}" placeholder="America/Phoenix">
+                </label>
+
                 <button type="submit">Save Settings</button>
             </form>
         </section>
