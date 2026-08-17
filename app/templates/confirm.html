@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Career Pilot -- Confirm</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header class="topbar">
+        <h1>Career Pilot</h1>
+    </header>
+
+    <main>
+        {% if message %}
+        <div class="flash flash-ok">{{ message }}</div>
+        {% endif %}
+
+        <section class="variant-block">
+            <h2>{{ posting.job_title }} at {{ posting.company_name_raw }}</h2>
+            <p class="muted-note">
+                {{ application.match_score }}% match
+                <span class="badge">{{ application.status }}</span>
+            </p>
+
+            {% if application.attention_reason %}
+            <div class="flash flash-error">{{ application.attention_reason }}</div>
+            {% endif %}
+
+            {% if application.status == "Pending Confirmation" %}
+            <p class="muted-note">
+                If you don't act, this auto-proceeds at
+                {{ application.confirmation_deadline.strftime("%Y-%m-%d %H:%M") }} UTC.
+            </p>
+            {% elif application.status == "Needs Review" %}
+            <p class="muted-note">No timeout on this one -- it waits for your decision.</p>
+            {% endif %}
+
+            <p><a href="{{ posting.job_url }}" target="_blank" rel="noopener">View original posting &#8599;</a></p>
+
+            {% if application.status in ("Pending Confirmation", "Needs Review") %}
+            <div class="pending-actions">
+                <form method="post" action="/confirm/{{ application.id }}/approve" class="inline-form">
+                    <input type="hidden" name="token" value="{{ token }}">
+                    <button type="submit">Approve</button>
+                </form>
+                <form method="post" action="/confirm/{{ application.id }}/reject" class="inline-form">
+                    <input type="hidden" name="token" value="{{ token }}">
+                    <button type="submit" class="btn-danger">Reject</button>
+                </form>
+            </div>
+            {% else %}
+            <p class="muted-note">This application is already {{ application.status }} -- nothing left to decide here.</p>
+            {% endif %}
+        </section>
+    </main>
+</body>
+</html>
