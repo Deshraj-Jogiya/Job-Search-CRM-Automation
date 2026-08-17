@@ -246,6 +246,7 @@ class GlobalSettings(Base):
     # Phase 2: intake cadence
     fast_poll_interval_minutes = Column(Integer, default=10)   # cheap "anything new?" check
     full_ingest_interval_minutes = Column(Integer, default=15)  # full scoring/tailoring pass
+    stale_posting_threshold_days = Column(Integer, default=45)  # flag postings open longer than this (warning only)
 
     # Phase 4: confirmation queue
     confirmation_window_hours = Column(Float, default=15.0)
