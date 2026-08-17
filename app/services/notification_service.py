@@ -1,25 +1,35 @@
 """
-Phase 4: notifications for the confirmation queue. This is the actual
-mechanism that makes a short fast-track window workable without
-requiring the user to be watching the dashboard -- a one-click
-approve/reject link goes out the moment an application enters the
-queue, reachable from wherever the user is (see CLAUDE.md's Phase 4
-design notes). Email only for now; Telegram/Discord could follow the
-same is_configured()-gated pattern later.
+Phase 4: notifications for the confirmation queue.
 
-Gracefully no-ops (logs once, doesn't raise) if SMTP isn't configured
--- same pattern as every other optional integration in this project
-(Adzuna, portfolio sync).
+Two paths, deliberately not one-email-per-application (see CLAUDE.md's
+2026-08-17 notification volume revision -- the first version of this
+sent an individual email for every queued application, which is a
+disaster the moment several queue at once):
+
+- send_confirmation_notification(): an immediate, individual one-click
+  email. Only called for fast-track applications (see
+  confirmation_service.evaluate_and_enqueue) -- rare by design, and the
+  one case where per-item speed still matters more than batching.
+- send_digest(): a single periodic email summarizing everything else
+  that's queued and not yet notified about, pointing at the bulk
+  review page (app/routers/jobs.py's /jobs/review) rather than trying
+  to carry approve/reject actions for every item inline.
+
+Email only for now; Telegram/Discord could follow the same
+is_configured()-gated pattern later. Gracefully no-ops (logs once,
+doesn't raise) if SMTP isn't configured -- same pattern as every other
+optional integration in this project (Adzuna, portfolio sync).
 """
 
 import os
 import smtplib
+from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 from sqlalchemy.orm import Session
 
-from ..models import JobApplication
+from ..models import JobApplication, get_or_create_settings
 from . import confirmation_tokens
 from .activity_logger import log_activity
 
@@ -94,3 +104,58 @@ def send_confirmation_notification(db: Session, application: JobApplication) -> 
     except Exception as e:
         log_activity(db, f"Failed to send confirmation email: {e}", "ERROR")
         return False
+
+
+def send_digest(db: Session) -> int:
+    """Batches every application that's queued (Pending Confirmation or
+    Needs Review) and hasn't been notified about yet into ONE email,
+    pointing at the bulk review page. Called from the scheduler tick;
+    a no-op if nothing new has queued, or if the digest interval hasn't
+    elapsed yet. Returns the number of applications included."""
+    if not is_configured():
+        return 0
+
+    settings = get_or_create_settings(db)
+    now = datetime.utcnow()
+    if settings.last_digest_sent_at is not None:
+        elapsed = now - settings.last_digest_sent_at
+        if elapsed < timedelta(minutes=settings.notification_digest_interval_minutes):
+            return 0
+
+    pending = (
+        db.query(JobApplication)
+        .filter(
+            JobApplication.status.in_(["Pending Confirmation", "Needs Review"]),
+            JobApplication.notification_sent == False,  # noqa: E712
+        )
+        .all()
+    )
+    if not pending:
+        return 0
+
+    to_addr = os.getenv("SMTP_USER")
+    review_link = f"{_base_url()}/jobs/review"
+
+    lines = [f"{len(pending)} application(s) awaiting your review:\n"]
+    for application in pending:
+        posting = application.posting
+        flag = f" [FLAGGED: {application.attention_reason}]" if application.attention_reason else ""
+        lines.append(f"- {posting.job_title} at {posting.company_name_raw} ({application.match_score}% match){flag}")
+    lines.append(f"\nReview and decide: {review_link}\n")
+    body = "\n".join(lines)
+
+    subject = f"{len(pending)} application(s) awaiting review"
+
+    try:
+        _send_email(to_addr, subject, body)
+    except Exception as e:
+        log_activity(db, f"Failed to send digest email: {e}", "ERROR")
+        return 0
+
+    for application in pending:
+        application.notification_sent = True
+    settings.last_digest_sent_at = now
+    db.commit()
+
+    log_activity(db, f"Sent digest email covering {len(pending)} application(s).", "INFO")
+    return len(pending)

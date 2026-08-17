@@ -10,6 +10,7 @@
         <h1>Career Pilot</h1>
         <nav class="topnav">
             <a href="/jobs">Jobs</a>
+            <a href="/jobs/review">Review Queue</a>
             <a href="/profile">Profile</a>
             <form method="post" action="/settings/automation/toggle" class="inline-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -92,6 +93,10 @@
 
                 <label>Local timezone (IANA name)
                     <input type="text" name="local_timezone" value="{{ settings.local_timezone }}" placeholder="America/Phoenix">
+                </label>
+
+                <label>Notification digest interval (minutes)
+                    <input type="number" name="notification_digest_interval_minutes" value="{{ settings.notification_digest_interval_minutes }}" min="1">
                 </label>
 
                 <button type="submit">Save Settings</button>
