@@ -8,13 +8,14 @@ load_dotenv()
 from fastapi import FastAPI, Depends, Form, Request, HTTPException
 from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy.orm import Session
 
 from .database import engine, Base, get_db
 from .models import GlobalSettings, get_or_create_settings, JobApplication, ProfileVariant
-from .csrf import CSRFMiddleware, get_csrf_token
+from .csrf import CSRFMiddleware
+from .templating import render
+from .routers import profile as profile_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -53,12 +54,7 @@ app.add_middleware(CSRFMiddleware)
 
 os.makedirs("app/static/css", exist_ok=True)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
-templates = Jinja2Templates(directory="app/templates")
-
-
-def render(request: Request, template_name: str, context: dict):
-    context["csrf_token"] = get_csrf_token(request)
-    return templates.TemplateResponse(request, template_name, context)
+app.include_router(profile_router.router)
 
 
 @app.get("/api/health")
