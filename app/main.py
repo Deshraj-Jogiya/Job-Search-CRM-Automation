@@ -120,6 +120,7 @@ def update_settings(
     quiet_hours_start_hour: int = Form(...),
     quiet_hours_end_hour: int = Form(...),
     local_timezone: str = Form(...),
+    notification_digest_interval_minutes: int = Form(...),
     db: Session = Depends(get_db),
 ):
     """Every tunable number in the product is editable here -- nothing
@@ -133,6 +134,7 @@ def update_settings(
     settings.fast_track_freshness_minutes = fast_track_freshness_minutes
     settings.fast_track_window_hours = fast_track_window_hours
     settings.rejected_retention_days = rejected_retention_days
+    settings.notification_digest_interval_minutes = notification_digest_interval_minutes
     settings.daily_outreach_cap = daily_outreach_cap
     settings.quiet_hours_enabled = quiet_hours_enabled
     settings.quiet_hours_start_hour = quiet_hours_start_hour

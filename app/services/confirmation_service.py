@@ -85,14 +85,22 @@ def has_hard_stop_flag(application: JobApplication) -> str | None:
 
 
 def evaluate_and_enqueue(db: Session, application_id: int) -> JobApplication:
-    """Call once tailoring succeeds. Routes to Needs Review (flagged,
-    no timeout) or Pending Confirmation (clean, timed, notified)."""
+    """Call once tailoring succeeds. Routes to Needs Review (flagged, no
+    timeout) or Pending Confirmation (clean, timed).
+
+    Notification volume fix (2026-08-17): queueing many applications at
+    once must not mean an email per application -- only fast-track
+    (rare, speed-critical) gets an immediate individual email. Everything
+    else is left with notification_sent=False and picked up by the next
+    periodic digest (see notification_service.send_digest()), which
+    points at the bulk review page instead of listing every item inline."""
     application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
     if not application:
         raise ConfirmationServiceError(f"Application {application_id} not found.")
 
     settings = get_or_create_settings(db)
     hard_stop_reason = has_hard_stop_flag(application)
+    is_fast_track = False
 
     if hard_stop_reason:
         application.status = "Needs Review"
@@ -119,8 +127,12 @@ def evaluate_and_enqueue(db: Session, application_id: int) -> JobApplication:
             "INFO",
         )
 
-    from . import notification_service
-    notification_service.send_confirmation_notification(db, application)
+    if is_fast_track:
+        from . import notification_service
+        if notification_service.send_confirmation_notification(db, application):
+            application.notification_sent = True
+            db.commit()
+    # else: leave notification_sent=False -- the digest sweep picks it up.
 
     return application
 

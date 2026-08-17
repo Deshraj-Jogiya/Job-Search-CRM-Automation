@@ -1,19 +1,20 @@
 """
 Background scheduler. Runs one tick that: polls whichever intake
 sources are due (Phase 2), auto-proceeds any Pending Confirmation
-application whose deadline has passed, and sweeps Rejected applications
-past their retention window (Phase 4). Each of those internally checks
-GlobalSettings.automation_enabled fresh before doing real work, per
-CLAUDE.md's kill-switch convention -- this file just needs to fire
-often enough that the shortest configured interval/deadline isn't
-missed by much, it does not encode cadence itself.
+application whose deadline has passed, sweeps Rejected applications
+past their retention window, and sends the notification digest if
+anything new is queued and the digest interval has elapsed (Phase 4).
+Each of those internally checks GlobalSettings.automation_enabled
+fresh before doing real work, per CLAUDE.md's kill-switch convention --
+this file just needs to fire often enough that the shortest configured
+interval/deadline isn't missed by much, it does not encode cadence itself.
 """
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from ..database import SessionLocal
 from ..models import get_or_create_settings
-from . import confirmation_service, intake_service
+from . import confirmation_service, intake_service, notification_service
 
 scheduler = BackgroundScheduler()
 
@@ -29,6 +30,7 @@ def _tick() -> None:
         if settings.automation_enabled:
             confirmation_service.sweep_expired_confirmations(db)
             confirmation_service.sweep_rejected_retention(db)
+            notification_service.send_digest(db)
     except Exception as e:
         print(f"Error in scheduler tick: {e}")
     finally:
