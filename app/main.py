@@ -16,6 +16,8 @@ from .models import GlobalSettings, get_or_create_settings, JobApplication, Prof
 from .csrf import CSRFMiddleware
 from .templating import render
 from .routers import profile as profile_router
+from .routers import jobs as jobs_router
+from .services import scheduler as bg_scheduler
 
 Base.metadata.create_all(bind=engine)
 
@@ -55,6 +57,17 @@ app.add_middleware(CSRFMiddleware)
 os.makedirs("app/static/css", exist_ok=True)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(profile_router.router)
+app.include_router(jobs_router.router)
+
+
+@app.on_event("startup")
+def on_startup():
+    bg_scheduler.start_scheduler()
+
+
+@app.on_event("shutdown")
+def on_shutdown():
+    bg_scheduler.stop_scheduler()
 
 
 @app.get("/api/health")
@@ -94,6 +107,7 @@ def toggle_automation(db: Session = Depends(get_db)):
 def update_settings(
     fast_poll_interval_minutes: int = Form(...),
     full_ingest_interval_minutes: int = Form(...),
+    stale_posting_threshold_days: int = Form(...),
     confirmation_window_hours: float = Form(...),
     fast_track_score_threshold: int = Form(...),
     fast_track_freshness_minutes: int = Form(...),
@@ -107,6 +121,7 @@ def update_settings(
     settings = get_or_create_settings(db)
     settings.fast_poll_interval_minutes = fast_poll_interval_minutes
     settings.full_ingest_interval_minutes = full_ingest_interval_minutes
+    settings.stale_posting_threshold_days = stale_posting_threshold_days
     settings.confirmation_window_hours = confirmation_window_hours
     settings.fast_track_score_threshold = fast_track_score_threshold
     settings.fast_track_freshness_minutes = fast_track_freshness_minutes
