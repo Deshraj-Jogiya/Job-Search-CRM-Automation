@@ -91,6 +91,52 @@
             <p class="muted-note">Not tailored yet -- click "Tailor Resume & Cover Letter" to run the multi-pass AI tailoring loop against your active profile.</p>
             {% endif %}
         </section>
+
+        {% if application.status in ("Pending Confirmation", "Needs Review") %}
+        <section class="variant-block">
+            <h2>Confirmation</h2>
+            {% if application.status == "Pending Confirmation" %}
+            <p class="muted-note">
+                Auto-proceeds at <strong>{{ application.confirmation_deadline.strftime("%Y-%m-%d %H:%M") }} UTC</strong>
+                if you don't act. You should also have gotten an email with a one-click link.
+            </p>
+            {% else %}
+            <p class="muted-note">No timeout on this one -- flagged above, it waits for your explicit decision no matter how long that takes.</p>
+            {% endif %}
+            <div class="pending-actions">
+                <form method="post" action="/jobs/{{ application.id }}/approve" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit">Approve</button>
+                </form>
+                <form method="post" action="/jobs/{{ application.id }}/reject" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn-danger">Reject</button>
+                </form>
+            </div>
+        </section>
+        {% elif application.status == "Approved" %}
+        <section class="variant-block">
+            <h2>Approved -- Ready to Submit</h2>
+            <p class="muted-note">
+                Tailored documents above are ready. There's no automated submission yet -- go apply using them,
+                then come back and mark it once you have.
+            </p>
+            <form method="post" action="/jobs/{{ application.id }}/mark-applied" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit">Mark as Applied</button>
+            </form>
+        </section>
+        {% elif application.status == "Applied" %}
+        <section class="variant-block">
+            <h2>Applied</h2>
+            <p class="muted-note">Marked applied {{ application.applied_at.strftime("%Y-%m-%d %H:%M") }} UTC.</p>
+        </section>
+        {% elif application.status == "Rejected" %}
+        <section class="variant-block">
+            <h2>Rejected</h2>
+            <p class="muted-note">Rejected {{ application.rejected_at.strftime("%Y-%m-%d %H:%M") }} UTC -- will be cleaned up automatically after the retention window.</p>
+        </section>
+        {% endif %}
     </main>
 </body>
 </html>
