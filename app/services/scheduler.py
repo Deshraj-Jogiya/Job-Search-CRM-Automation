@@ -1,146 +1,40 @@
-import os
-import json
-import threading
+"""
+Background scheduler for job intake. Runs run_intake_cycle() on a fixed
+tick; the cycle itself decides per-call whether each source is actually
+due (see intake_service._is_due) and whether automation is enabled at
+all (the kill switch), so this file just needs to fire often enough
+that the shortest configured interval (fast_poll_interval_minutes)
+isn't missed by much -- it does not encode cadence itself.
+"""
+
 from apscheduler.schedulers.background import BackgroundScheduler
+
 from ..database import SessionLocal
-from . import crawler, autofill_service, email_monitor, ai_service, networking_service
-from .activity_logger import log_activity
-from ..models import JobApplication, TailoredDocument
+from . import intake_service
 
 scheduler = BackgroundScheduler()
 
-def get_base_resume():
-    """Load the candidate profile details from json."""
-    base_resume_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "base_resume.json")
-    if os.path.exists(base_resume_path):
-        with open(base_resume_path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
+_TICK_MINUTES = 5
 
-def run_instant_pipeline_for_job(job_id: int):
-    """End-to-end background pipeline for a single ingested job:
-    Sourcing Recruiter -> AI Resume/CL Tailoring -> Playwright Autofill Application.
-    """
+
+def _tick() -> None:
     db = SessionLocal()
     try:
-        job = db.query(JobApplication).filter_by(id=job_id).first()
-        if not job:
-            return
-            
-        log_activity(db, f"Starting automation pipeline for: {job.job_title} at {job.company_name}", "INFO")
-        
-        # 1. Recruiter Sourcing
-        if not job.recruiter_name or not job.recruiter_email:
-            recruiter_name, recruiter_url = networking_service.search_recruiter(job.company_name)
-            if recruiter_name:
-                job.recruiter_name = recruiter_name
-                job.recruiter_linkedin = recruiter_url
-                email_guess = networking_service.guess_recruiter_email(recruiter_name, job.company_name)
-                job.recruiter_email = email_guess
-                log_activity(db, f"Sourced recruiter: {recruiter_name} ({email_guess})", "INFO")
-                db.commit()
-                
-        # 2. AI Resume & Cover Letter Tailoring
-        existing_res = db.query(TailoredDocument).filter_by(job_id=job.id, document_type="resume").first()
-        if not existing_res:
-            resume_data = get_base_resume()
-            log_activity(db, f"Tailoring resume, summary, skills, and selecting projects for {job.company_name}...", "INFO")
-            tailored_resume_json = ai_service.tailor_resume(resume_data, job.job_description)
-            
-            res_doc = TailoredDocument(
-                job_id=job.id,
-                document_type="resume",
-                content=json.dumps(tailored_resume_json)
-            )
-            db.add(res_doc)
-            
-            log_activity(db, f"Generating custom cover letter for {job.company_name}...", "INFO")
-            cl_text = ai_service.generate_cover_letter(resume_data, job.company_name, job.job_title, job.job_description)
-            cl_doc = TailoredDocument(
-                job_id=job.id,
-                document_type="cover_letter",
-                content=cl_text
-            )
-            db.add(cl_doc)
-            
-            job.status = "Tailored"
-            import random
-            job.match_score = random.randint(95, 98)
-            db.commit()
-            log_activity(db, f"Tailored documents successfully generated. Match score updated to {job.match_score}% to reflect tailored alignment.", "INFO")
-            
-        # 3. Playwright Autofill Auto-Apply
-        if job.match_score >= 50:
-            log_activity(db, f"Triggering Playwright auto-apply for match score: {job.match_score}%...", "INFO")
-            autofill_service.autofill_job_application(job.id, auto_submit=True)
-        else:
-            log_activity(db, f"Match score {job.match_score}% is below 50%. Keeping in queue for manual review.", "INFO")
-            
+        intake_service.run_intake_cycle(db)
     except Exception as e:
-        log_activity(db, f"Error running automation pipeline for job {job_id}: {e}", "ERROR")
-        print(f"Error in instant pipeline: {e}")
+        print(f"Error in scheduler tick: {e}")
     finally:
         db.close()
 
-def trigger_crawling_and_apply_job(timeframe: str = "24h", location: str = "United States"):
-    """Trigger the public job crawler, auto-tailor, auto-apply, and run email inbox scan."""
-    db = SessionLocal()
-    resume_data = get_base_resume()
-    try:
-        # 1. Scrape new jobs with timeframe filter and location
-        new_job_ids = crawler.run_daily_crawl_and_ingest(db, resume_data, timeframe=timeframe, location=location)
-        
-        # 2. Trigger instant pipeline sequentially for each new job to respect API rate limits
-        import time
-        for j_id in new_job_ids:
-            try:
-                run_instant_pipeline_for_job(j_id)
-                time.sleep(3)
-            except Exception as pe:
-                print(f"Error executing sequential pipeline for job {j_id}: {pe}")
-        
-        # 2. Scan IMAP inbox for status updates (rejections, interviews)
-        print("Starting scheduled email status updates check...")
-        email_monitor.scan_inbox_for_updates()
-        
-    except Exception as e:
-        print(f"Error in scheduled crawling and apply loop: {e}")
-    finally:
-        db.close()
 
-def start_scheduler():
-    """Initialize and start background cron/interval job searches."""
+def start_scheduler() -> None:
     if not scheduler.running:
-        # Run active crawler & apply queue every 15 minutes
-        scheduler.add_job(trigger_crawling_and_apply_job, trigger='interval', minutes=15, name="realtime_job_crawler")
+        scheduler.add_job(_tick, trigger="interval", minutes=_TICK_MINUTES, name="job_intake_tick")
         scheduler.start()
-        print("Background real-time job crawler & apply scheduler has started.")
-        
-        # Trigger an initial crawl at startup
-        threading.Thread(target=trigger_crawling_and_apply_job, daemon=True).start()
+        print(f"Background job intake scheduler started (tick every {_TICK_MINUTES}m).")
 
-def stop_scheduler():
+
+def stop_scheduler() -> None:
     if scheduler.running:
         scheduler.shutdown()
-        print("Background scheduler has shutdown.")
-
-def process_stuck_ingested_jobs():
-    """Wakes up and processes any jobs currently stuck in the Ingested queue."""
-    db = SessionLocal()
-    try:
-        stuck_jobs = db.query(JobApplication).filter_by(status="Ingested").all()
-        if stuck_jobs:
-            log_activity(db, f"Found {len(stuck_jobs)} stuck Ingested jobs. Launching background processor...", "WARNING")
-            import time
-            for job in stuck_jobs:
-                try:
-                    run_instant_pipeline_for_job(job.id)
-                    time.sleep(3)
-                except Exception as e:
-                    log_activity(db, f"Error processing stuck job {job.id}: {e}", "ERROR")
-                    print(f"Error processing stuck job {job.id}: {e}")
-    except Exception as e:
-        log_activity(db, f"Error in stuck jobs processor: {e}", "ERROR")
-        print(f"Error in stuck jobs processor: {e}")
-    finally:
-        db.close()
+        print("Background scheduler shut down.")

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Career Pilot -- Jobs</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header class="topbar">
+        <h1><a href="/" class="plain-link">Career Pilot</a> / Jobs</h1>
+    </header>
+
+    <main>
+        {% if message %}
+        <div class="flash flash-ok">{{ message }}</div>
+        {% endif %}
+        {% if error %}
+        <div class="flash flash-error">{{ error }}</div>
+        {% endif %}
+
+        <section class="settings-panel">
+            <div class="variant-header">
+                <h2>Intake Sources</h2>
+                <form method="post" action="/jobs/intake/run" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit">Run Intake Now</button>
+                </form>
+            </div>
+            {% if not automation_enabled %}
+            <p class="muted-note">Automation is currently OFF -- the scheduled tick and "Run Intake Now" are both paused. Toggle it on the <a href="/">dashboard</a>.</p>
+            {% endif %}
+            <ul class="version-history">
+                {% for source in sources %}
+                <li>
+                    <span class="badge {% if source.is_active %}badge-active{% endif %}">{{ source.name }}</span>
+                    {{ "active" if source.is_active else "paused" }}
+                    &middot; last polled: {{ source.last_polled_at.strftime("%Y-%m-%d %H:%M") if source.last_polled_at else "never" }} UTC
+                    &middot; calls this period: {{ source.calls_used_this_period }}
+                    {% if source.last_error %}&middot; <span class="flash-error-inline">{{ source.last_error }}</span>{% endif %}
+                    <form method="post" action="/jobs/sources/{{ source.id }}/toggle" class="inline-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="btn-secondary">{{ "Pause" if source.is_active else "Resume" }}</button>
+                    </form>
+                </li>
+                {% else %}
+                <li class="muted-note">No sources polled yet -- run intake once to initialize them.</li>
+                {% endfor %}
+            </ul>
+        </section>
+
+        <section class="settings-panel">
+            <h2>Search Keywords</h2>
+            <form method="post" action="/jobs/keywords" class="inline-form-row">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="text" name="keyword" placeholder="e.g. Data Engineer" required>
+                <button type="submit">Add</button>
+            </form>
+            {% if keywords %}
+            <ul class="version-history">
+                {% for kw in keywords %}
+                <li>
+                    <span class="badge {% if kw.is_active %}badge-active{% endif %}">{{ "active" if kw.is_active else "paused" }}</span>
+                    {{ kw.keyword }}
+                    <form method="post" action="/jobs/keywords/{{ kw.id }}/toggle" class="inline-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="btn-secondary">{{ "Pause" if kw.is_active else "Resume" }}</button>
+                    </form>
+                    <form method="post" action="/jobs/keywords/{{ kw.id }}/delete" class="inline-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="btn-danger">Delete</button>
+                    </form>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="muted-note">No custom keywords configured -- intake falls back to a default role list (ML Engineer, Data Engineer, Data Scientist, etc.).</p>
+            {% endif %}
+        </section>
+
+        <section class="variant-block">
+            <h2>Ingested Postings ({{ applications|length }})</h2>
+            {% if applications %}
+            <ul class="job-list">
+                {% for app in applications %}
+                <li class="job-item">
+                    <div class="job-item-header">
+                        <a href="{{ app.posting.job_url }}" target="_blank" rel="noopener">{{ app.posting.job_title }}</a>
+                        <span class="badge">{{ app.posting.source }}</span>
+                        <span class="badge">{{ app.status }}</span>
+                    </div>
+                    <p class="muted-note">
+                        {{ app.posting.company_name_raw }}
+                        &middot; first seen {{ app.posting.first_seen_at.strftime("%Y-%m-%d") }}
+                    </p>
+                    {% if app.posting.staleness_flag or app.posting.scam_flag_reason or app.posting.repost_count > 0 %}
+                    <div class="flag-row">
+                        {% if app.posting.staleness_flag %}<span class="flag-warning">stale listing</span>{% endif %}
+                        {% if app.posting.repost_count > 0 %}<span class="flag-warning">repost x{{ app.posting.repost_count }}</span>{% endif %}
+                        {% if app.posting.scam_flag_reason %}<span class="flag-warning">scam pattern: {{ app.posting.scam_flag_reason }}</span>{% endif %}
+                    </div>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="muted-note">No postings ingested yet -- click "Run Intake Now" above to start, or wait for the scheduled tick.</p>
+            {% endif %}
+        </section>
+    </main>
+</body>
+</html>
