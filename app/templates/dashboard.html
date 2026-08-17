@@ -8,12 +8,15 @@
 <body>
     <header class="topbar">
         <h1>Career Pilot</h1>
-        <form method="post" action="/settings/automation/toggle" class="inline-form">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button type="submit" class="{{ 'btn-on' if settings.automation_enabled else 'btn-off' }}">
-                Automation: {{ "ON" if settings.automation_enabled else "OFF" }}
-            </button>
-        </form>
+        <nav class="topnav">
+            <a href="/profile">Profile</a>
+            <form method="post" action="/settings/automation/toggle" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="{{ 'btn-on' if settings.automation_enabled else 'btn-off' }}">
+                    Automation: {{ "ON" if settings.automation_enabled else "OFF" }}
+                </button>
+            </form>
+        </nav>
     </header>
 
     <main>
@@ -29,7 +32,7 @@
         </section>
 
         <section class="empty-state">
-            <p>Foundation is running. Job intake, tailoring, and the confirmation queue land in the next build phases.</p>
+            <p>Foundation is running, and profile management (Phase 1) is live -- see <a href="/profile">Profile</a>. Job intake, tailoring, and the confirmation queue land in the next build phases.</p>
         </section>
 
         <section class="settings-panel">
