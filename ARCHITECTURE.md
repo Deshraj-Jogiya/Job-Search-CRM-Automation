@@ -28,13 +28,13 @@ this foundation instead of retrofitting it.
 | LLM provider abstraction | `app/services/llm/` | Done — Anthropic, OpenAI-compatible, Ollama |
 | CSRF protection | `app/csrf.py` | Done |
 | Activity logging | `app/services/activity_logger.py` | Done |
-| App skeleton | `app/main.py` | Done — health check, dashboard shell, kill switch, live-editable settings |
+| App skeleton | `app/main.py` | Done — health check, dashboard shell, kill switch, live-editable settings, mounts `app/routers/` |
 | Base template/styling | `app/templates/dashboard.html`, `app/static/css/style.css` | Functional, not polished — Phase "magic pass" is later, deliberately |
+| Living profile (Phase 1) | `app/services/profile_service.py`, `app/routers/profile.py`, `app/templates/profile.html` | Done — profile variants (named flavors), portfolio `resume.json` sync (activates immediately, zero-risk per CLAUDE.md), LinkedIn paste-diff via LLM (creates a **pending** version, requires explicit approve/reject — never auto-activates), manual JSON seed/edit as the bootstrap path since no starter profile data ships with the rebuild. Note: the portfolio site doesn't serve `resume.json` yet, so "Sync from Portfolio" currently fails gracefully with a clear error until that endpoint exists there — manual seed / LinkedIn import are the working paths meanwhile. |
 
 ## What's NOT built yet (by design — next phases)
 
 - Job intake (multi-source crawler: LinkedIn + Adzuna + Greenhouse/Lever/Ashby, fuzzy dedup, scam/repost/staleness detection)
-- Living profile sync (portfolio `resume.json` pull, LinkedIn paste-diff)
 - Matching/tailoring/scoring engine (multi-pass refinement, cover-letter scoring)
 - Confirmation-gated auto-apply + fast-track logic + one-click approve UI
 - Review-gated outreach with daily cap
