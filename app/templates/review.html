@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Career Pilot -- Review</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header class="topbar">
+        <h1><a href="/" class="plain-link">Career Pilot</a> / <a href="/jobs" class="plain-link">Jobs</a> / Review</h1>
+    </header>
+
+    <main>
+        {% if message %}
+        <div class="flash flash-ok">{{ message }}</div>
+        {% endif %}
+        {% if error %}
+        <div class="flash flash-error">{{ error }}</div>
+        {% endif %}
+
+        <section class="variant-block">
+            <h2>Ready for Bulk Review ({{ pending|length }})</h2>
+            <p class="muted-note">Clean matches -- safe to select-all and process together.</p>
+            {% if pending %}
+            <form method="post">
+                <table class="review-table">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" onclick="toggleAll('pending-cb', this.checked)"></th>
+                            <th>Company</th>
+                            <th>Title</th>
+                            <th>Score</th>
+                            <th>Auto-proceeds</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for app in pending %}
+                        <tr>
+                            <td><input type="checkbox" class="pending-cb" name="application_ids" value="{{ app.id }}"></td>
+                            <td>{{ app.posting.company_name_raw }}</td>
+                            <td><a href="/jobs/{{ app.id }}">{{ app.posting.job_title }}</a></td>
+                            <td>{{ app.match_score }}%</td>
+                            <td>{{ app.confirmation_deadline.strftime("%Y-%m-%d %H:%M") if app.confirmation_deadline else "--" }} UTC</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="pending-actions">
+                    <button type="submit" formaction="/jobs/review/approve">Approve Selected</button>
+                    <button type="submit" formaction="/jobs/review/reject" class="btn-danger">Reject Selected</button>
+                </div>
+            </form>
+            {% else %}
+            <p class="muted-note">Nothing waiting here right now.</p>
+            {% endif %}
+        </section>
+
+        <section class="variant-block">
+            <h2>Needs Review -- Flagged ({{ needs_review|length }})</h2>
+            <p class="muted-note">
+                These were flagged (tailoring fabrication warning, or a scam-pattern match) and have no timeout --
+                deliberately kept separate from bulk selection above so a habit of "select all" can't wave through
+                something that needs individual judgment. Open each one to see why before deciding.
+            </p>
+            {% if needs_review %}
+            <form method="post">
+                <table class="review-table">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" onclick="toggleAll('review-cb', this.checked)"></th>
+                            <th>Company</th>
+                            <th>Title</th>
+                            <th>Flag</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for app in needs_review %}
+                        <tr>
+                            <td><input type="checkbox" class="review-cb" name="application_ids" value="{{ app.id }}"></td>
+                            <td>{{ app.posting.company_name_raw }}</td>
+                            <td><a href="/jobs/{{ app.id }}">{{ app.posting.job_title }}</a></td>
+                            <td class="flash-error-inline">{{ app.attention_reason or (app.posting.scam_flag_reason if app.posting else "") }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="pending-actions">
+                    <button type="submit" formaction="/jobs/review/approve">Approve Selected</button>
+                    <button type="submit" formaction="/jobs/review/reject" class="btn-danger">Reject Selected</button>
+                </div>
+            </form>
+            {% else %}
+            <p class="muted-note">Nothing flagged right now.</p>
+            {% endif %}
+        </section>
+    </main>
+
+    <script>
+        function toggleAll(className, checked) {
+            document.querySelectorAll("." + className).forEach(function (cb) { cb.checked = checked; });
+        }
+    </script>
+</body>
+</html>
