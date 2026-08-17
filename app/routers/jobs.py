@@ -4,18 +4,25 @@ postings list (with scam/staleness/repost flags surfaced as warnings,
 never filtered), a manual "run intake now" trigger, per-source status,
 and search keyword management (there was previously no UI for
 SearchKeyword at all in this rebuild).
+
+Phase 3 routes: the application detail view, plus manual "score" and
+"tailor" triggers. Both are on-demand, not automatic on ingest -- each
+is a real LLM call with real cost (see matching_service/tailoring_service
+docstrings).
 """
 
+import json
 import threading
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from ..database import SessionLocal, get_db
-from ..models import JobApplication, JobPosting, JobSource, SearchKeyword, get_or_create_settings
-from ..services import intake_service
+from ..models import JobApplication, JobPosting, JobSource, SearchKeyword, TailoredDocument, get_or_create_settings
+from ..services import intake_service, matching_service, tailoring_service
+from ..services.matching_service import MatchingServiceError
 from ..templating import render
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -30,10 +37,46 @@ def _redirect(message: str = None, error: str = None) -> RedirectResponse:
     return RedirectResponse(url=url, status_code=303)
 
 
+def _redirect_detail(application_id: int, message: str = None, error: str = None) -> RedirectResponse:
+    url = f"/jobs/{application_id}"
+    if error:
+        url += f"?error={quote(error)}"
+    elif message:
+        url += f"?message={quote(message)}"
+    return RedirectResponse(url=url, status_code=303)
+
+
 def _run_intake_in_background():
     db = SessionLocal()
     try:
         intake_service.run_intake_cycle(db, force=True)
+    finally:
+        db.close()
+
+
+def _record_failure(db: Session, application_id: int, error: Exception):
+    application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+    if application:
+        application.attention_reason = str(error)[:250]
+        db.commit()
+
+
+def _score_in_background(application_id: int):
+    db = SessionLocal()
+    try:
+        matching_service.score_application(db, application_id)
+    except MatchingServiceError as e:
+        _record_failure(db, application_id, e)
+    finally:
+        db.close()
+
+
+def _tailor_in_background(application_id: int):
+    db = SessionLocal()
+    try:
+        tailoring_service.tailor_application(db, application_id)
+    except MatchingServiceError as e:
+        _record_failure(db, application_id, e)
     finally:
         db.close()
 
@@ -114,3 +157,57 @@ def delete_keyword(keyword_id: int, db: Session = Depends(get_db)):
         db.delete(kw)
         db.commit()
     return _redirect(message="Keyword deleted.")
+
+
+@router.get("/{application_id}", response_class=HTMLResponse)
+def application_detail(application_id: int, request: Request, db: Session = Depends(get_db)):
+    application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    match_analysis = json.loads(application.match_analysis_json) if application.match_analysis_json else None
+
+    resume_doc = (
+        db.query(TailoredDocument)
+        .filter(TailoredDocument.application_id == application_id, TailoredDocument.document_type == "resume")
+        .first()
+    )
+    cl_doc = (
+        db.query(TailoredDocument)
+        .filter(TailoredDocument.application_id == application_id, TailoredDocument.document_type == "cover_letter")
+        .first()
+    )
+
+    return render(
+        request,
+        "application_detail.html",
+        {
+            "application": application,
+            "posting": application.posting,
+            "match_analysis": match_analysis,
+            "resume_doc": resume_doc,
+            "cl_doc": cl_doc,
+            "message": request.query_params.get("message"),
+            "error": request.query_params.get("error"),
+        },
+    )
+
+
+@router.post("/{application_id}/score")
+def score_application_now(application_id: int, db: Session = Depends(get_db)):
+    application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+    threading.Thread(target=_score_in_background, args=(application_id,), daemon=True).start()
+    return _redirect_detail(application_id, message="Scoring started -- refresh in a moment to see the result.")
+
+
+@router.post("/{application_id}/tailor")
+def tailor_application_now(application_id: int, db: Session = Depends(get_db)):
+    application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+    threading.Thread(target=_tailor_in_background, args=(application_id,), daemon=True).start()
+    return _redirect_detail(
+        application_id, message="Tailoring started -- this runs several AI passes, refresh in ~30-60s."
+    )

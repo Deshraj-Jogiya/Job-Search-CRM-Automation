@@ -84,14 +84,19 @@
                 {% for app in applications %}
                 <li class="job-item">
                     <div class="job-item-header">
-                        <a href="{{ app.posting.job_url }}" target="_blank" rel="noopener">{{ app.posting.job_title }}</a>
+                        <a href="/jobs/{{ app.id }}">{{ app.posting.job_title }}</a>
                         <span class="badge">{{ app.posting.source }}</span>
                         <span class="badge">{{ app.status }}</span>
+                        {% if app.match_score %}<span class="badge badge-active">{{ app.match_score }}% match</span>{% endif %}
                     </div>
                     <p class="muted-note">
                         {{ app.posting.company_name_raw }}
                         &middot; first seen {{ app.posting.first_seen_at.strftime("%Y-%m-%d") }}
+                        &middot; <a href="{{ app.posting.job_url }}" target="_blank" rel="noopener">view posting &#8599;</a>
                     </p>
+                    {% if app.attention_reason %}
+                    <p class="flash-error-inline">{{ app.attention_reason }}</p>
+                    {% endif %}
                     {% if app.posting.staleness_flag or app.posting.scam_flag_reason or app.posting.repost_count > 0 %}
                     <div class="flag-row">
                         {% if app.posting.staleness_flag %}<span class="flag-warning">stale listing</span>{% endif %}
