@@ -1,4 +1,4 @@
-from .models import ActivityLog
+from ..models import ActivityLog
 
 
 def log_activity(db, message: str, level: str = "INFO"):
