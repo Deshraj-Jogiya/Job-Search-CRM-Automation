@@ -2,6 +2,9 @@ import os
 import secrets
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
+
+load_dotenv()
+
 from fastapi import FastAPI, Depends, Form, Request, HTTPException
 from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,8 +15,6 @@ from sqlalchemy.orm import Session
 from .database import engine, Base, get_db
 from .models import GlobalSettings, get_or_create_settings, JobApplication, ProfileVariant
 from .csrf import CSRFMiddleware, get_csrf_token
-
-load_dotenv()
 
 Base.metadata.create_all(bind=engine)
 
