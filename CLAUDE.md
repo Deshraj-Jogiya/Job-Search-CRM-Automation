@@ -95,8 +95,12 @@ not a patch of the old repo. Don't reintroduce those patterns.
 
 - [x] **Phase 0 (foundation)**: DB, models, LLM abstraction, CSRF, kill
       switch, live-editable settings, base dashboard shell.
-- [ ] **Phase 1**: Living profile — portfolio `resume.json` sync, LinkedIn
-      paste-diff with approval, profile variants.
+- [x] **Phase 1**: Living profile — portfolio `resume.json` sync, LinkedIn
+      paste-diff with approval, profile variants. (Portfolio sync is
+      built against a configurable `PORTFOLIO_RESUME_URL` but the
+      portfolio site doesn't serve that endpoint yet, so it fails
+      gracefully with a clear error until that's added there; manual
+      JSON seed and LinkedIn paste-diff are the working paths meanwhile.)
 - [ ] **Phase 2**: Multi-source job intake — LinkedIn + Adzuna + direct
       Greenhouse/Lever/Ashby, tiered polling (cheap check vs. full
       ingest), fuzzy dedup, scam/repost/staleness flagging, company memory.
