@@ -54,6 +54,22 @@ Jogiya, a Data/AI-ML Engineer based in Tempe, AZ.
   Edit/Reject equal weight, reminder notification (email or Telegram/
   Discord) links straight into that same view. This "clean, easy,
   informative" bar applies to the whole product, not just this one screen.
+- Phase 4's auto-apply timing was **clarified through discussion, not a
+  wrong assumption to fix** — the open question was how to stay fast for
+  good matches without either (a) missing them during extended
+  unreachable periods (sleep, 7+ hours — common to any job seeker, not
+  unique to this user) or (b) letting anything risky fire unattended.
+  Settled shape: every application still gets a confirmation window +
+  notification, including fast-track ones ("fast" = a short tunable
+  window, e.g. minutes, never a literal zero-delay auto-submit); whether
+  a timeout is allowed to auto-proceed is gated by **flag severity, not
+  just score/freshness** — a hard-stop flag (tailoring fabrication
+  warning, scam-pattern match) never auto-proceeds no matter how long it
+  waits, while clean/unflagged ones (including lower-stakes staleness/
+  repost) do proceed on timeout if untouched; and confirmation deadlines
+  should be **quiet-hours-aware** (a configurable daily unreachable
+  window) so a deadline never silently lapses while the user is asleep.
+  See Phase 4 below for the full settled design.
 
 ### Two-face product (both from one codebase, config-driven — not two repos)
 
@@ -106,10 +122,25 @@ not a patch of the old repo. Don't reintroduce those patterns.
       ingest), fuzzy dedup, scam/repost/staleness flagging, company memory.
       (Slice 1 done: LinkedIn + Adzuna, dedup, repost/scam/staleness
       flagging, company memory via `Company` rows, keyword management,
-      kill-switch-gated scheduler. Direct Greenhouse/Lever/Ashby board
-      discovery is slice 2 -- deferred since it needs a target-company
-      strategy, most naturally built once slice 1's `Company` table has
-      real data to auto-detect board slugs against.)
+      kill-switch-gated scheduler. Slice 2 candidates, not yet built:
+      direct Greenhouse/Lever/Ashby board discovery -- needs a target-
+      company strategy, most naturally built once slice 1's `Company`
+      table has real data to auto-detect board slugs against; and/or a
+      JobRight public-repo source (see note below) -- lower effort, no
+      target-company problem to solve first.)
+      **JobRight research (2026-08-17, user has a paid Turbo
+      subscription)**: no public API found for JobRight's paid auto-
+      apply/matching -- it's UI/extension-only, so it stays a parallel,
+      independent tool rather than a technical integration with this
+      one. Did find a concretely useful free source though: JobRight
+      publishes public GitHub repos (e.g. `jobright-ai/Daily-H1B-Jobs-
+      In-Tech`, role-specific new-grad/internship lists) with daily-
+      updated markdown tables of listings -- no login, no API key, no
+      subscription needed by anyone using this project. Worth building
+      as an intake source (`is_configured()` always `True`, same as
+      LinkedIn) since it needs zero credentials from any user, personal
+      or showcase-fork. One caveat: its "apply" links route through
+      jobright.ai rather than the employer's own ATS page.
 - [x] **Phase 3**: Matching/tailoring/scoring — wire in the multi-pass
       refine-and-verify tailoring loop, independent cover-letter scoring,
       real recomputed post-tailor score (no placeholder/random score).
@@ -128,7 +159,47 @@ not a patch of the old repo. Don't reintroduce those patterns.
 - [ ] **Phase 4**: Confirmation-gated auto-apply — `Pending Confirmation`
       status, tunable countdown with fast-track override for very-fresh/
       very-high-match jobs, one-click approve UI, notifications, retention
-      sweep for Rejected jobs.
+      sweep for Rejected jobs. **Design settled 2026-08-17** (reasoning in
+      Corrections/refinements above):
+      - Every application gets a confirmation window + notification, no
+        exceptions -- "fast-track" means a short tunable window (minutes,
+        via the existing `fast_track_window_hours`/`fast_track_score_
+        threshold`/`fast_track_freshness_minutes` settings), never a
+        literal zero-delay auto-submit with no checkpoint at all.
+      - Whether a timeout is allowed to auto-proceed is gated by **flag
+        severity**, independent of score/freshness: a hard-stop flag
+        (Phase 3's tailoring-fabrication warning, or a scam-pattern match
+        from Phase 2 intake) means the application waits for an explicit
+        approve click no matter how long that takes -- hours, a day,
+        whatever. Clean/unflagged applications (staleness/repost alone
+        don't count as hard-stop -- lower stakes) auto-proceed if the
+        window elapses untouched, but can still be approved/rejected
+        early if the user acts first.
+      - Confirmation deadlines should be **quiet-hours-aware**: a
+        configurable daily unreachable window (e.g. sleep) pushes any
+        deadline that would fall inside it to after the window ends,
+        instead of silently lapsing while the user has no way to respond.
+        This is generically useful, not personal to one schedule --
+        keep it a per-installation setting for the eventual public
+        showcase/fork too.
+      - "Auto-proceed on timeout" means flipping to a ready-to-submit
+        state with tailored docs on hand -- there is still no real
+        portal-submission engine (the old prototype's Playwright auto-
+        fill/submit was deliberately dropped in the rebuild). Building
+        real submission automation is an explicitly separate, later
+        decision given genuine ToS exposure -- do not fold it into this
+        phase's scope by default; ask before building it.
+      - Notification-driven one-click approval (email first, since SMTP
+        config already exists; Telegram/Discord possible later) is what
+        actually makes "fast" achievable without removing the human --
+        it solves "I can't check the dashboard right now" by pushing the
+        decision to the user wherever they are, instead of requiring
+        them to remember to go look.
+      - Caveat worth remembering: scam/fabrication detection is
+        heuristic, not a guarantee -- "clean/unflagged" means the
+        specific checks didn't catch anything, not that nothing could
+        possibly be wrong. The auto-proceed path inherits whatever blind
+        spots those checks have.
 - [ ] **Phase 5**: Outreach automation — same confirmation pattern, daily
       cap, email verification before ever offering "send".
 - [ ] **Phase 6**: Interview prep generation.
