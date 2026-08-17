@@ -47,12 +47,22 @@ def get_csrf_token(request: Request) -> str:
 
 EXEMPT_PATHS = {"/api/health"}
 
+# Routes authenticated by their own signed bearer token instead of the
+# session cookie -- one-click email approve/reject links are opened on
+# whatever device the user has in hand, which won't carry this
+# dashboard's CSRF cookie. See app/services/confirmation_tokens.py.
+EXEMPT_PATH_PREFIXES = ("/confirm/",)
+
+
+def _is_exempt(path: str) -> bool:
+    return path in EXEMPT_PATHS or path.startswith(EXEMPT_PATH_PREFIXES)
+
 
 class CSRFMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         incoming_token = request.cookies.get(CSRF_COOKIE_NAME)
 
-        if request.method == "POST" and request.url.path not in EXEMPT_PATHS:
+        if request.method == "POST" and not _is_exempt(request.url.path):
             content_type = request.headers.get("content-type", "")
             form_token = None
             if "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
