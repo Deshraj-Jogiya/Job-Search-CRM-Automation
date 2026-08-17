@@ -9,6 +9,7 @@
     <header class="topbar">
         <h1>Career Pilot</h1>
         <nav class="topnav">
+            <a href="/jobs">Jobs</a>
             <a href="/profile">Profile</a>
             <form method="post" action="/settings/automation/toggle" class="inline-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -32,7 +33,7 @@
         </section>
 
         <section class="empty-state">
-            <p>Foundation is running, and profile management (Phase 1) is live -- see <a href="/profile">Profile</a>. Job intake, tailoring, and the confirmation queue land in the next build phases.</p>
+            <p>Foundation is running. Profile management (Phase 1) is live -- see <a href="/profile">Profile</a>. Job intake (Phase 2) is live -- see <a href="/jobs">Jobs</a>. Tailoring and the confirmation queue land in the next build phases.</p>
         </section>
 
         <section class="settings-panel">
@@ -46,6 +47,10 @@
 
                 <label>Full ingest interval (minutes)
                     <input type="number" name="full_ingest_interval_minutes" value="{{ settings.full_ingest_interval_minutes }}" min="1">
+                </label>
+
+                <label>Stale posting threshold (days)
+                    <input type="number" name="stale_posting_threshold_days" value="{{ settings.stale_posting_threshold_days }}" min="1">
                 </label>
 
                 <label>Confirmation window (hours)

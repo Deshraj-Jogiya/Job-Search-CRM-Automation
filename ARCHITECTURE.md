@@ -31,10 +31,11 @@ this foundation instead of retrofitting it.
 | App skeleton | `app/main.py` | Done — health check, dashboard shell, kill switch, live-editable settings, mounts `app/routers/` |
 | Base template/styling | `app/templates/dashboard.html`, `app/static/css/style.css` | Functional, not polished — Phase "magic pass" is later, deliberately |
 | Living profile (Phase 1) | `app/services/profile_service.py`, `app/routers/profile.py`, `app/templates/profile.html` | Done — profile variants (named flavors), portfolio `resume.json` sync (activates immediately, zero-risk per CLAUDE.md), LinkedIn paste-diff via LLM (creates a **pending** version, requires explicit approve/reject — never auto-activates), manual JSON seed/edit as the bootstrap path since no starter profile data ships with the rebuild. Note: the portfolio site doesn't serve `resume.json` yet, so "Sync from Portfolio" currently fails gracefully with a clear error until that endpoint exists there — manual seed / LinkedIn import are the working paths meanwhile. |
+| Job intake (Phase 2, slice 1) | `app/services/sources/` (linkedin, adzuna), `app/services/intake_service.py`, `app/services/scheduler.py`, `app/routers/jobs.py`, `app/templates/jobs.html` | LinkedIn (no credentials needed) and Adzuna (skips gracefully without `ADZUNA_APP_ID`/`ADZUNA_APP_KEY`, hard-capped against its free-tier monthly budget) are live: fuzzy dedup (exact by source+external_id/url, fuzzy by normalized company+title), repost detection, keyword-based scam-pattern flagging, staleness flagging (all warn-only, never filter, per CLAUDE.md), search keyword management UI, per-source status panel, manual "run now" trigger, all gated by the `automation_enabled` kill switch. Direct Greenhouse/Lever/Ashby board discovery is **not** built yet — deferred to slice 2 since it needs a target-company strategy (most naturally: auto-detect board slugs for companies already seen via LinkedIn/Adzuna, once there's a real company list to work from). |
 
 ## What's NOT built yet (by design — next phases)
 
-- Job intake (multi-source crawler: LinkedIn + Adzuna + Greenhouse/Lever/Ashby, fuzzy dedup, scam/repost/staleness detection)
+- Direct-ATS job intake (Greenhouse/Lever/Ashby board discovery — Phase 2 slice 2)
 - Matching/tailoring/scoring engine (multi-pass refinement, cover-letter scoring)
 - Confirmation-gated auto-apply + fast-track logic + one-click approve UI
 - Review-gated outreach with daily cap
