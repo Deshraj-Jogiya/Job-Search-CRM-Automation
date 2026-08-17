@@ -110,9 +110,21 @@ not a patch of the old repo. Don't reintroduce those patterns.
       discovery is slice 2 -- deferred since it needs a target-company
       strategy, most naturally built once slice 1's `Company` table has
       real data to auto-detect board slugs against.)
-- [ ] **Phase 3**: Matching/tailoring/scoring — wire in the multi-pass
+- [x] **Phase 3**: Matching/tailoring/scoring — wire in the multi-pass
       refine-and-verify tailoring loop, independent cover-letter scoring,
       real recomputed post-tailor score (no placeholder/random score).
+      Scoring/tailoring are on-demand (per-application button), not
+      automatic on ingest -- real LLM cost per call. **Important finding
+      from live testing**: the tailoring LLM will fabricate skills/tech
+      it injects to hit the target ATS score, even when explicitly told
+      not to -- confirmed with Gemini flash-lite claiming Docker/
+      Kubernetes/Spark experience that appeared nowhere in the seed
+      profile, in both the resume bullets and the cover letter. Added a
+      mechanical (non-LLM) post-check that catches this and surfaces an
+      `attention_reason` warning rather than silently shipping a
+      fabricated document -- keep this check if this code is touched
+      again, and treat any future tailoring-prompt change as needing
+      the same live scrutiny, not just a "does it return JSON" check.
 - [ ] **Phase 4**: Confirmation-gated auto-apply — `Pending Confirmation`
       status, tunable countdown with fast-track override for very-fresh/
       very-high-match jobs, one-click approve UI, notifications, retention
