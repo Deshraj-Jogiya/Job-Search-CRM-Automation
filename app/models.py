@@ -68,6 +68,16 @@ class Company(Base):
     ghosted_count = Column(Integer, default=0)  # applications that went silent
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    # Phase 2 slice 2: direct ATS board polling. Auto-detected (see
+    # board_discovery.py) the first time this company is seen via any
+    # source, or manually set/overridden from the Jobs page -- null
+    # means "no board found/configured on that ATS," not "not checked
+    # yet" (see board_slugs_checked_at for that distinction).
+    greenhouse_slug = Column(String, nullable=True)
+    lever_slug = Column(String, nullable=True)
+    ashby_slug = Column(String, nullable=True)
+    board_slugs_checked_at = Column(DateTime, nullable=True)
+
     postings = relationship("JobPosting", back_populates="company")
 
 
