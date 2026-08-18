@@ -117,17 +117,49 @@ not a patch of the old repo. Don't reintroduce those patterns.
       portfolio site doesn't serve that endpoint yet, so it fails
       gracefully with a clear error until that's added there; manual
       JSON seed and LinkedIn paste-diff are the working paths meanwhile.)
-- [ ] **Phase 2**: Multi-source job intake — LinkedIn + Adzuna + direct
+- [x] **Phase 2**: Multi-source job intake — LinkedIn + Adzuna + direct
       Greenhouse/Lever/Ashby, tiered polling (cheap check vs. full
       ingest), fuzzy dedup, scam/repost/staleness flagging, company memory.
-      (Slice 1 done: LinkedIn + Adzuna, dedup, repost/scam/staleness
+      (Slice 1: LinkedIn + Adzuna, dedup, repost/scam/staleness
       flagging, company memory via `Company` rows, keyword management,
-      kill-switch-gated scheduler. Slice 2 candidates, not yet built:
-      direct Greenhouse/Lever/Ashby board discovery -- needs a target-
-      company strategy, most naturally built once slice 1's `Company`
-      table has real data to auto-detect board slugs against; and/or a
-      JobRight public-repo source (see note below) -- lower effort, no
-      target-company problem to solve first.)
+      kill-switch-gated scheduler.
+      **Slice 2, built 2026-08-18** (`app/services/board_discovery.py`,
+      `app/services/sources/{greenhouse,lever,ashby}_source.py`,
+      wiring in `app/services/intake_service.py`, UI in `app/templates/
+      jobs.html`): direct Greenhouse/Lever/Ashby board polling, driven
+      by `Company.greenhouse_slug`/`lever_slug`/`ashby_slug` rather than
+      keyword search (these ATS's don't offer cross-company search) --
+      auto-detected from a company's name the first time it's ever seen
+      via any source (2 slug-name candidates x 3 ATS's, probed against
+      each ATS's public board API), with manual add/override from the
+      Jobs page for companies auto-detection misses. All three ATS's
+      return the full job description in the same "cheap" listing call
+      (`?content=true` on Greenhouse, included by default on Lever/
+      Ashby) -- no separate per-posting fetch needed, unlike LinkedIn.
+      **Design correction found during live verification**: the first
+      cut probed a new company's board slugs inline, synchronously,
+      the moment `_get_or_create_company` created it -- fine for one
+      company, but a single LinkedIn ingest pass can create dozens of
+      new companies at once, and each probe is several real network
+      calls (up to 3 ATS's x 2 slug candidates). Verified live: a real
+      first-run intake cycle with ~35 new companies took several
+      minutes and nearly starved the rest of that scheduler tick.
+      Fixed by decoupling entirely -- new companies are left unprobed
+      (`board_slugs_checked_at=None`) and picked up by the existing
+      capped backfill sweep (`_BOARD_SLUG_BACKFILL_BATCH`, currently
+      10/cycle) like any other unchecked company, so per-cycle latency
+      no longer scales with ingest volume. Also parallelized the probe
+      requests themselves (3 ATS's per company via `ThreadPoolExecutor`,
+      and up to 5 companies at once in the backfill batch, DB writes
+      kept single-threaded since `Session` isn't thread-safe) -- cut a
+      fresh 35-company/10-probed cycle from ~2.5 minutes down to ~35s
+      in live testing. Manual slug entry stays synchronous (the user is
+      supplying the slug directly, no network call needed) and marks
+      `board_slugs_checked_at` so the backfill sweep doesn't later
+      clobber the override with a fresh (and by definition, since
+      manual entry was needed, unsuccessful) auto-probe.
+      JobRight public-repo source considered and set aside for now --
+      see research note below; still a candidate for a future slice.)
       **JobRight research (2026-08-17, user has a paid Turbo
       subscription)**: no public API found for JobRight's paid auto-
       apply/matching -- it's UI/extension-only, so it stays a parallel,
@@ -140,7 +172,10 @@ not a patch of the old repo. Don't reintroduce those patterns.
       as an intake source (`is_configured()` always `True`, same as
       LinkedIn) since it needs zero credentials from any user, personal
       or showcase-fork. One caveat: its "apply" links route through
-      jobright.ai rather than the employer's own ATS page.
+      jobright.ai rather than the employer's own ATS page, and its own
+      job pages turned out to be client-side-rendered/not easily
+      scrapable for a real JD -- needs a different approach if picked
+      up later.
 - [x] **Phase 3**: Matching/tailoring/scoring — wire in the multi-pass
       refine-and-verify tailoring loop, independent cover-letter scoring,
       real recomputed post-tailor score (no placeholder/random score).
