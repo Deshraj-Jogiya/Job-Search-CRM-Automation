@@ -68,17 +68,11 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             if "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
                 # Starlette's BaseHTTPMiddleware hands the route handler a
                 # separate Request instance over the same ASGI receive
-                # channel. Reading the body here (via .form()) drains that
-                # channel, so without replaying it the downstream handler's
-                # own Form(...) parameters see an empty body. Cache the raw
-                # bytes and patch _receive so the same body can be read
-                # again downstream.
-                body = await request.body()
-
-                async def _replay_body() -> dict:
-                    return {"type": "http.request", "body": body, "more_body": False}
-
-                request._receive = _replay_body
+                # channel. Calling .body() here caches the raw bytes on
+                # Starlette's own _CachedRequest wrapper, which already
+                # replays them from that cache the next time .body()/.form()
+                # is called downstream -- no manual _receive patch needed.
+                await request.body()
 
                 form = await request.form()
                 form_token = form.get(CSRF_FORM_FIELD)
