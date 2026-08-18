@@ -299,7 +299,29 @@ not a patch of the old repo. Don't reintroduce those patterns.
       logged (status transitions, email classifications) as real
       keyword/source/score-band conversion insight.
 - [ ] **Phase 8**: Two-face packaging (personal vs. showcase config).
-- [ ] **Phase 9**: Data safety — encrypted local DB backup/export.
+- [x] **Phase 9**: Data safety — encrypted local DB backup/export.
+      **Built 2026-08-18** (`app/services/backup_service.py`, route in
+      `app/main.py`). Picked ahead of Phase 6/7 in the numbered order
+      since real personal usage was about to start and data-loss
+      protection matters from day one, while interview prep (Phase 6)
+      and outcome analytics (Phase 7) only become useful once real
+      interview/application history exists.
+      - Uses sqlite3's own online `.backup()` API for a consistent
+        snapshot rather than copying the raw file -- safe even while
+        the scheduler thread is mid-write, unlike a plain file copy.
+      - Encrypted with Fernet using `CREDENTIAL_ENCRYPTION_KEY` -- the
+        first real use of that key/helper, which existed since Phase 0
+        but was unused until now.
+      - **Export only, on purpose** -- restore is explicitly not built
+        here. Overwriting a live database is a destructive action
+        (could wipe real, current data) that deserves its own careful
+        design, not a rushed side effect of adding backups. Ask before
+        building it.
+      - Verified live: real backup downloaded from a running server,
+        decrypted with the same key, confirmed a valid SQLite file
+        (`PRAGMA integrity_check` = ok) with schema matching the
+        source exactly, and confirmed a wrong key is correctly
+        rejected (`InvalidToken`).
 - [ ] **Phase 10**: $0 deployment hardening (local-first; Oracle Always
       Free VM path documented as fallback).
 - [ ] **Phase 11**: Design/polish pass — this is deliberately LAST. Don't
