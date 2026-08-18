@@ -245,8 +245,55 @@ not a patch of the old repo. Don't reintroduce those patterns.
         so it would "reject" an already-Applied application -- nonsensical,
         since you can't un-submit something real. Now blocks rejecting
         `Applied` or already-`Rejected` applications with a clear error.
-- [ ] **Phase 5**: Outreach automation — same confirmation pattern, daily
-      cap, email verification before ever offering "send".
+- [x] **Phase 5**: Outreach automation — same confirmation pattern, daily
+      cap, email verification before ever offering "send". **Built
+      2026-08-18** (`app/services/outreach_service.py`,
+      `app/services/contact_discovery_service.py`,
+      `app/services/email_utils.py`, `app/routers/outreach.py`):
+      - Draft -> Approved -> Sent, but unlike Phase 4's application
+        confirmation queue, **no timers anywhere and no auto-send on
+        timeout** -- sending a real email to a real external person is
+        immediately irreversible and externally visible, unlike
+        Phase 4's "Approved" (which just flips an internal status with
+        no submission engine to act on it). Every state change is a
+        live, explicit click; the actual SMTP send only ever happens
+        inside a function called directly from a live request.
+      - "Email verification before ever offering send" = syntax + MX-
+        record check (`OutreachMessage.email_verified`), surfaced as a
+        warning if it fails, never a hard block -- it's a sanity check
+        on what the user supplied, not a guarantee the mailbox exists.
+      - Daily send cap (`daily_outreach_cap`, already in `GlobalSettings`
+        from the Phase 0 schema) enforced at send time by counting
+        `Sent` messages in the last 24h.
+      - LinkedIn channels (connection note / InMail) are drafted but
+        **never sent automatically** -- LinkedIn automation of any kind
+        was already ruled out elsewhere in this project for account-
+        risk reasons. The user copies the note into LinkedIn themselves
+        and confirms via a separate "Mark as Sent" action.
+      - **Design correction mid-build**: the first cut made recipient
+        contact manual-entry-only, reasoning that "no blind auto-email
+        to guessed addresses" meant no automated discovery at all. User
+        pushed back with a concrete, valid objection: manual-only
+        doesn't help someone who doesn't have a recruiter contact in
+        the first place, which is most people, most of the time.
+        Corrected distinction: the banned practice is *guessing* an
+        email via a first.last@domain pattern with no verification and
+        blindly sending to it -- not *discovering* a real person and
+        their already-published info. Added `contact_discovery_service.py`:
+        Tavily (web search, free tier 1,000 queries/month, no card --
+        Google's Custom Search API was checked and is closed to new
+        customers, Bing's was retired, Brave dropped its no-card free
+        tier) finds likely LinkedIn profiles + the company's domain;
+        Hunter.io (free tier, no card) domain-search returns *real
+        found* emails for that domain with confidence scores, filtered
+        for recruiter/HR/talent-sounding titles -- deliberately using
+        Domain Search (real found emails) over Email Finder (pattern-
+        predicted from a name), since found-and-labeled is a
+        meaningfully different risk profile than predicted-and-silent.
+        Both providers are optional/graceful-degrade (same pattern as
+        Adzuna); every suggestion is shown with its source and
+        confidence, never auto-filled, and still flows through the
+        same manual draft/approve/send pipeline once picked.
 - [ ] **Phase 6**: Interview prep generation.
 - [ ] **Phase 7**: Outcome analytics — surface what's already being
       logged (status transitions, email classifications) as real

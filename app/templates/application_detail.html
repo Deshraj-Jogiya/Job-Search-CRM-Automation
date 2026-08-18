@@ -137,6 +137,125 @@
             <p class="muted-note">Rejected {{ application.rejected_at.strftime("%Y-%m-%d %H:%M") }} UTC -- will be cleaned up automatically after the retention window.</p>
         </section>
         {% endif %}
+
+        <section class="variant-block">
+            <h2>Outreach</h2>
+            <p class="muted-note">
+                Every message here needs two separate explicit clicks (Approve, then Send/Mark as Sent) --
+                nothing ever sends on a timer. Contact info is either found and shown as an unverified
+                suggestion, or typed in by you -- never algorithmically guessed.
+                Sent today: {{ outreach_sent_today }}/{{ daily_outreach_cap }}.
+            </p>
+
+            {% for msg in outreach_messages %}
+            <div class="pending-item">
+                <p class="muted-note">
+                    <span class="badge {% if msg.status == 'Sent' %}badge-active{% endif %}">{{ msg.channel }}</span>
+                    <span class="badge">{{ msg.status }}</span>
+                    {% if msg.channel == "email" %}
+                        to {{ msg.recipient_address }}
+                        {% if msg.email_verified %}<span class="muted-note">(syntax+MX check passed)</span>
+                        {% else %}<span class="flash-error-inline">(syntax+MX check failed or not attempted -- not a guarantee either way)</span>{% endif %}
+                    {% else %}
+                        to {{ msg.recipient_name or "recipient" }}
+                    {% endif %}
+                </p>
+                {% if msg.subject %}<p><strong>{{ msg.subject }}</strong></p>{% endif %}
+                <pre class="json-preview">{{ msg.body }}</pre>
+
+                {% if msg.status == "Draft" %}
+                <div class="pending-actions">
+                    <form method="post" action="/jobs/{{ application.id }}/outreach/{{ msg.id }}/approve" class="inline-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit">Approve</button>
+                    </form>
+                    <form method="post" action="/jobs/{{ application.id }}/outreach/{{ msg.id }}/reject" class="inline-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="btn-danger">Reject</button>
+                    </form>
+                </div>
+                {% elif msg.status == "Approved" and msg.channel == "email" %}
+                <div class="pending-actions">
+                    <form method="post" action="/jobs/{{ application.id }}/outreach/{{ msg.id }}/send" class="inline-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit">Send Now</button>
+                    </form>
+                    <form method="post" action="/jobs/{{ application.id }}/outreach/{{ msg.id }}/reject" class="inline-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="btn-danger">Reject</button>
+                    </form>
+                </div>
+                {% elif msg.status == "Approved" %}
+                <p class="muted-note">Copy the text above into LinkedIn yourself -- this is never automated. Confirm once you've sent it:</p>
+                <div class="pending-actions">
+                    <form method="post" action="/jobs/{{ application.id }}/outreach/{{ msg.id }}/mark-sent" class="inline-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit">Mark as Sent</button>
+                    </form>
+                </div>
+                {% elif msg.status == "Sent" %}
+                <p class="muted-note">Sent {{ msg.sent_at.strftime("%Y-%m-%d %H:%M") }} UTC.</p>
+                {% endif %}
+            </div>
+            {% endfor %}
+
+            {% if discovery_available %}
+            <form method="get" action="/jobs/{{ application.id }}/outreach/discover" class="inline-form">
+                <button type="submit">Discover Contact (web search)</button>
+            </form>
+            {% endif %}
+
+            {% if discovered_contacts %}
+            <div class="pending-list">
+                <h3>Suggested contacts -- unverified, review before using</h3>
+                {% for c in discovered_contacts %}
+                <div class="pending-item">
+                    <p>
+                        <strong>{{ c.name or "Unknown name" }}</strong>
+                        {% if c.title %}&middot; {{ c.title }}{% endif %}
+                    </p>
+                    <p class="muted-note">
+                        Source: {{ c.source }}
+                        {% if c.linkedin_url %} &middot; <a href="{{ c.linkedin_url }}" target="_blank" rel="noopener">LinkedIn &#8599;</a>{% endif %}
+                        {% if c.suggested_email %} &middot; suggested email: {{ c.suggested_email }} ({{ c.email_confidence }}% confidence -- not a guarantee){% endif %}
+                    </p>
+                    <form method="post" action="/jobs/{{ application.id }}/outreach" class="inline-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="hidden" name="recipient_name" value="{{ c.name or '' }}">
+                        {% if c.suggested_email %}
+                        <input type="hidden" name="recipient_address" value="{{ c.suggested_email }}">
+                        <input type="hidden" name="channel" value="email">
+                        {% else %}
+                        <input type="hidden" name="channel" value="linkedin_connection">
+                        {% endif %}
+                        <button type="submit">Draft Using This Contact</button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <details class="sub-panel">
+                <summary>Draft new outreach message</summary>
+                <form method="post" action="/jobs/{{ application.id }}/outreach">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <label>Channel
+                        <select name="channel">
+                            <option value="email">Email</option>
+                            <option value="linkedin_connection">LinkedIn connection note</option>
+                            <option value="linkedin_inmail">LinkedIn InMail</option>
+                        </select>
+                    </label>
+                    <label>Recipient name
+                        <input type="text" name="recipient_name" placeholder="e.g. Jane Smith">
+                    </label>
+                    <label>Recipient email (required for the Email channel)
+                        <input type="email" name="recipient_address" placeholder="jane@company.com">
+                    </label>
+                    <button type="submit">Draft Message</button>
+                </form>
+            </details>
+        </section>
     </main>
 </body>
 </html>
