@@ -20,8 +20,23 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from ..database import SessionLocal, get_db
-from ..models import JobApplication, JobPosting, JobSource, SearchKeyword, TailoredDocument, get_or_create_settings
-from ..services import confirmation_service, intake_service, matching_service, tailoring_service
+from ..models import (
+    JobApplication,
+    JobPosting,
+    JobSource,
+    OutreachMessage,
+    SearchKeyword,
+    TailoredDocument,
+    get_or_create_settings,
+)
+from ..services import (
+    confirmation_service,
+    contact_discovery_service,
+    intake_service,
+    matching_service,
+    outreach_service,
+    tailoring_service,
+)
 from ..services.confirmation_service import ConfirmationServiceError
 from ..services.matching_service import MatchingServiceError
 from ..templating import render
@@ -229,8 +244,7 @@ def review_bulk_reject(application_ids: list[int] = Form(...), db: Session = Dep
     return RedirectResponse(url=f"/jobs/review?message={quote(message)}", status_code=303)
 
 
-@router.get("/{application_id}", response_class=HTMLResponse)
-def application_detail(application_id: int, request: Request, db: Session = Depends(get_db)):
+def _build_detail_context(application_id: int, request: Request, db: Session, discovered_contacts=None) -> dict:
     application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
     if not application:
         raise HTTPException(status_code=404, detail="Application not found")
@@ -247,20 +261,52 @@ def application_detail(application_id: int, request: Request, db: Session = Depe
         .filter(TailoredDocument.application_id == application_id, TailoredDocument.document_type == "cover_letter")
         .first()
     )
-
-    return render(
-        request,
-        "application_detail.html",
-        {
-            "application": application,
-            "posting": application.posting,
-            "match_analysis": match_analysis,
-            "resume_doc": resume_doc,
-            "cl_doc": cl_doc,
-            "message": request.query_params.get("message"),
-            "error": request.query_params.get("error"),
-        },
+    outreach_messages = (
+        db.query(OutreachMessage)
+        .filter(OutreachMessage.application_id == application_id)
+        .order_by(OutreachMessage.created_at.desc())
+        .all()
     )
+    settings = get_or_create_settings(db)
+
+    return {
+        "application": application,
+        "posting": application.posting,
+        "match_analysis": match_analysis,
+        "resume_doc": resume_doc,
+        "cl_doc": cl_doc,
+        "outreach_messages": outreach_messages,
+        "daily_outreach_cap": settings.daily_outreach_cap,
+        "outreach_sent_today": outreach_service.sent_count_last_24h(db),
+        "discovery_available": contact_discovery_service.is_tavily_configured(),
+        "discovered_contacts": discovered_contacts,
+        "message": request.query_params.get("message"),
+        "error": request.query_params.get("error"),
+    }
+
+
+@router.get("/{application_id}", response_class=HTMLResponse)
+def application_detail(application_id: int, request: Request, db: Session = Depends(get_db)):
+    context = _build_detail_context(application_id, request, db)
+    return render(request, "application_detail.html", context)
+
+
+@router.get("/{application_id}/outreach/discover", response_class=HTMLResponse)
+def discover_outreach_contacts(application_id: int, request: Request, db: Session = Depends(get_db)):
+    application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    if not contact_discovery_service.is_tavily_configured():
+        context = _build_detail_context(application_id, request, db)
+        context["error"] = "Contact discovery isn't configured -- add TAVILY_API_KEY (and optionally HUNTER_API_KEY) to .env."
+        return render(request, "application_detail.html", context)
+
+    discovered = contact_discovery_service.discover_contacts(application.posting.company_name_raw)
+    context = _build_detail_context(application_id, request, db, discovered_contacts=discovered)
+    if not discovered:
+        context["message"] = "No candidates found -- try manual entry below."
+    return render(request, "application_detail.html", context)
 
 
 @router.post("/{application_id}/score")
