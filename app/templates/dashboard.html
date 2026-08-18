@@ -22,6 +22,13 @@
     </header>
 
     <main>
+        {% if message %}
+        <div class="flash flash-ok">{{ message }}</div>
+        {% endif %}
+        {% if error %}
+        <div class="flash flash-error">{{ error }}</div>
+        {% endif %}
+
         <section class="summary-cards">
             <div class="card">
                 <span class="card-label">Total Applications</span>
@@ -34,7 +41,17 @@
         </section>
 
         <section class="empty-state">
-            <p>Foundation is running. Profile management (Phase 1) is live -- see <a href="/profile">Profile</a>. Job intake (Phase 2) is live -- see <a href="/jobs">Jobs</a>. Tailoring and the confirmation queue land in the next build phases.</p>
+            <p>Profile management (Phase 1), job intake (Phase 2), matching/tailoring (Phase 3), the confirmation queue (Phase 4), and outreach (Phase 5) are all live -- see <a href="/profile">Profile</a>, <a href="/jobs">Jobs</a>, and <a href="/jobs/review">Review Queue</a>.</p>
+        </section>
+
+        <section class="settings-panel">
+            <h2>Data Backup</h2>
+            {% if backup_configured %}
+            <p class="muted-note">Downloads an encrypted snapshot of your whole database (profile, applications, outreach). Keep this somewhere safe -- decrypting it requires your CREDENTIAL_ENCRYPTION_KEY.</p>
+            <p><a href="/settings/backup/export">Download Encrypted Backup</a></p>
+            {% else %}
+            <p class="muted-note">Set CREDENTIAL_ENCRYPTION_KEY in .env to enable encrypted backups.</p>
+            {% endif %}
         </section>
 
         <section class="settings-panel">
