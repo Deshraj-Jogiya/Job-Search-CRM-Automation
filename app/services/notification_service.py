@@ -22,20 +22,18 @@ optional integration in this project (Adzuna, portfolio sync).
 """
 
 import os
-import smtplib
 from datetime import datetime, timedelta
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 
 from sqlalchemy.orm import Session
 
 from ..models import JobApplication, get_or_create_settings
 from . import confirmation_tokens
 from .activity_logger import log_activity
+from .email_utils import is_smtp_configured, send_email as _send_email
 
 
 def is_configured() -> bool:
-    return bool(os.getenv("SMTP_USER") and os.getenv("SMTP_PASSWORD"))
+    return is_smtp_configured()
 
 
 def _base_url() -> str:
@@ -43,28 +41,6 @@ def _base_url() -> str:
     if configured:
         return configured.rstrip("/")
     return f"http://localhost:{os.getenv('PORT', '8000')}"
-
-
-def _send_email(to_addr: str, subject: str, body: str) -> bool:
-    smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-    smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    smtp_user = os.getenv("SMTP_USER")
-    smtp_password = os.getenv("SMTP_PASSWORD")
-
-    msg = MIMEMultipart()
-    msg["From"] = smtp_user
-    msg["To"] = to_addr
-    msg["Subject"] = subject
-    msg.attach(MIMEText(body, "plain", "utf-8"))
-
-    server = smtplib.SMTP(smtp_server, smtp_port, timeout=15)
-    try:
-        server.starttls()
-        server.login(smtp_user, smtp_password)
-        server.send_message(msg)
-    finally:
-        server.quit()
-    return True
 
 
 def send_confirmation_notification(db: Session, application: JobApplication) -> bool:
