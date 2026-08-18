@@ -18,6 +18,7 @@ from .templating import render
 from .routers import profile as profile_router
 from .routers import jobs as jobs_router
 from .routers import confirmation as confirmation_router
+from .routers import outreach as outreach_router
 from .services import scheduler as bg_scheduler
 
 Base.metadata.create_all(bind=engine)
@@ -60,6 +61,7 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(profile_router.router)
 app.include_router(jobs_router.router)
 app.include_router(confirmation_router.router)
+app.include_router(outreach_router.router)
 
 
 @app.on_event("startup")
