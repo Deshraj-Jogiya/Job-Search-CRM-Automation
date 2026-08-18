@@ -17,10 +17,12 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from ..database import SessionLocal, get_db
 from ..models import (
+    Company,
     JobApplication,
     JobPosting,
     JobSource,
@@ -111,6 +113,12 @@ def jobs_page(request: Request, db: Session = Depends(get_db)):
     )
     sources = db.query(JobSource).order_by(JobSource.name).all()
     keywords = db.query(SearchKeyword).order_by(SearchKeyword.keyword).all()
+    target_companies = (
+        db.query(Company)
+        .filter(or_(Company.greenhouse_slug.isnot(None), Company.lever_slug.isnot(None), Company.ashby_slug.isnot(None)))
+        .order_by(Company.name)
+        .all()
+    )
     settings = get_or_create_settings(db)
 
     return render(
@@ -120,6 +128,7 @@ def jobs_page(request: Request, db: Session = Depends(get_db)):
             "applications": applications,
             "sources": sources,
             "keywords": keywords,
+            "target_companies": target_companies,
             "automation_enabled": settings.automation_enabled,
             "message": request.query_params.get("message"),
             "error": request.query_params.get("error"),
@@ -144,6 +153,20 @@ def toggle_source(source_id: int, db: Session = Depends(get_db)):
     source.is_active = not source.is_active
     db.commit()
     return _redirect(message=f"'{source.name}' is now {'active' if source.is_active else 'paused'}.")
+
+
+@router.post("/companies/slug")
+def set_company_board_slug(
+    company_name: str = Form(...),
+    ats_type: str = Form(...),
+    slug: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    try:
+        intake_service.set_manual_board_slug(db, company_name.strip(), ats_type, slug)
+        return _redirect(message=f"Set {ats_type} slug for '{company_name.strip()}'.")
+    except ValueError as e:
+        return _redirect(error=str(e))
 
 
 @router.post("/keywords")

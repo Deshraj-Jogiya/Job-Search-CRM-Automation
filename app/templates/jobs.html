@@ -80,6 +80,42 @@
             {% endif %}
         </section>
 
+        <section class="settings-panel">
+            <h2>Target Companies (Direct ATS Boards)</h2>
+            <p class="muted-note">
+                Greenhouse/Lever/Ashby board slugs are auto-detected from company names seen via LinkedIn/Adzuna
+                (a few per intake cycle). Add or correct one manually below if a company you care about wasn't
+                picked up -- the slug is the URL-friendly id in that company's careers page, e.g.
+                boards.greenhouse.io/<strong>stripe</strong>, jobs.lever.co/<strong>netflix</strong>,
+                jobs.ashbyhq.com/<strong>notion</strong>.
+            </p>
+            <form method="post" action="/jobs/companies/slug" class="inline-form-row">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="text" name="company_name" placeholder="Company name" required>
+                <select name="ats_type">
+                    <option value="greenhouse">Greenhouse</option>
+                    <option value="lever">Lever</option>
+                    <option value="ashby">Ashby</option>
+                </select>
+                <input type="text" name="slug" placeholder="board slug" required>
+                <button type="submit">Set Slug</button>
+            </form>
+            {% if target_companies %}
+            <ul class="version-history">
+                {% for c in target_companies %}
+                <li>
+                    <strong>{{ c.name }}</strong>
+                    {% if c.greenhouse_slug %}<span class="badge badge-active">greenhouse: {{ c.greenhouse_slug }}</span>{% endif %}
+                    {% if c.lever_slug %}<span class="badge badge-active">lever: {{ c.lever_slug }}</span>{% endif %}
+                    {% if c.ashby_slug %}<span class="badge badge-active">ashby: {{ c.ashby_slug }}</span>{% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="muted-note">No boards detected yet -- run intake a few times to let auto-detection work through your company list, or add one manually above.</p>
+            {% endif %}
+        </section>
+
         <section class="variant-block">
             <h2>Ingested Postings ({{ applications|length }})</h2>
             {% if applications %}
