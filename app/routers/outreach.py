@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..services import outreach_service
+from ..services.matching_service import MatchingServiceError
 from ..services.outreach_service import OutreachServiceError
 
 router = APIRouter(prefix="/jobs/{application_id}/outreach", tags=["outreach"])
@@ -39,7 +40,10 @@ def draft_outreach(
     try:
         outreach_service.draft_outreach_message(db, application_id, recipient_name, recipient_address, channel)
         return _redirect_detail(application_id, message="Outreach message drafted -- review before approving.")
-    except OutreachServiceError as e:
+    except (OutreachServiceError, MatchingServiceError) as e:
+        # draft_outreach_message calls get_profile_content_for_application,
+        # which can raise MatchingServiceError (no profile variant set up) --
+        # catch both instead of letting that surface as a raw 500.
         return _redirect_detail(application_id, error=str(e))
 
 
