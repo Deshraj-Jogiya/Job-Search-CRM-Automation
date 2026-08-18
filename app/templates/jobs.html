@@ -8,6 +8,9 @@
 <body>
     <header class="topbar">
         <h1><a href="/" class="plain-link">Career Pilot</a> / Jobs</h1>
+        <nav class="topnav">
+            <a href="/jobs/review">Review Queue</a>
+        </nav>
     </header>
 
     <main>
@@ -93,6 +96,9 @@
                         {{ app.posting.company_name_raw }}
                         &middot; first seen {{ app.posting.first_seen_at.strftime("%Y-%m-%d") }}
                         &middot; <a href="{{ app.posting.job_url }}" target="_blank" rel="noopener">view posting &#8599;</a>
+                        {% if app.status == "Pending Confirmation" and app.confirmation_deadline %}
+                        &middot; auto-proceeds {{ app.confirmation_deadline.strftime("%Y-%m-%d %H:%M") }} UTC
+                        {% endif %}
                     </p>
                     {% if app.attention_reason %}
                     <p class="flash-error-inline">{{ app.attention_reason }}</p>
