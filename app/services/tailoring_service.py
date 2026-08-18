@@ -24,6 +24,11 @@ from .matching_service import MatchingServiceError, get_profile_content_for_appl
 TARGET_ATS_SCORE = 90
 MAX_REFINE_PASSES = 2
 
+# Re-tailoring one of these would silently undo a decision the human
+# already made (submitted, cleared to submit, or explicitly passed on) --
+# refuse rather than reverting status back into the confirmation queue.
+_FINAL_STATUSES = ("Applied", "Approved", "Rejected")
+
 
 def _tailor_experience_pass(experience: list, jd_text: str) -> list:
     llm = get_llm_provider()
@@ -237,6 +242,10 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
     application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
     if not application:
         raise MatchingServiceError(f"Application {application_id} not found.")
+    if application.status in _FINAL_STATUSES:
+        raise MatchingServiceError(
+            f"Application is '{application.status}' -- can't re-tailor a finalized application."
+        )
 
     profile_content, variant_id = get_profile_content_for_application(db, application)
     posting = application.posting
@@ -276,7 +285,13 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
 
     _upsert_document(db, application.id, "cover_letter", cl_text, ats_score=cl_score)
 
-    cl_unsupported = [kw for kw in unsupported if kw.lower() in cl_text.lower()]
+    # Independent check: which JD keywords does the cover letter (a
+    # separate LLM call/prompt from the resume loop) actually claim,
+    # and are those claims backed by the real profile? Checked against
+    # initial_missing (not `unsupported`) so this can't just be a
+    # subset of what the resume check already found.
+    cl_mentioned = [kw for kw in initial_missing if kw.lower() in cl_text.lower()]
+    cl_unsupported = _find_unsupported_keywords(profile_content, cl_mentioned)
     all_unsupported = sorted(set(unsupported) | set(cl_unsupported))
 
     application.match_score = final_score
