@@ -5,8 +5,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from urllib.parse import quote
+
 from fastapi import FastAPI, Depends, Form, Request, HTTPException
-from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi.responses import RedirectResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy.orm import Session
@@ -19,6 +21,7 @@ from .routers import profile as profile_router
 from .routers import jobs as jobs_router
 from .routers import confirmation as confirmation_router
 from .routers import outreach as outreach_router
+from .services import backup_service
 from .services import scheduler as bg_scheduler
 
 Base.metadata.create_all(bind=engine)
@@ -92,7 +95,26 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
             "settings": settings,
             "total_applications": total_applications,
             "profile_variants": profile_variants,
+            "backup_configured": backup_service.is_configured(),
+            "message": request.query_params.get("message"),
+            "error": request.query_params.get("error"),
         },
+    )
+
+
+@app.get("/settings/backup/export")
+def export_backup(db: Session = Depends(get_db)):
+    """Encrypted, on-demand DB export -- see backup_service's module
+    docstring for why restore is deliberately not built alongside this."""
+    try:
+        encrypted_bytes, filename = backup_service.create_encrypted_backup()
+    except RuntimeError as e:
+        return RedirectResponse(url=f"/?error={quote(str(e))}", status_code=303)
+
+    return Response(
+        content=encrypted_bytes,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
