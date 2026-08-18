@@ -8,6 +8,7 @@ python-dotenv>=1.0.0
 python-multipart>=0.0.9
 cryptography>=42.0.0
 apscheduler>=3.10.0
+dnspython>=2.6.0
 
 # LLM providers -- only the one(s) matching your LLM_PROVIDER choice are
 # actually required at runtime, but listing all three keeps forking simple
