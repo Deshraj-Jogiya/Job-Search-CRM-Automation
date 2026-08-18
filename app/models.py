@@ -128,6 +128,7 @@ class JobApplication(Base):
     # Confirmation queue (Phase 4)
     confirmation_deadline = Column(DateTime, nullable=True)
     confirmed_by_user = Column(Boolean, default=False)
+    notification_sent = Column(Boolean, default=False)  # individual (fast-track) or included in a digest yet?
 
     visa_sponsorship = Column(String, default="Unknown")
     recruiter_name = Column(String, nullable=True)
@@ -254,6 +255,21 @@ class GlobalSettings(Base):
     fast_track_freshness_minutes = Column(Integer, default=30)  # ...and very fresh -> shrink the window
     fast_track_window_hours = Column(Float, default=2.0)
     rejected_retention_days = Column(Integer, default=7)
+
+    # Phase 4: quiet hours -- a confirmation deadline that would land inside
+    # this daily local-time window gets pushed to the end of it, so it
+    # never silently lapses while the user is predictably unreachable
+    # (e.g. asleep). Generic on purpose -- not specific to one schedule.
+    quiet_hours_enabled = Column(Boolean, default=True)
+    quiet_hours_start_hour = Column(Integer, default=23)  # local 24h clock
+    quiet_hours_end_hour = Column(Integer, default=7)
+    local_timezone = Column(String, default="America/Phoenix")  # IANA tz name
+
+    # Phase 4: notification digest -- individual emails are reserved for
+    # fast-track only; everything else batches into one periodic digest
+    # so queueing many applications at once can't spam the inbox.
+    notification_digest_interval_minutes = Column(Integer, default=30)
+    last_digest_sent_at = Column(DateTime, nullable=True)
 
     # Phase 5: outreach
     daily_outreach_cap = Column(Integer, default=10)

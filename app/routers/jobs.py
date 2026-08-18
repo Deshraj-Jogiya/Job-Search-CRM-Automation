@@ -21,7 +21,8 @@ from sqlalchemy.orm import Session
 
 from ..database import SessionLocal, get_db
 from ..models import JobApplication, JobPosting, JobSource, SearchKeyword, TailoredDocument, get_or_create_settings
-from ..services import intake_service, matching_service, tailoring_service
+from ..services import confirmation_service, intake_service, matching_service, tailoring_service
+from ..services.confirmation_service import ConfirmationServiceError
 from ..services.matching_service import MatchingServiceError
 from ..templating import render
 
@@ -159,6 +160,75 @@ def delete_keyword(keyword_id: int, db: Session = Depends(get_db)):
     return _redirect(message="Keyword deleted.")
 
 
+@router.get("/review", response_class=HTMLResponse)
+def review_page(request: Request, db: Session = Depends(get_db)):
+    """Bulk review: the primary surface for processing volume, per
+    CLAUDE.md's 2026-08-17 notification-volume revision. Pending
+    Confirmation (clean, safe to bulk) and Needs Review (flagged) are
+    kept in structurally separate sections/forms -- not just visually --
+    so a "select all" in one section can never sweep up a flagged item
+    that specifically needs individual judgment."""
+    pending = (
+        db.query(JobApplication)
+        .join(JobPosting)
+        .filter(JobApplication.status == "Pending Confirmation")
+        .order_by(JobApplication.confirmation_deadline.asc())
+        .all()
+    )
+    needs_review = (
+        db.query(JobApplication)
+        .join(JobPosting)
+        .filter(JobApplication.status == "Needs Review")
+        .order_by(JobApplication.created_at.desc())
+        .all()
+    )
+
+    return render(
+        request,
+        "review.html",
+        {
+            "pending": pending,
+            "needs_review": needs_review,
+            "message": request.query_params.get("message"),
+            "error": request.query_params.get("error"),
+        },
+    )
+
+
+def _bulk_process(db: Session, application_ids: list[int], action) -> tuple[int, list[str]]:
+    succeeded = 0
+    failures = []
+    for application_id in application_ids:
+        try:
+            action(db, application_id)
+            succeeded += 1
+        except ConfirmationServiceError as e:
+            failures.append(f"#{application_id}: {e}")
+    return succeeded, failures
+
+
+@router.post("/review/approve")
+def review_bulk_approve(application_ids: list[int] = Form(...), db: Session = Depends(get_db)):
+    succeeded, failures = _bulk_process(db, application_ids, confirmation_service.approve_application)
+    message = f"Approved {succeeded} application(s)."
+    if failures:
+        return RedirectResponse(
+            url=f"/jobs/review?error={quote(message + ' Failed: ' + '; '.join(failures))}", status_code=303
+        )
+    return RedirectResponse(url=f"/jobs/review?message={quote(message)}", status_code=303)
+
+
+@router.post("/review/reject")
+def review_bulk_reject(application_ids: list[int] = Form(...), db: Session = Depends(get_db)):
+    succeeded, failures = _bulk_process(db, application_ids, confirmation_service.reject_application)
+    message = f"Rejected {succeeded} application(s)."
+    if failures:
+        return RedirectResponse(
+            url=f"/jobs/review?error={quote(message + ' Failed: ' + '; '.join(failures))}", status_code=303
+        )
+    return RedirectResponse(url=f"/jobs/review?message={quote(message)}", status_code=303)
+
+
 @router.get("/{application_id}", response_class=HTMLResponse)
 def application_detail(application_id: int, request: Request, db: Session = Depends(get_db)):
     application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
@@ -211,3 +281,30 @@ def tailor_application_now(application_id: int, db: Session = Depends(get_db)):
     return _redirect_detail(
         application_id, message="Tailoring started -- this runs several AI passes, refresh in ~30-60s."
     )
+
+
+@router.post("/{application_id}/approve")
+def approve_application_now(application_id: int, db: Session = Depends(get_db)):
+    try:
+        confirmation_service.approve_application(db, application_id)
+        return _redirect_detail(application_id, message="Approved.")
+    except ConfirmationServiceError as e:
+        return _redirect_detail(application_id, error=str(e))
+
+
+@router.post("/{application_id}/reject")
+def reject_application_now(application_id: int, db: Session = Depends(get_db)):
+    try:
+        confirmation_service.reject_application(db, application_id)
+        return _redirect_detail(application_id, message="Rejected.")
+    except ConfirmationServiceError as e:
+        return _redirect_detail(application_id, error=str(e))
+
+
+@router.post("/{application_id}/mark-applied")
+def mark_applied_now(application_id: int, db: Session = Depends(get_db)):
+    try:
+        confirmation_service.mark_applied(db, application_id)
+        return _redirect_detail(application_id, message="Marked as Applied.")
+    except ConfirmationServiceError as e:
+        return _redirect_detail(application_id, error=str(e))
