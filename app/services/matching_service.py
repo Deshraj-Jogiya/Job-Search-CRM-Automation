@@ -25,6 +25,11 @@ class MatchingServiceError(Exception):
     letting a 500 through."""
 
 
+# Re-scoring one of these would silently undo a decision the human
+# already made (submitted, cleared to submit, or explicitly passed on).
+_FINAL_STATUSES = ("Applied", "Approved", "Rejected")
+
+
 def get_profile_content_for_application(db: Session, application: JobApplication) -> tuple[dict, int]:
     """Resolve which profile content to score against: the variant
     already pinned to this application if set, otherwise the default
@@ -94,6 +99,10 @@ def score_application(db: Session, application_id: int) -> JobApplication:
     application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
     if not application:
         raise MatchingServiceError(f"Application {application_id} not found.")
+    if application.status in _FINAL_STATUSES:
+        raise MatchingServiceError(
+            f"Application is '{application.status}' -- can't re-score a finalized application."
+        )
 
     profile_content, variant_id = get_profile_content_for_application(db, application)
     jd_text = application.posting.job_description
@@ -107,7 +116,6 @@ def score_application(db: Session, application_id: int) -> JobApplication:
     application.match_analysis_json = json.dumps(result)
     application.visa_sponsorship = result.get("visa_sponsorship", "Unknown")
     application.profile_variant_id = variant_id
-    application.attention_reason = None
     db.commit()
 
     log_activity(

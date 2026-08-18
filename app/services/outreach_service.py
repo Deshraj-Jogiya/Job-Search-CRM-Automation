@@ -26,6 +26,7 @@ via mark_sent_manually().
 """
 
 import re
+import threading
 from datetime import datetime, timedelta
 
 import dns.resolver
@@ -40,6 +41,14 @@ from .matching_service import get_profile_content_for_application
 _EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
 
 _VALID_CHANNELS = ("email", "linkedin_connection", "linkedin_inmail")
+
+# Guards the daily-cap check-then-send-then-commit sequence in
+# send_outreach() -- without it, two concurrent requests in this
+# process could both read the same under-cap count and both send,
+# exceeding daily_outreach_cap. A single-process in-memory lock is
+# sufficient here since this app runs as one process (see README/
+# ARCHITECTURE for the local-first deployment model).
+_send_lock = threading.Lock()
 
 
 class OutreachServiceError(Exception):
@@ -188,22 +197,24 @@ def send_outreach(db: Session, message_id: int) -> OutreachMessage:
     if message.status != "Approved":
         raise OutreachServiceError(f"Message is '{message.status}', not Approved.")
 
-    settings = get_or_create_settings(db)
-    sent_today = sent_count_last_24h(db)
-    if sent_today >= settings.daily_outreach_cap:
-        raise OutreachServiceError(f"Daily outreach cap ({settings.daily_outreach_cap}) already reached today.")
-
     if not is_smtp_configured():
         raise OutreachServiceError("SMTP is not configured -- add SMTP_USER/SMTP_PASSWORD to .env first.")
 
-    try:
-        send_email(message.recipient_address, message.subject, message.body)
-    except Exception as e:
-        raise OutreachServiceError(f"Send failed: {e}") from e
+    with _send_lock:
+        settings = get_or_create_settings(db)
+        sent_today = sent_count_last_24h(db)
+        if sent_today >= settings.daily_outreach_cap:
+            raise OutreachServiceError(f"Daily outreach cap ({settings.daily_outreach_cap}) already reached today.")
 
-    message.status = "Sent"
-    message.sent_at = datetime.utcnow()
-    db.commit()
+        try:
+            send_email(message.recipient_address, message.subject, message.body)
+        except Exception as e:
+            raise OutreachServiceError(f"Send failed: {e}") from e
+
+        message.status = "Sent"
+        message.sent_at = datetime.utcnow()
+        db.commit()
+
     log_activity(db, f"Sent outreach email to {message.recipient_address}.", "INFO")
     return message
 
