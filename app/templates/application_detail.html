@@ -49,10 +49,12 @@
         <section class="variant-block">
             <div class="variant-header">
                 <h2>Match Analysis</h2>
+                {% if application.status not in ("Applied", "Approved", "Rejected") %}
                 <form method="post" action="/jobs/{{ application.id }}/score" class="inline-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <button type="submit">{{ "Re-score" if match_analysis else "Score This Job" }}</button>
                 </form>
+                {% endif %}
             </div>
             {% if match_analysis %}
             <p><strong>{{ application.match_score }}% match</strong> &middot; visa sponsorship: {{ application.visa_sponsorship }}</p>
@@ -68,10 +70,12 @@
         <section class="variant-block">
             <div class="variant-header">
                 <h2>Tailored Documents</h2>
+                {% if application.status not in ("Applied", "Approved", "Rejected") %}
                 <form method="post" action="/jobs/{{ application.id }}/tailor" class="inline-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <button type="submit">{{ "Re-tailor" if resume_doc else "Tailor Resume & Cover Letter" }}</button>
                 </form>
+                {% endif %}
             </div>
             {% if resume_doc %}
             <p class="muted-note">Resume ATS score: <strong>{{ resume_doc.ats_score }}%</strong> &middot; generated {{ resume_doc.generated_at.strftime("%Y-%m-%d %H:%M") }} UTC</p>

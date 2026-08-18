@@ -91,7 +91,10 @@ def _tailor_in_background(application_id: int):
     db = SessionLocal()
     try:
         tailoring_service.tailor_application(db, application_id)
-    except MatchingServiceError as e:
+    except (MatchingServiceError, ConfirmationServiceError) as e:
+        # tailor_application hands off to confirmation_service.evaluate_and_enqueue()
+        # at the end, which can raise ConfirmationServiceError -- catch both so a
+        # failure there is recorded instead of dying silently in this thread.
         _record_failure(db, application_id, e)
     finally:
         db.close()
@@ -309,11 +312,16 @@ def discover_outreach_contacts(application_id: int, request: Request, db: Sessio
     return render(request, "application_detail.html", context)
 
 
+_FINAL_STATUSES = ("Applied", "Approved", "Rejected")
+
+
 @router.post("/{application_id}/score")
 def score_application_now(application_id: int, db: Session = Depends(get_db)):
     application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
     if not application:
         raise HTTPException(status_code=404, detail="Application not found")
+    if application.status in _FINAL_STATUSES:
+        return _redirect_detail(application_id, error=f"Application is '{application.status}' -- can't re-score a finalized application.")
     threading.Thread(target=_score_in_background, args=(application_id,), daemon=True).start()
     return _redirect_detail(application_id, message="Scoring started -- refresh in a moment to see the result.")
 
@@ -323,6 +331,8 @@ def tailor_application_now(application_id: int, db: Session = Depends(get_db)):
     application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
     if not application:
         raise HTTPException(status_code=404, detail="Application not found")
+    if application.status in _FINAL_STATUSES:
+        return _redirect_detail(application_id, error=f"Application is '{application.status}' -- can't re-tailor a finalized application.")
     threading.Thread(target=_tailor_in_background, args=(application_id,), daemon=True).start()
     return _redirect_detail(
         application_id, message="Tailoring started -- this runs several AI passes, refresh in ~30-60s."

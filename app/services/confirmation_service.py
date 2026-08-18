@@ -102,6 +102,12 @@ def evaluate_and_enqueue(db: Session, application_id: int) -> JobApplication:
     hard_stop_reason = has_hard_stop_flag(application)
     is_fast_track = False
 
+    # Re-entering the queue (e.g. re-tailored after an earlier digest
+    # already covered it) must be visible to the NEXT digest/fast-track
+    # email too, not permanently invisible because it was notified once
+    # before under a since-resolved state.
+    application.notification_sent = False
+
     if hard_stop_reason:
         application.status = "Needs Review"
         application.confirmation_deadline = None
@@ -156,10 +162,8 @@ def reject_application(db: Session, application_id: int) -> JobApplication:
     application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
     if not application:
         raise ConfirmationServiceError(f"Application {application_id} not found.")
-    if application.status == "Applied":
-        raise ConfirmationServiceError("This application has already been marked Applied and can't be un-applied.")
-    if application.status == "Rejected":
-        raise ConfirmationServiceError("This application is already Rejected.")
+    if application.status not in ("Pending Confirmation", "Needs Review"):
+        raise ConfirmationServiceError(f"Application is '{application.status}', not awaiting confirmation.")
 
     application.status = "Rejected"
     application.rejected_at = datetime.utcnow()

@@ -56,15 +56,19 @@ app_dependencies = []
 if os.getenv("DASHBOARD_PASSWORD"):
     app_dependencies.append(Depends(verify_credentials))
 
-app = FastAPI(title="Career Pilot -- Job Search Command Center", dependencies=app_dependencies)
+app = FastAPI(title="Career Pilot -- Job Search Command Center")
 app.add_middleware(CSRFMiddleware)
 
 os.makedirs("app/static/css", exist_ok=True)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
-app.include_router(profile_router.router)
-app.include_router(jobs_router.router)
+app.include_router(profile_router.router, dependencies=app_dependencies)
+app.include_router(jobs_router.router, dependencies=app_dependencies)
+# NOT behind HTTPBasic: these routes are reached from a one-click email
+# link opened on whatever device the user has in hand (see confirmation.py's
+# docstring and confirmation_tokens.py) -- they carry their own signed
+# bearer token instead, same reasoning as csrf.py's EXEMPT_PATH_PREFIXES.
 app.include_router(confirmation_router.router)
-app.include_router(outreach_router.router)
+app.include_router(outreach_router.router, dependencies=app_dependencies)
 
 
 @app.on_event("startup")
@@ -77,12 +81,12 @@ def on_shutdown():
     bg_scheduler.stop_scheduler()
 
 
-@app.get("/api/health")
+@app.get("/api/health", dependencies=app_dependencies)
 def health_check():
     return {"status": "ok", "time": datetime.utcnow().isoformat()}
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse, dependencies=app_dependencies)
 def dashboard(request: Request, db: Session = Depends(get_db)):
     settings = get_or_create_settings(db)
     total_applications = db.query(JobApplication).count()
@@ -102,7 +106,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     )
 
 
-@app.get("/settings/backup/export")
+@app.get("/settings/backup/export", dependencies=app_dependencies)
 def export_backup(db: Session = Depends(get_db)):
     """Encrypted, on-demand DB export -- see backup_service's module
     docstring for why restore is deliberately not built alongside this."""
@@ -118,7 +122,7 @@ def export_backup(db: Session = Depends(get_db)):
     )
 
 
-@app.post("/settings/automation/toggle")
+@app.post("/settings/automation/toggle", dependencies=app_dependencies)
 def toggle_automation(db: Session = Depends(get_db)):
     """Global kill switch -- halts crawling, tailoring, auto-apply, and
     outreach the moment it's flipped off. Every background job checks
@@ -129,7 +133,7 @@ def toggle_automation(db: Session = Depends(get_db)):
     return RedirectResponse(url="/", status_code=303)
 
 
-@app.post("/settings/update")
+@app.post("/settings/update", dependencies=app_dependencies)
 def update_settings(
     fast_poll_interval_minutes: int = Form(...),
     full_ingest_interval_minutes: int = Form(...),
