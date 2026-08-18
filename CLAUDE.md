@@ -156,11 +156,14 @@ not a patch of the old repo. Don't reintroduce those patterns.
       fabricated document -- keep this check if this code is touched
       again, and treat any future tailoring-prompt change as needing
       the same live scrutiny, not just a "does it return JSON" check.
-- [ ] **Phase 4**: Confirmation-gated auto-apply — `Pending Confirmation`
+- [x] **Phase 4**: Confirmation-gated auto-apply — `Pending Confirmation`
       status, tunable countdown with fast-track override for very-fresh/
       very-high-match jobs, one-click approve UI, notifications, retention
-      sweep for Rejected jobs. **Design settled 2026-08-17** (reasoning in
-      Corrections/refinements above):
+      sweep for Rejected jobs. **Design settled and built 2026-08-17**
+      (reasoning in Corrections/refinements above; implementation in
+      `app/services/confirmation_service.py`,
+      `app/services/notification_service.py`,
+      `app/services/confirmation_tokens.py`, `app/routers/confirmation.py`):
       - Every application gets a confirmation window + notification, no
         exceptions -- "fast-track" means a short tunable window (minutes,
         via the existing `fast_track_window_hours`/`fast_track_score_
@@ -195,11 +198,53 @@ not a patch of the old repo. Don't reintroduce those patterns.
         it solves "I can't check the dashboard right now" by pushing the
         decision to the user wherever they are, instead of requiring
         them to remember to go look.
+      - **Revised and built 2026-08-17 -- notification volume fix**:
+        the first build sent one individual email per application with
+        no batching at all. Caught via a direct question: if a bulk
+        action (or, later, an auto-tailor pass) queues many
+        applications in one go -- 75 was the example -- that's 75
+        emails, a disaster, not a feature. Fixed:
+        - The **bulk review page** (`/jobs/review`, `app/routers/jobs.py`
+          + `app/templates/review.html`) is the primary way to process
+          volume -- table of everything in `Pending Confirmation` +
+          `Needs Review`, checkboxes, bulk Approve Selected / Reject
+          Selected, per-row link into the detail page.
+        - Individual one-click emails (`notification_service.
+          send_confirmation_notification`) are reserved for **fast-track
+          only** (rare by design -- very-high-score + very-fresh).
+        - Everything else gets **no per-item email** -- `notification_
+          service.send_digest()`, run from the scheduler tick and
+          gated by a tunable `notification_digest_interval_minutes`,
+          batches every application with `notification_sent=False`
+          into one email pointing at the bulk review page.
+        - Safety nuance, built in: `Pending Confirmation` and `Needs
+          Review` rows live in structurally separate `<form>`s/tables
+          on the review page, each with its own "select all" -- a bulk
+          action in one section can never touch a flagged item in the
+          other, so the confirmation queue's core safety mechanism
+          can't be bypassed by habit.
       - Caveat worth remembering: scam/fabrication detection is
         heuristic, not a guarantee -- "clean/unflagged" means the
         specific checks didn't catch anything, not that nothing could
         possibly be wrong. The auto-proceed path inherits whatever blind
         spots those checks have.
+      - "Applied" is reserved for a genuine human confirmation that they
+        actually submitted somewhere (`Mark as Applied`) -- approval or
+        timeout only ever produces "Approved" (ready, not submitted).
+        Don't repurpose "Applied" to mean "the system stopped waiting";
+        that would misrepresent real-world state the user might rely on.
+      - **Lesson from building this**: calling `evaluate_and_enqueue()`
+        with real SMTP credentials configured sends a real email --
+        caught this only after it had already fired twice during
+        verification (harmless test content, but still an unintended
+        real side effect). If touching this code with live SMTP config
+        present, seed/test data in ways that don't reach the
+        notification call, or ask before triggering it.
+      - **Bug found and fixed during verification**: `reject_application()`
+        originally had no status guard at all (unlike `approve_application`),
+        so it would "reject" an already-Applied application -- nonsensical,
+        since you can't un-submit something real. Now blocks rejecting
+        `Applied` or already-`Rejected` applications with a clear error.
 - [ ] **Phase 5**: Outreach automation — same confirmation pattern, daily
       cap, email verification before ever offering "send".
 - [ ] **Phase 6**: Interview prep generation.

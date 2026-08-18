@@ -307,4 +307,15 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
         f"resume {final_score}%, cover letter {cl_score}%.",
         "INFO",
     )
+
+    # Phase 4: hand off to the confirmation queue -- routes to Needs
+    # Review if the fabrication check above (or Phase 2's scam-pattern
+    # check) flagged anything, otherwise into a timed Pending
+    # Confirmation with a notification. Import here, not at module
+    # scope, to keep tailoring_service usable standalone / in tests
+    # without pulling in the notification/email stack.
+    from .confirmation_service import evaluate_and_enqueue
+    evaluate_and_enqueue(db, application.id)
+    db.refresh(application)
+
     return application
