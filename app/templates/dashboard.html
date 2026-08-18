@@ -10,6 +10,7 @@
         <h1>Career Pilot</h1>
         <nav class="topnav">
             <a href="/jobs">Jobs</a>
+            <a href="/jobs/review">Review Queue</a>
             <a href="/profile">Profile</a>
             <form method="post" action="/settings/automation/toggle" class="inline-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -75,6 +76,27 @@
 
                 <label>Daily outreach cap
                     <input type="number" name="daily_outreach_cap" value="{{ settings.daily_outreach_cap }}" min="0">
+                </label>
+
+                <label class="checkbox-label">
+                    <input type="checkbox" name="quiet_hours_enabled" value="true" {{ "checked" if settings.quiet_hours_enabled }}>
+                    Quiet hours enabled (push deadlines past this window)
+                </label>
+
+                <label>Quiet hours start (local, 0-23)
+                    <input type="number" name="quiet_hours_start_hour" value="{{ settings.quiet_hours_start_hour }}" min="0" max="23">
+                </label>
+
+                <label>Quiet hours end (local, 0-23)
+                    <input type="number" name="quiet_hours_end_hour" value="{{ settings.quiet_hours_end_hour }}" min="0" max="23">
+                </label>
+
+                <label>Local timezone (IANA name)
+                    <input type="text" name="local_timezone" value="{{ settings.local_timezone }}" placeholder="America/Phoenix">
+                </label>
+
+                <label>Notification digest interval (minutes)
+                    <input type="number" name="notification_digest_interval_minutes" value="{{ settings.notification_digest_interval_minutes }}" min="1">
                 </label>
 
                 <button type="submit">Save Settings</button>
