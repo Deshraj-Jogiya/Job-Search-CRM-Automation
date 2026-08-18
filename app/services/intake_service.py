@@ -13,19 +13,30 @@ fresh before doing real work, per CLAUDE.md's kill-switch convention.
 
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
 from ..models import Company, JobApplication, JobPosting, JobSource, SearchKeyword, get_or_create_settings
+from . import board_discovery
 from .activity_logger import log_activity
 from .company_utils import normalize_company_name, normalize_title
-from .sources import adzuna_source, linkedin_source
+from .sources import adzuna_source, ashby_source, greenhouse_source, lever_source, linkedin_source
 
 SOURCE_MODULES = {
     linkedin_source.SOURCE_NAME: linkedin_source,
     adzuna_source.SOURCE_NAME: adzuna_source,
+    greenhouse_source.SOURCE_NAME: greenhouse_source,
+    lever_source.SOURCE_NAME: lever_source,
+    ashby_source.SOURCE_NAME: ashby_source,
 }
+
+# How many pre-existing companies (created before board-slug auto-
+# detection existed, or never probed for some other reason) get probed
+# per intake cycle. Caps the number of outbound probe requests per tick
+# instead of hammering every unchecked company's board APIs at once.
+_BOARD_SLUG_BACKFILL_BATCH = 10
 
 # How long a gap in last_seen_at before a company+title match is treated
 # as a genuine repost (new JobPosting row) rather than the same listing
@@ -88,7 +99,26 @@ def _detect_scam_patterns(jd_text: str) -> str | None:
     return "; ".join(hits) if hits else None
 
 
+def _apply_discovered_slugs(db: Session, company: Company, slugs: dict) -> None:
+    company.greenhouse_slug = slugs.get("greenhouse")
+    company.lever_slug = slugs.get("lever")
+    company.ashby_slug = slugs.get("ashby")
+    company.board_slugs_checked_at = datetime.utcnow()
+    found = [ats for ats, slug in slugs.items() if slug]
+    if found:
+        log_activity(db, f"Detected {', '.join(found)} board(s) for {company.name}.", "INFO")
+
+
 def _get_or_create_company(db: Session, raw_name: str) -> Company:
+    """Board-slug probing does NOT happen inline here -- a single
+    ingestion pass can create many new companies at once (e.g. a big
+    first LinkedIn scan), and each probe is several real network calls.
+    Probing every new company inline would make ingestion latency scale
+    with how many new companies showed up this cycle, which defeats the
+    whole point of frequent polling. New companies are left unchecked
+    (board_slugs_checked_at=None) and picked up by the capped
+    _backfill_board_slugs() sweep instead, same as any other unchecked
+    company -- bounded cost per cycle regardless of ingest volume."""
     normalized = normalize_company_name(raw_name)
     company = db.query(Company).filter(Company.normalized_name == normalized).first()
     if not company:
@@ -97,6 +127,64 @@ def _get_or_create_company(db: Session, raw_name: str) -> Company:
         db.commit()
         db.refresh(company)
     return company
+
+
+def set_manual_board_slug(db: Session, company_name: str, ats_type: str, slug: str) -> Company:
+    """User-asserted override/addition from the Jobs page -- for
+    companies auto-detection missed (non-obvious slug) or hasn't run for
+    yet. Deliberately synchronous and network-free (the user is
+    supplying the slug directly, nothing to probe) -- marks
+    board_slugs_checked_at so the backfill sweep leaves this company
+    alone afterward, since a fresh discover_slugs() call would overwrite
+    all three slug fields wholesale and could clobber exactly the
+    override the user just made (the auto-probe already missed this
+    slug once, or it wouldn't have needed a manual entry). This does
+    mean the other two ATS types won't get auto-probed for this company
+    -- an acceptable gap; the user can set those manually too if needed."""
+    if ats_type not in ("greenhouse", "lever", "ashby"):
+        raise ValueError(f"Unknown ATS type '{ats_type}'.")
+    if not slug or not slug.strip():
+        raise ValueError("Slug can't be empty.")
+
+    normalized = normalize_company_name(company_name)
+    company = db.query(Company).filter(Company.normalized_name == normalized).first()
+    if not company:
+        company = Company(name=company_name, normalized_name=normalized)
+        db.add(company)
+        db.commit()
+        db.refresh(company)
+
+    setattr(company, f"{ats_type}_slug", slug.strip())
+    company.board_slugs_checked_at = datetime.utcnow()
+    db.commit()
+    log_activity(db, f"Manually set {ats_type} slug for {company.name}: {slug.strip()}", "INFO")
+    return company
+
+
+def _backfill_board_slugs(db: Session) -> None:
+    """Probes a capped batch of not-yet-checked companies each cycle --
+    this is the ONLY place board slugs get probed (new companies from
+    this cycle's ingestion included; see _get_or_create_company's
+    docstring for why probing isn't inline there). The network fetch
+    (discover_slugs, several requests per company) runs concurrently
+    across the batch -- SQLAlchemy Sessions aren't thread-safe, so the
+    actual DB writes happen back on this thread, sequentially, once all
+    fetches return."""
+    unchecked = (
+        db.query(Company)
+        .filter(Company.board_slugs_checked_at.is_(None))
+        .limit(_BOARD_SLUG_BACKFILL_BATCH)
+        .all()
+    )
+    if not unchecked:
+        return
+
+    with ThreadPoolExecutor(max_workers=min(len(unchecked), 5)) as pool:
+        results = list(pool.map(lambda c: board_discovery.discover_slugs(c.name), unchecked))
+
+    for company, slugs in zip(unchecked, results):
+        _apply_discovered_slugs(db, company, slugs)
+    db.commit()
 
 
 def _find_matching_posting(db: Session, company_id: int, raw) -> tuple[JobPosting | None, bool]:
@@ -255,4 +343,14 @@ def run_intake_cycle(db: Session, force: bool = False) -> None:
     if adzuna_row.is_active and (force or _is_due(adzuna_row, settings.full_ingest_interval_minutes, now)):
         _run_source(db, adzuna_source, adzuna_row)
 
+    # Direct-ATS sources (Phase 2 slice 2): no search quota to respect,
+    # same low-indexing-lag rationale as LinkedIn -- poll at the fast
+    # cadence. Each is a no-op (skipped with a clear log entry) until at
+    # least one Company row has that ATS's slug set.
+    for module in (greenhouse_source, lever_source, ashby_source):
+        source_row = _get_or_create_job_source(db, module.SOURCE_NAME)
+        if source_row.is_active and (force or _is_due(source_row, settings.fast_poll_interval_minutes, now)):
+            _run_source(db, module, source_row)
+
+    _backfill_board_slugs(db)
     _flag_stale_postings(db, settings.stale_posting_threshold_days)
