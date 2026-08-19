@@ -40,13 +40,13 @@ this foundation instead of retrofitting it.
 | Outcome analytics (Phase 7) | `app/services/analytics_service.py`, `app/routers/analytics.py`, `app/templates/analytics.html` | Read-only `/analytics` page: status funnel, apply/interview/offer conversion rates, speed-to-apply, by-source and by-score-band apply rates, flagged-vs-clean apply rates, company memory (deprioritized/blocked, most "Not Selected"). Required first wiring up `Interviewing`/`Offer`/a new `Not Selected` status (manual self-report via `confirmation_service.mark_interviewing/mark_offer/mark_not_selected`, same trust model as `mark_applied`) -- those states existed only in a schema comment before this, so there was no real data past `Applied` to analyze. `Not Selected` is deliberately distinct from `Rejected` (which means declined-before-applying and gets swept/deleted) since it's real applied-and-declined history worth keeping. |
 
 | $0 deployment hardening (Phase 10) | `app/database.py`, `app/services/scheduler.py` | SQLite WAL mode + busy_timeout to close a known concurrent-writer "database is locked" risk; scheduler tick failure isolation (4 independent concerns, each own session/exception handling, failures logged visibly instead of printed to an unwatched console). See the Deployment section below for the local-first-vs-Oracle-fallback operational guidance (documentation, not new automation). |
+| Two-face packaging (Phase 8) | `app/app_mode.py`, `app/fixtures/demo_profile.json`, wiring in `app/models.py`/`app/main.py`, `app/templates/dashboard.html` | One `APP_MODE` env var (default `personal`) selects personal vs. public-showcase deployment from the same codebase, no fork needed. Showcase mode auto-seeds a fictional demo profile on first startup (via the same `profile_service` path a human uses, only when no profile exists yet) and defaults automation OFF for a brand-new deployment -- a real, toggleable default, not a hard lock, and one that never touches an existing deployment's already-created settings row. Dashboard shows an informational banner; README documents ethical-use expectations for anyone running a public instance. |
 
 ## What's NOT built yet (by design — next phases)
 
 - Real portal-submission automation (Playwright-style auto-fill/submit) — explicitly out of Phase 4's scope; a separate, later, ToS-sensitive decision, not assumed by default
 - Backup restore (deliberately deferred, see Phase 9 above)
-- Two-face packaging (personal vs. public showcase config)
-- Final design/polish pass
+- Final design/polish pass (Phase 11 — deliberately last, now that every backend phase is built)
 
 ## Every tunable is already live-editable
 
