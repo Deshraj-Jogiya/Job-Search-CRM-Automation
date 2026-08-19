@@ -8,6 +8,16 @@ Each of those internally checks GlobalSettings.automation_enabled
 fresh before doing real work, per CLAUDE.md's kill-switch convention --
 this file just needs to fire often enough that the shortest configured
 interval/deadline isn't missed by much, it does not encode cadence itself.
+
+Phase 10: each of the 4 concerns above runs in its own DB session with
+its own exception isolation. The original version shared one session
+and one try/except across all of them -- an unhandled error in intake
+(e.g. a source's network call throwing past its own internal handling)
+silently skipped the confirmation sweeps and the digest for that whole
+tick too, even though they're logically independent. Failures are
+logged via log_activity (visible in the dashboard) rather than just
+printed to a console nobody's watching, since this is meant to run
+unattended.
 """
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -15,26 +25,40 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from ..database import SessionLocal
 from ..models import get_or_create_settings
 from . import confirmation_service, intake_service, notification_service
+from .activity_logger import log_activity
 
 scheduler = BackgroundScheduler()
 
 _TICK_MINUTES = 5
 
 
-def _tick() -> None:
+def _run_isolated(name: str, fn) -> None:
     db = SessionLocal()
     try:
-        intake_service.run_intake_cycle(db)
-
-        settings = get_or_create_settings(db)
-        if settings.automation_enabled:
-            confirmation_service.sweep_expired_confirmations(db)
-            confirmation_service.sweep_rejected_retention(db)
-            notification_service.send_digest(db)
+        fn(db)
     except Exception as e:
-        print(f"Error in scheduler tick: {e}")
+        try:
+            log_activity(db, f"Scheduler tick: {name} failed -- {e}", "ERROR")
+        except Exception:
+            print(f"Error in scheduler tick ({name}): {e}")
     finally:
         db.close()
+
+
+def _run_if_automation_enabled(name: str, fn) -> None:
+    def _guarded(db):
+        settings = get_or_create_settings(db)
+        if settings.automation_enabled:
+            fn(db)
+
+    _run_isolated(name, _guarded)
+
+
+def _tick() -> None:
+    _run_isolated("intake", intake_service.run_intake_cycle)
+    _run_if_automation_enabled("expired-confirmation sweep", confirmation_service.sweep_expired_confirmations)
+    _run_if_automation_enabled("rejected-retention sweep", confirmation_service.sweep_rejected_retention)
+    _run_if_automation_enabled("notification digest", notification_service.send_digest)
 
 
 def start_scheduler() -> None:
