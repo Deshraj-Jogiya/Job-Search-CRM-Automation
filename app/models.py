@@ -131,9 +131,20 @@ class JobApplication(Base):
     profile_variant_id = Column(Integer, ForeignKey("profile_variants.id"), nullable=True)
 
     status = Column(String, default="Ingested")
-    # Ingested -> Tailored -> Pending Confirmation -> Applied -> Interviewing -> Offer
-    #                                                          -> Needs Review
-    #          -> Rejected (retained briefly, then swept)
+    # Ingested -> Tailored -> Pending Confirmation -> Approved -> Applied -> Interviewing -> Offer
+    #                                                           \          \-> Not Selected
+    #                                                            -> Needs Review
+    #          -> Rejected (declined before applying; retained briefly, then swept)
+    #
+    # Interviewing/Offer/Not Selected (Phase 7, added 2026-08-19) are manual
+    # self-reports via confirmation_service.mark_interviewing/mark_offer/
+    # mark_not_selected, same trust model as mark_applied -- nothing infers
+    # these automatically. "Not Selected" is deliberately a different status
+    # from "Rejected": "Rejected" means the user declined to apply and is
+    # swept/deleted after rejected_retention_days (see sweep_rejected_
+    # retention); "Not Selected" means the user DID apply and the outcome
+    # was a decline or silence post-application -- real analytics history
+    # worth keeping, not garbage to sweep.
 
     # Confirmation queue (Phase 4)
     confirmation_deadline = Column(DateTime, nullable=True)
@@ -147,6 +158,9 @@ class JobApplication(Base):
 
     applied_at = Column(DateTime, nullable=True)
     rejected_at = Column(DateTime, nullable=True)
+    interviewing_at = Column(DateTime, nullable=True)  # only set by an explicit Mark as Interviewing click
+    offer_at = Column(DateTime, nullable=True)
+    not_selected_at = Column(DateTime, nullable=True)
 
     notes = Column(Text, nullable=True)
     attention_reason = Column(String, nullable=True)

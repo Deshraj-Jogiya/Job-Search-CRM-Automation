@@ -11,6 +11,7 @@
     </header>
 
     <main>
+        {% set final_statuses = ("Applied", "Approved", "Rejected", "Interviewing", "Offer", "Not Selected") %}
         {% if message %}
         <div class="flash flash-ok">{{ message }}</div>
         {% endif %}
@@ -49,7 +50,7 @@
         <section class="variant-block">
             <div class="variant-header">
                 <h2>Match Analysis</h2>
-                {% if application.status not in ("Applied", "Approved", "Rejected") %}
+                {% if application.status not in final_statuses %}
                 <form method="post" action="/jobs/{{ application.id }}/score" class="inline-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <button type="submit">{{ "Re-score" if match_analysis else "Score This Job" }}</button>
@@ -70,7 +71,7 @@
         <section class="variant-block">
             <div class="variant-header">
                 <h2>Tailored Documents</h2>
-                {% if application.status not in ("Applied", "Approved", "Rejected") %}
+                {% if application.status not in final_statuses %}
                 <form method="post" action="/jobs/{{ application.id }}/tailor" class="inline-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <button type="submit">{{ "Re-tailor" if resume_doc else "Tailor Resume & Cover Letter" }}</button>
@@ -96,7 +97,7 @@
             {% endif %}
         </section>
 
-        {% if application.status != "Rejected" %}
+        {% if application.status not in ("Rejected", "Not Selected") %}
         <section class="variant-block">
             <div class="variant-header">
                 <h2>Interview Prep</h2>
@@ -190,6 +191,52 @@
         <section class="variant-block">
             <h2>Applied</h2>
             <p class="muted-note">Marked applied {{ application.applied_at.strftime("%Y-%m-%d %H:%M") }} UTC.</p>
+            <p class="muted-note">
+                None of this is inferred automatically -- there's no inbox scanning in this build, so update it
+                yourself as things happen. It's what makes the analytics page's conversion numbers real.
+            </p>
+            <div class="pending-actions">
+                <form method="post" action="/jobs/{{ application.id }}/mark-interviewing" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit">Mark as Interviewing</button>
+                </form>
+                <form method="post" action="/jobs/{{ application.id }}/mark-offer" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit">Mark as Offer</button>
+                </form>
+                <form method="post" action="/jobs/{{ application.id }}/mark-not-selected" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn-secondary">Mark as Not Selected</button>
+                </form>
+            </div>
+        </section>
+        {% elif application.status == "Interviewing" %}
+        <section class="variant-block">
+            <h2>Interviewing</h2>
+            <p class="muted-note">Interview prep is above -- update this once you hear back.</p>
+            <div class="pending-actions">
+                <form method="post" action="/jobs/{{ application.id }}/mark-offer" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit">Mark as Offer</button>
+                </form>
+                <form method="post" action="/jobs/{{ application.id }}/mark-not-selected" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn-secondary">Mark as Not Selected</button>
+                </form>
+            </div>
+        </section>
+        {% elif application.status == "Offer" %}
+        <section class="variant-block">
+            <h2>Offer</h2>
+            <p class="muted-note">Congratulations.</p>
+        </section>
+        {% elif application.status == "Not Selected" %}
+        <section class="variant-block">
+            <h2>Not Selected</h2>
+            <p class="muted-note">
+                Recorded for your records -- unlike a pre-apply Reject, this isn't swept/deleted, since you
+                actually applied and this is real outcome history.
+            </p>
         </section>
         {% elif application.status == "Rejected" %}
         <section class="variant-block">

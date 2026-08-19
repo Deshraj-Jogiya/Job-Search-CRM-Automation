@@ -21,6 +21,7 @@ from .routers import profile as profile_router
 from .routers import jobs as jobs_router
 from .routers import confirmation as confirmation_router
 from .routers import outreach as outreach_router
+from .routers import analytics as analytics_router
 from .services import backup_service
 from .services import scheduler as bg_scheduler
 
@@ -69,6 +70,7 @@ app.include_router(jobs_router.router, dependencies=app_dependencies)
 # bearer token instead, same reasoning as csrf.py's EXEMPT_PATH_PREFIXES.
 app.include_router(confirmation_router.router)
 app.include_router(outreach_router.router, dependencies=app_dependencies)
+app.include_router(analytics_router.router, dependencies=app_dependencies)
 
 
 @app.on_event("startup")
