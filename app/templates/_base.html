@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Career Pilot{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script>
+        // Runs synchronously, before the page paints, so the correct
+        // theme class is already on <html> by the time CSS applies --
+        // avoids a flash of the wrong theme that would happen if this
+        // ran from theme.js at the end of the page instead. theme.js
+        // owns the actual click-to-toggle + persistence logic.
+        (function () {
+            try {
+                var saved = localStorage.getItem("theme");
+                var wantsLight = saved ? saved === "light" : window.matchMedia("(prefers-color-scheme: light)").matches;
+                if (wantsLight) document.documentElement.classList.add("light-theme");
+            } catch (e) { /* localStorage unavailable -- default dark theme stands */ }
+        })();
+    </script>
+</head>
+<body>
+    <header class="topbar">
+        <h1>{% block header_title %}<a href="/" class="plain-link">Career Pilot</a>{% endblock %}</h1>
+        <nav class="topnav">
+            {% block nav %}{% endblock %}
+            <button id="theme-toggle" class="theme-toggle-btn" type="button" aria-label="Toggle light/dark theme">
+                <span class="theme-icon" aria-hidden="true">🌙</span>
+            </button>
+        </nav>
+    </header>
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="/static/js/theme.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
