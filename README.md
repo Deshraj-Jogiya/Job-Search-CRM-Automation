@@ -44,9 +44,10 @@ and direct Greenhouse/Lever/Ashby board polling), AI matching/tailoring
 with a fabrication safeguard, the confirmation-gated auto-apply queue,
 outreach automation with contact discovery, interview prep generation,
 outcome analytics, encrypted backup/export, $0 deployment hardening,
-and two-face packaging are all built and live. A dedicated design/
-polish pass is what's left — see `ARCHITECTURE.md` for the full,
-up-to-date phase table.
+two-face packaging, and a dedicated design/polish pass (glassmorphism
+UI, light/dark theme, responsive layout, accessibility) are all built
+and live — every phase on the original roadmap is done. See
+`ARCHITECTURE.md` for the full phase table.
 
 ## Public Showcase Mode
 
