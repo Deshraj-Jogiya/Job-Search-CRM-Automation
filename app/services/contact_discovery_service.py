@@ -47,7 +47,10 @@ def is_hunter_configured() -> bool:
     return bool(os.getenv("HUNTER_API_KEY"))
 
 
-def _tavily_search(query: str, max_results: int = 5) -> list:
+def tavily_search(query: str, max_results: int = 5) -> list:
+    """Public/shared -- also used by interview_prep_service.py for light
+    company research. Raises on failure; callers decide how to degrade
+    (this module's own callers catch and fall back to an empty list)."""
     api_key = os.getenv("TAVILY_API_KEY")
     response = requests.post(
         "https://api.tavily.com/search",
@@ -61,7 +64,7 @@ def _tavily_search(query: str, max_results: int = 5) -> list:
 
 def _find_company_domain(company_name: str) -> str | None:
     try:
-        results = _tavily_search(f"{company_name} official company website", max_results=3)
+        results = tavily_search(f"{company_name} official company website", max_results=3)
     except Exception:
         return None
     for r in results:
@@ -73,7 +76,7 @@ def _find_company_domain(company_name: str) -> str | None:
 
 def _find_linkedin_candidates(company_name: str) -> list:
     try:
-        results = _tavily_search(
+        results = tavily_search(
             f'"{company_name}" recruiter OR "talent acquisition" OR "people team" site:linkedin.com/in',
             max_results=5,
         )
