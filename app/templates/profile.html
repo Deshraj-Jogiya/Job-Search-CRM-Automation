@@ -1,137 +1,132 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Career Pilot -- Profile</title>
-    <link rel="stylesheet" href="/static/css/style.css">
-</head>
-<body>
-    <header class="topbar">
-        <h1><a href="/" class="plain-link">Career Pilot</a> / Profile</h1>
-    </header>
+{% extends "_base.html" %}
 
-    <main>
-        {% if message %}
-        <div class="flash flash-ok">{{ message }}</div>
-        {% endif %}
-        {% if error %}
-        <div class="flash flash-error">{{ error }}</div>
-        {% endif %}
+{% block title %}Career Pilot -- Profile{% endblock %}
 
-        <section class="settings-panel">
-            <h2>New Profile Variant</h2>
-            <form method="post" action="/profile/variants" class="inline-form-row">
+{% block header_title %}<a href="/" class="plain-link">Career Pilot</a> / Profile{% endblock %}
+
+{% block content %}
+{% if message %}
+<div class="flash flash-ok" role="status">{{ message }}</div>
+{% endif %}
+{% if error %}
+<div class="flash flash-error" role="alert">{{ error }}</div>
+{% endif %}
+
+<section class="settings-panel">
+    <h2>New Profile Variant</h2>
+    <form method="post" action="/profile/variants" class="inline-form-row">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="visually-hidden" for="variant-name-input">Variant name</label>
+        <input type="text" id="variant-name-input" name="name" placeholder="e.g. Data Engineering" required>
+        <label class="checkbox-label">
+            <input type="checkbox" name="is_default" value="true"> Default
+        </label>
+        <button type="submit">Create Variant</button>
+    </form>
+</section>
+
+{% for entry in variant_data %}
+{% set variant = entry.variant %}
+<section class="variant-block">
+    <div class="variant-header">
+        <h2>
+            {{ variant.name }}
+            {% if variant.is_default %}<span class="badge badge-default">default</span>{% endif %}
+        </h2>
+        <div class="variant-actions">
+            {% if not variant.is_default %}
+            <form method="post" action="/profile/variants/{{ variant.id }}/set-default" class="inline-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <input type="text" name="name" placeholder="e.g. Data Engineering" required>
-                <label class="checkbox-label">
-                    <input type="checkbox" name="is_default" value="true"> Default
-                </label>
-                <button type="submit">Create Variant</button>
+                <button type="submit" class="btn-secondary">Set Default</button>
             </form>
-        </section>
+            {% endif %}
+            <form method="post" action="/profile/variants/{{ variant.id }}/sync-portfolio" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn-secondary">Sync from Portfolio</button>
+            </form>
+            <form method="post" action="/profile/variants/{{ variant.id }}/delete" class="inline-form"
+                  onsubmit="return confirm('Delete variant &quot;{{ variant.name }}&quot; and all its versions?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn-danger">Delete</button>
+            </form>
+        </div>
+    </div>
 
-        {% for entry in variant_data %}
-        {% set variant = entry.variant %}
-        <section class="variant-block">
-            <div class="variant-header">
-                <h2>
-                    {{ variant.name }}
-                    {% if variant.is_default %}<span class="badge badge-default">default</span>{% endif %}
-                </h2>
-                <div class="variant-actions">
-                    {% if not variant.is_default %}
-                    <form method="post" action="/profile/variants/{{ variant.id }}/set-default" class="inline-form">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        <button type="submit" class="btn-secondary">Set Default</button>
-                    </form>
-                    {% endif %}
-                    <form method="post" action="/profile/variants/{{ variant.id }}/sync-portfolio" class="inline-form">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        <button type="submit" class="btn-secondary">Sync from Portfolio</button>
-                    </form>
-                    <form method="post" action="/profile/variants/{{ variant.id }}/delete" class="inline-form"
-                          onsubmit="return confirm('Delete variant &quot;{{ variant.name }}&quot; and all its versions?');">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        <button type="submit" class="btn-danger">Delete</button>
-                    </form>
-                </div>
-            </div>
+    {% if entry.active_version %}
+    <p class="muted-note">
+        Active version: <strong>{{ entry.active_version.source }}</strong>
+        &middot; {{ entry.active_version.created_at.strftime("%Y-%m-%d %H:%M") }} UTC
+        &middot; {{ entry.active_version.change_summary }}
+    </p>
+    {% else %}
+    <p class="muted-note">No active profile content yet -- paste JSON below to seed this variant.</p>
+    {% endif %}
 
-            {% if entry.active_version %}
+    {% if entry.pending_versions %}
+    <div class="pending-list">
+        <h3>Pending approval</h3>
+        {% for pending in entry.pending_versions %}
+        <div class="pending-item">
             <p class="muted-note">
-                Active version: <strong>{{ entry.active_version.source }}</strong>
-                &middot; {{ entry.active_version.created_at.strftime("%Y-%m-%d %H:%M") }} UTC
-                &middot; {{ entry.active_version.change_summary }}
+                Proposed {{ pending.created_at.strftime("%Y-%m-%d %H:%M") }} UTC via LinkedIn paste-diff
             </p>
-            {% else %}
-            <p class="muted-note">No active profile content yet -- paste JSON below to seed this variant.</p>
-            {% endif %}
-
-            {% if entry.pending_versions %}
-            <div class="pending-list">
-                <h3>Pending approval</h3>
-                {% for pending in entry.pending_versions %}
-                <div class="pending-item">
-                    <p class="muted-note">
-                        Proposed {{ pending.created_at.strftime("%Y-%m-%d %H:%M") }} UTC via LinkedIn paste-diff
-                    </p>
-                    <p>{{ pending.change_summary }}</p>
-                    <details>
-                        <summary>View proposed content</summary>
-                        <pre class="json-preview">{{ pending.content_json }}</pre>
-                    </details>
-                    <div class="pending-actions">
-                        <form method="post" action="/profile/versions/{{ pending.id }}/approve" class="inline-form">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <button type="submit">Approve</button>
-                        </form>
-                        <form method="post" action="/profile/versions/{{ pending.id }}/reject" class="inline-form">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <button type="submit" class="btn-danger">Reject</button>
-                        </form>
-                    </div>
-                </div>
-                {% endfor %}
+            <p>{{ pending.change_summary }}</p>
+            <details>
+                <summary>View proposed content</summary>
+                <pre class="json-preview">{{ pending.content_json }}</pre>
+            </details>
+            <div class="pending-actions">
+                <form method="post" action="/profile/versions/{{ pending.id }}/approve" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit">Approve</button>
+                </form>
+                <form method="post" action="/profile/versions/{{ pending.id }}/reject" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn-danger">Reject</button>
+                </form>
             </div>
-            {% endif %}
-
-            <details class="sub-panel">
-                <summary>Import LinkedIn paste (AI-diffed, requires approval)</summary>
-                <form method="post" action="/profile/variants/{{ variant.id }}/linkedin-import">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <textarea name="pasted_text" rows="8" placeholder="Paste your LinkedIn profile export / copied text here..." required></textarea>
-                    <button type="submit">Propose Diff</button>
-                </form>
-            </details>
-
-            <details class="sub-panel">
-                <summary>Manual edit / seed profile JSON</summary>
-                <form method="post" action="/profile/variants/{{ variant.id }}/manual-save">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <textarea name="content_json" rows="14" placeholder='{"name": "...", "summary": "...", "experience": [...]}' required>{{ entry.active_version.content_json if entry.active_version else "" }}</textarea>
-                    <button type="submit">Save as New Version</button>
-                </form>
-            </details>
-
-            <details class="sub-panel">
-                <summary>Version history ({{ entry.versions|length }})</summary>
-                <ul class="version-history">
-                    {% for v in entry.versions %}
-                    <li>
-                        <span class="badge {% if v.is_active %}badge-active{% endif %}">{{ v.source }}</span>
-                        {{ v.created_at.strftime("%Y-%m-%d %H:%M") }} UTC
-                        {% if v.is_active %}<strong>(active)</strong>{% endif %}
-                        -- {{ v.change_summary }}
-                    </li>
-                    {% endfor %}
-                </ul>
-            </details>
-        </section>
-        {% else %}
-        <section class="empty-state">
-            <p>No profile variants yet. Create one above to get started -- e.g. "Data Engineering" or "ML Engineering".</p>
-        </section>
+        </div>
         {% endfor %}
-    </main>
-</body>
-</html>
+    </div>
+    {% endif %}
+
+    <details class="sub-panel">
+        <summary>Import LinkedIn paste (AI-diffed, requires approval)</summary>
+        <form method="post" action="/profile/variants/{{ variant.id }}/linkedin-import">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label class="visually-hidden" for="linkedin-paste-{{ variant.id }}">LinkedIn profile export text</label>
+            <textarea id="linkedin-paste-{{ variant.id }}" name="pasted_text" rows="8" placeholder="Paste your LinkedIn profile export / copied text here..." required></textarea>
+            <button type="submit">Propose Diff</button>
+        </form>
+    </details>
+
+    <details class="sub-panel">
+        <summary>Manual edit / seed profile JSON</summary>
+        <form method="post" action="/profile/variants/{{ variant.id }}/manual-save">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label class="visually-hidden" for="profile-json-{{ variant.id }}">Profile JSON content</label>
+            <textarea id="profile-json-{{ variant.id }}" name="content_json" rows="14" placeholder='{"name": "...", "summary": "...", "experience": [...]}' required>{{ entry.active_version.content_json if entry.active_version else "" }}</textarea>
+            <button type="submit">Save as New Version</button>
+        </form>
+    </details>
+
+    <details class="sub-panel">
+        <summary>Version history ({{ entry.versions|length }})</summary>
+        <ul class="version-history">
+            {% for v in entry.versions %}
+            <li>
+                <span class="badge {% if v.is_active %}badge-active{% endif %}">{{ v.source }}</span>
+                {{ v.created_at.strftime("%Y-%m-%d %H:%M") }} UTC
+                {% if v.is_active %}<strong>(active)</strong>{% endif %}
+                -- {{ v.change_summary }}
+            </li>
+            {% endfor %}
+        </ul>
+    </details>
+</section>
+{% else %}
+<section class="empty-state">
+    <p>No profile variants yet. Create one above to get started -- e.g. "Data Engineering" or "ML Engineering".</p>
+</section>
+{% endfor %}
+{% endblock %}

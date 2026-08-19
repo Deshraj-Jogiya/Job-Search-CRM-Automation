@@ -1,25 +1,19 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Career Pilot -- {{ posting.job_title }}</title>
-    <link rel="stylesheet" href="/static/css/style.css">
-</head>
-<body>
-    <header class="topbar">
-        <h1><a href="/" class="plain-link">Career Pilot</a> / <a href="/jobs" class="plain-link">Jobs</a> / {{ posting.job_title }}</h1>
-    </header>
+{% extends "_base.html" %}
 
-    <main>
-        {% set final_statuses = ("Applied", "Approved", "Rejected", "Interviewing", "Offer", "Not Selected") %}
+{% block title %}Career Pilot -- {{ posting.job_title }}{% endblock %}
+
+{% block header_title %}<a href="/" class="plain-link">Career Pilot</a> / <a href="/jobs" class="plain-link">Jobs</a> / {{ posting.job_title }}{% endblock %}
+
+{% block content %}
+{% set final_statuses = ("Applied", "Approved", "Rejected", "Interviewing", "Offer", "Not Selected") %}
         {% if message %}
-        <div class="flash flash-ok">{{ message }}</div>
+        <div class="flash flash-ok" role="status">{{ message }}</div>
         {% endif %}
         {% if error %}
-        <div class="flash flash-error">{{ error }}</div>
+        <div class="flash flash-error" role="alert">{{ error }}</div>
         {% endif %}
         {% if application.attention_reason %}
-        <div class="flash flash-error">{{ application.attention_reason }}</div>
+        <div class="flash flash-error" role="alert">{{ application.attention_reason }}</div>
         {% endif %}
 
         <section class="variant-block">
@@ -363,6 +357,4 @@
                 </form>
             </details>
         </section>
-    </main>
-</body>
-</html>
+{% endblock %}

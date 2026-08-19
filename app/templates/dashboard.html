@@ -1,132 +1,123 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Career Pilot</title>
-    <link rel="stylesheet" href="/static/css/style.css">
-</head>
-<body>
-    <header class="topbar">
-        <h1>Career Pilot</h1>
-        <nav class="topnav">
-            <a href="/jobs">Jobs</a>
-            <a href="/jobs/review">Review Queue</a>
-            <a href="/analytics">Analytics</a>
-            <a href="/profile">Profile</a>
-            <form method="post" action="/settings/automation/toggle" class="inline-form">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <button type="submit" class="{{ 'btn-on' if settings.automation_enabled else 'btn-off' }}">
-                    Automation: {{ "ON" if settings.automation_enabled else "OFF" }}
-                </button>
-            </form>
-        </nav>
-    </header>
+{% extends "_base.html" %}
 
-    <main>
-        {% if showcase_mode %}
-        <div class="flash flash-error">
-            Running in public showcase/demo mode (<code>APP_MODE=showcase</code>). A fictional demo profile was
-            auto-seeded, and automation defaults to OFF. See the README's "Public Showcase Mode" section before
-            turning it on -- this is a live demo of the architecture, not a scraping/spam service.
-        </div>
-        {% endif %}
-        {% if message %}
-        <div class="flash flash-ok">{{ message }}</div>
-        {% endif %}
-        {% if error %}
-        <div class="flash flash-error">{{ error }}</div>
-        {% endif %}
+{% block title %}Career Pilot{% endblock %}
 
-        <section class="summary-cards">
-            <div class="card">
-                <span class="card-label">Total Applications</span>
-                <span class="card-value">{{ total_applications }}</span>
-            </div>
-            <div class="card">
-                <span class="card-label">Profile Variants</span>
-                <span class="card-value">{{ profile_variants|length }}</span>
-            </div>
-        </section>
+{% block nav %}
+<a href="/jobs">Jobs</a>
+<a href="/jobs/review">Review Queue</a>
+<a href="/analytics">Analytics</a>
+<a href="/profile">Profile</a>
+<form method="post" action="/settings/automation/toggle" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="{{ 'btn-on' if settings.automation_enabled else 'btn-off' }}">
+        Automation: {{ "ON" if settings.automation_enabled else "OFF" }}
+    </button>
+</form>
+{% endblock %}
 
-        <section class="empty-state">
-            <p>Profile management (Phase 1), job intake (Phase 2), matching/tailoring (Phase 3), the confirmation queue (Phase 4), and outreach (Phase 5) are all live -- see <a href="/profile">Profile</a>, <a href="/jobs">Jobs</a>, and <a href="/jobs/review">Review Queue</a>.</p>
-        </section>
+{% block content %}
+{% if showcase_mode %}
+<div class="flash flash-error" role="status">
+    Running in public showcase/demo mode (<code>APP_MODE=showcase</code>). A fictional demo profile was
+    auto-seeded, and automation defaults to OFF. See the README's "Public Showcase Mode" section before
+    turning it on -- this is a live demo of the architecture, not a scraping/spam service.
+</div>
+{% endif %}
+{% if message %}
+<div class="flash flash-ok" role="status">{{ message }}</div>
+{% endif %}
+{% if error %}
+<div class="flash flash-error" role="alert">{{ error }}</div>
+{% endif %}
 
-        <section class="settings-panel">
-            <h2>Data Backup</h2>
-            {% if backup_configured %}
-            <p class="muted-note">Downloads an encrypted snapshot of your whole database (profile, applications, outreach). Keep this somewhere safe -- decrypting it requires your CREDENTIAL_ENCRYPTION_KEY.</p>
-            <p><a href="/settings/backup/export">Download Encrypted Backup</a></p>
-            {% else %}
-            <p class="muted-note">Set CREDENTIAL_ENCRYPTION_KEY in .env to enable encrypted backups.</p>
-            {% endif %}
-        </section>
+<section class="summary-cards">
+    <div class="card">
+        <span class="card-label">Total Applications</span>
+        <span class="card-value">{{ total_applications }}</span>
+    </div>
+    <div class="card">
+        <span class="card-label">Profile Variants</span>
+        <span class="card-value">{{ profile_variants|length }}</span>
+    </div>
+</section>
 
-        <section class="settings-panel">
-            <h2>Tunable Settings</h2>
-            <form method="post" action="/settings/update">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<section class="empty-state">
+    <p>Profile management (Phase 1), job intake (Phase 2), matching/tailoring (Phase 3), the confirmation queue (Phase 4), and outreach (Phase 5) are all live -- see <a href="/profile">Profile</a>, <a href="/jobs">Jobs</a>, and <a href="/jobs/review">Review Queue</a>.</p>
+</section>
 
-                <label>Fast poll interval (minutes)
-                    <input type="number" name="fast_poll_interval_minutes" value="{{ settings.fast_poll_interval_minutes }}" min="1">
-                </label>
+<section class="settings-panel">
+    <h2>Data Backup</h2>
+    {% if backup_configured %}
+    <p class="muted-note">Downloads an encrypted snapshot of your whole database (profile, applications, outreach). Keep this somewhere safe -- decrypting it requires your CREDENTIAL_ENCRYPTION_KEY.</p>
+    <p><a href="/settings/backup/export">Download Encrypted Backup</a></p>
+    {% else %}
+    <p class="muted-note">Set CREDENTIAL_ENCRYPTION_KEY in .env to enable encrypted backups.</p>
+    {% endif %}
+</section>
 
-                <label>Full ingest interval (minutes)
-                    <input type="number" name="full_ingest_interval_minutes" value="{{ settings.full_ingest_interval_minutes }}" min="1">
-                </label>
+<section class="settings-panel">
+    <h2>Tunable Settings</h2>
+    <form method="post" action="/settings/update">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
-                <label>Stale posting threshold (days)
-                    <input type="number" name="stale_posting_threshold_days" value="{{ settings.stale_posting_threshold_days }}" min="1">
-                </label>
+        <label>Fast poll interval (minutes)
+            <input type="number" name="fast_poll_interval_minutes" value="{{ settings.fast_poll_interval_minutes }}" min="1">
+        </label>
 
-                <label>Confirmation window (hours)
-                    <input type="number" step="0.5" name="confirmation_window_hours" value="{{ settings.confirmation_window_hours }}" min="0.5">
-                </label>
+        <label>Full ingest interval (minutes)
+            <input type="number" name="full_ingest_interval_minutes" value="{{ settings.full_ingest_interval_minutes }}" min="1">
+        </label>
 
-                <label>Fast-track score threshold
-                    <input type="number" name="fast_track_score_threshold" value="{{ settings.fast_track_score_threshold }}" min="0" max="100">
-                </label>
+        <label>Stale posting threshold (days)
+            <input type="number" name="stale_posting_threshold_days" value="{{ settings.stale_posting_threshold_days }}" min="1">
+        </label>
 
-                <label>Fast-track freshness window (minutes)
-                    <input type="number" name="fast_track_freshness_minutes" value="{{ settings.fast_track_freshness_minutes }}" min="1">
-                </label>
+        <label>Confirmation window (hours)
+            <input type="number" step="0.5" name="confirmation_window_hours" value="{{ settings.confirmation_window_hours }}" min="0.5">
+        </label>
 
-                <label>Fast-track confirmation window (hours)
-                    <input type="number" step="0.5" name="fast_track_window_hours" value="{{ settings.fast_track_window_hours }}" min="0.1">
-                </label>
+        <label>Fast-track score threshold
+            <input type="number" name="fast_track_score_threshold" value="{{ settings.fast_track_score_threshold }}" min="0" max="100">
+        </label>
 
-                <label>Rejected job retention (days)
-                    <input type="number" name="rejected_retention_days" value="{{ settings.rejected_retention_days }}" min="1">
-                </label>
+        <label>Fast-track freshness window (minutes)
+            <input type="number" name="fast_track_freshness_minutes" value="{{ settings.fast_track_freshness_minutes }}" min="1">
+        </label>
 
-                <label>Daily outreach cap
-                    <input type="number" name="daily_outreach_cap" value="{{ settings.daily_outreach_cap }}" min="0">
-                </label>
+        <label>Fast-track confirmation window (hours)
+            <input type="number" step="0.5" name="fast_track_window_hours" value="{{ settings.fast_track_window_hours }}" min="0.1">
+        </label>
 
-                <label class="checkbox-label">
-                    <input type="checkbox" name="quiet_hours_enabled" value="true" {{ "checked" if settings.quiet_hours_enabled }}>
-                    Quiet hours enabled (push deadlines past this window)
-                </label>
+        <label>Rejected job retention (days)
+            <input type="number" name="rejected_retention_days" value="{{ settings.rejected_retention_days }}" min="1">
+        </label>
 
-                <label>Quiet hours start (local, 0-23)
-                    <input type="number" name="quiet_hours_start_hour" value="{{ settings.quiet_hours_start_hour }}" min="0" max="23">
-                </label>
+        <label>Daily outreach cap
+            <input type="number" name="daily_outreach_cap" value="{{ settings.daily_outreach_cap }}" min="0">
+        </label>
 
-                <label>Quiet hours end (local, 0-23)
-                    <input type="number" name="quiet_hours_end_hour" value="{{ settings.quiet_hours_end_hour }}" min="0" max="23">
-                </label>
+        <label class="checkbox-label">
+            <input type="checkbox" name="quiet_hours_enabled" value="true" {{ "checked" if settings.quiet_hours_enabled }}>
+            Quiet hours enabled (push deadlines past this window)
+        </label>
 
-                <label>Local timezone (IANA name)
-                    <input type="text" name="local_timezone" value="{{ settings.local_timezone }}" placeholder="America/Phoenix">
-                </label>
+        <label>Quiet hours start (local, 0-23)
+            <input type="number" name="quiet_hours_start_hour" value="{{ settings.quiet_hours_start_hour }}" min="0" max="23">
+        </label>
 
-                <label>Notification digest interval (minutes)
-                    <input type="number" name="notification_digest_interval_minutes" value="{{ settings.notification_digest_interval_minutes }}" min="1">
-                </label>
+        <label>Quiet hours end (local, 0-23)
+            <input type="number" name="quiet_hours_end_hour" value="{{ settings.quiet_hours_end_hour }}" min="0" max="23">
+        </label>
 
-                <button type="submit">Save Settings</button>
-            </form>
-        </section>
-    </main>
-</body>
-</html>
+        <label>Local timezone (IANA name)
+            <input type="text" name="local_timezone" value="{{ settings.local_timezone }}" placeholder="America/Phoenix">
+        </label>
+
+        <label>Notification digest interval (minutes)
+            <input type="number" name="notification_digest_interval_minutes" value="{{ settings.notification_digest_interval_minutes }}" min="1">
+        </label>
+
+        <button type="submit">Save Settings</button>
+    </form>
+</section>
+{% endblock %}
