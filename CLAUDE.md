@@ -408,7 +408,36 @@ not a patch of the old repo. Don't reintroduce those patterns.
       a seeded dataset and finding a real mismatch, not by inspection
       alone -- worth doing the same hand-check if this logic is
       touched again.
-- [ ] **Phase 8**: Two-face packaging (personal vs. showcase config).
+- [x] **Phase 8**: Two-face packaging (personal vs. showcase config).
+      **Built 2026-08-19** (`app/app_mode.py`, `app/fixtures/
+      demo_profile.json`, wiring in `app/models.py`/`app/main.py`,
+      banner in `app/templates/dashboard.html`, docs in `README.md`):
+      a single `APP_MODE` env var (default `personal`, so the existing
+      real instance is unaffected unless this is explicitly set
+      elsewhere) selects between the personal instance (today's real,
+      full-automation deployment) and a public-showcase deployment.
+      - Showcase mode auto-seeds a fictional demo profile ("Jordan
+        Ellis") on first startup via the existing `profile_service`
+        functions (`create_variant` + `create_manual_version`, same
+        path a human uses to bootstrap a real profile) -- only when no
+        `ProfileVariant` exists yet at all, so this can never overwrite
+        real profile data.
+      - "Automation off by default" is implemented as a creation-time
+        default on `GlobalSettings`, not a forced override on every
+        read -- a showcase deployment's automation stays genuinely
+        toggleable (a forker can explicitly opt in after reading the
+        ethical-use docs) rather than hard-locked off, matching
+        CLAUDE.md's literal "off by default" phrasing rather than a
+        stricter reading of it. Deliberate choice: an existing
+        deployment's `GlobalSettings` row (there's always exactly one)
+        is only ever created once, so this has zero effect on any
+        already-running instance regardless of `APP_MODE`.
+      - Dashboard shows an informational banner in showcase mode
+        (not a lockout) pointing at the README's ethical-use section.
+      - README's new "Public Showcase Mode" section covers what the
+        mode does plus concrete ethical-use guidance (respect source
+        ToS, don't impersonate a real person via outreach, LLM calls
+        have a real per-call cost even though hosting doesn't).
 - [x] **Phase 9**: Data safety — encrypted local DB backup/export.
       **Built 2026-08-18** (`app/services/backup_service.py`, route in
       `app/main.py`). Picked ahead of Phase 6/7 in the numbered order
