@@ -1,0 +1,69 @@
+{
+  "name": "Jordan Ellis",
+  "title": "Data Engineer",
+  "summary": "Data engineer with 4 years of experience building reliable ETL pipelines and analytics infrastructure. Comfortable owning a data platform end to end, from ingestion through to the dashboards analysts actually use.",
+  "contact": {
+    "email": "jordan.ellis.demo@example.com",
+    "phone": "555-0100",
+    "location": "Austin, TX",
+    "linkedin": "https://linkedin.com/in/jordan-ellis-demo",
+    "github": "https://github.com/jordan-ellis-demo"
+  },
+  "skills": {
+    "languages": ["Python", "SQL", "Java"],
+    "data_tools": ["Airflow", "Spark", "dbt", "Kafka"],
+    "cloud": ["AWS (S3, Redshift, Glue)", "Docker", "Terraform"],
+    "other": ["Git", "CI/CD", "Data modeling"]
+  },
+  "experience": [
+    {
+      "role": "Data Engineer",
+      "company": "Fictional Analytics Co",
+      "location": "Austin, TX",
+      "date": "2022 - Present",
+      "bullets": [
+        "Own ingestion pipelines processing roughly 500GB/day across 12 upstream sources, orchestrated with Airflow.",
+        "Migrated a batch reporting pipeline to an incremental model, cutting nightly runtime from 4 hours to 45 minutes.",
+        "Built a data quality framework (schema checks, freshness alerts) that catches upstream breakages before analysts see them."
+      ]
+    },
+    {
+      "role": "Junior Data Engineer",
+      "company": "Sample Retail Group",
+      "location": "Remote",
+      "date": "2020 - 2022",
+      "bullets": [
+        "Built and maintained dbt models powering weekly sales and inventory dashboards for 6 regional teams.",
+        "Wrote a reusable Python framework for validating CSV vendor feeds before they entered the warehouse."
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "name": "Open-source CSV Schema Validator",
+      "bullets": [
+        "Small Python library that validates CSV files against a declared schema before ingestion.",
+        "Used internally in a demo pipeline; published as an example project."
+      ],
+      "technologies": ["Python", "pandas"]
+    },
+    {
+      "name": "Streaming Clickstream Demo",
+      "bullets": [
+        "Kafka + Spark Structured Streaming pipeline that aggregates simulated clickstream events into rolling window metrics.",
+        "Built as a learning project to explore streaming vs. batch tradeoffs."
+      ],
+      "technologies": ["Kafka", "Spark", "Docker"]
+    }
+  ],
+  "education": [
+    {
+      "degree": "B.S. in Computer Science",
+      "school": "Sample State University",
+      "date": "2016 - 2020"
+    }
+  ],
+  "certifications": [
+    "AWS Certified Data Analytics - Specialty (demo entry)"
+  ]
+}
