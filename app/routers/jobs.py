@@ -35,11 +35,13 @@ from ..services import (
     confirmation_service,
     contact_discovery_service,
     intake_service,
+    interview_prep_service,
     matching_service,
     outreach_service,
     tailoring_service,
 )
 from ..services.confirmation_service import ConfirmationServiceError
+from ..services.interview_prep_service import InterviewPrepServiceError
 from ..services.matching_service import MatchingServiceError
 from ..templating import render
 
@@ -97,6 +99,16 @@ def _tailor_in_background(application_id: int):
         # tailor_application hands off to confirmation_service.evaluate_and_enqueue()
         # at the end, which can raise ConfirmationServiceError -- catch both so a
         # failure there is recorded instead of dying silently in this thread.
+        _record_failure(db, application_id, e)
+    finally:
+        db.close()
+
+
+def _interview_prep_in_background(application_id: int):
+    db = SessionLocal()
+    try:
+        interview_prep_service.generate_interview_prep(db, application_id)
+    except InterviewPrepServiceError as e:
         _record_failure(db, application_id, e)
     finally:
         db.close()
@@ -295,12 +307,22 @@ def _build_detail_context(application_id: int, request: Request, db: Session, di
     )
     settings = get_or_create_settings(db)
 
+    general_prep = json.loads(application.interview_prep.general_prep_json) if (
+        application.interview_prep and application.interview_prep.general_prep_json
+    ) else None
+    company_prep = json.loads(application.interview_prep.company_prep_json) if (
+        application.interview_prep and application.interview_prep.company_prep_json
+    ) else None
+
     return {
         "application": application,
         "posting": application.posting,
         "match_analysis": match_analysis,
         "resume_doc": resume_doc,
         "cl_doc": cl_doc,
+        "general_prep": general_prep,
+        "company_prep": company_prep,
+        "interview_prep": application.interview_prep,
         "outreach_messages": outreach_messages,
         "daily_outreach_cap": settings.daily_outreach_cap,
         "outreach_sent_today": outreach_service.sent_count_last_24h(db),
@@ -359,6 +381,19 @@ def tailor_application_now(application_id: int, db: Session = Depends(get_db)):
     threading.Thread(target=_tailor_in_background, args=(application_id,), daemon=True).start()
     return _redirect_detail(
         application_id, message="Tailoring started -- this runs several AI passes, refresh in ~30-60s."
+    )
+
+
+@router.post("/{application_id}/interview-prep")
+def generate_interview_prep_now(application_id: int, db: Session = Depends(get_db)):
+    application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+    if application.status == "Rejected":
+        return _redirect_detail(application_id, error="Can't generate interview prep for a Rejected application.")
+    threading.Thread(target=_interview_prep_in_background, args=(application_id,), daemon=True).start()
+    return _redirect_detail(
+        application_id, message="Generating interview prep -- runs a couple of AI passes, refresh in ~20-40s."
     )
 
 

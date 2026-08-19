@@ -329,7 +329,30 @@ not a patch of the old repo. Don't reintroduce those patterns.
         Adzuna); every suggestion is shown with its source and
         confidence, never auto-filled, and still flows through the
         same manual draft/approve/send pipeline once picked.
-- [ ] **Phase 6**: Interview prep generation.
+- [x] **Phase 6**: Interview prep generation. **Built 2026-08-18**
+      (`app/services/interview_prep_service.py`, routes in
+      `app/routers/jobs.py`, UI section in `app/templates/
+      application_detail.html`): two independent LLM passes, matching
+      the "general (candidate background) + company-specific (JD +
+      light company research)" split from the original design --
+      general prep is grounded only in the candidate's real profile
+      (role-generic, not company-specific), company prep is grounded in
+      the JD plus, when `TAVILY_API_KEY` is configured, a few real
+      current facts about the company (reusing `contact_discovery_
+      service.tavily_search`, promoted from private to shared) rather
+      than the LLM's own possibly-stale/invented knowledge. Gracefully
+      degrades to JD-only company prep when Tavily isn't configured --
+      same optional/graceful-degrade posture as every other integration
+      in this project. On-demand (a button on the application detail
+      page), not automatic, same real-LLM-cost reasoning as scoring/
+      tailoring -- available for any application except Rejected (no
+      stricter status gate needed; this isn't a safety-sensitive action
+      like auto-apply/outreach). Verified live: real profile + real JD
+      seeded, real Anthropic calls, confirmed the output is genuinely
+      grounded (referenced specific real profile details like exact
+      pipeline throughput and named technologies, not generic
+      boilerplate) and that the Rejected-application gate blocks both
+      the button rendering and the route itself.
 - [ ] **Phase 7**: Outcome analytics — surface what's already being
       logged (status transitions, email classifications) as real
       keyword/source/score-band conversion insight.
