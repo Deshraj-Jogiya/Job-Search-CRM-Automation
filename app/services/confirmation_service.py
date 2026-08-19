@@ -190,6 +190,63 @@ def mark_applied(db: Session, application_id: int) -> JobApplication:
     return application
 
 
+def mark_interviewing(db: Session, application_id: int) -> JobApplication:
+    """Phase 7: explicit self-report that an interview is happening --
+    same trust model as mark_applied. Feeds the outcome-analytics
+    funnel; nothing infers this automatically since there's no email-
+    scanning integration in this build."""
+    application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+    if not application:
+        raise ConfirmationServiceError(f"Application {application_id} not found.")
+    if application.status != "Applied":
+        raise ConfirmationServiceError(f"Application is '{application.status}', not yet Applied.")
+
+    application.status = "Interviewing"
+    application.interviewing_at = datetime.utcnow()
+    db.commit()
+    log_activity(db, f"Marked '{application.posting.job_title}' at {application.posting.company_name_raw} as Interviewing.", "INFO")
+    return application
+
+
+def mark_offer(db: Session, application_id: int) -> JobApplication:
+    """Reachable from Applied directly too (not every offer goes through
+    a tracked 'Interviewing' click first) -- both are real, valid paths."""
+    application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+    if not application:
+        raise ConfirmationServiceError(f"Application {application_id} not found.")
+    if application.status not in ("Applied", "Interviewing"):
+        raise ConfirmationServiceError(f"Application is '{application.status}', not Applied or Interviewing.")
+
+    application.status = "Offer"
+    application.offer_at = datetime.utcnow()
+    db.commit()
+    log_activity(db, f"Marked '{application.posting.job_title}' at {application.posting.company_name_raw} as Offer.", "INFO")
+    return application
+
+
+def mark_not_selected(db: Session, application_id: int) -> JobApplication:
+    """Distinct from reject_application()'s 'Rejected' -- this is a
+    real applied-and-declined (or gone silent) outcome, worth keeping
+    for analytics history, not swept/deleted like a pre-apply decline.
+    Increments Company.ghosted_count as a simple, real signal for
+    company memory -- covers both an explicit decline and silence
+    without needing the user to distinguish which at click time."""
+    application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+    if not application:
+        raise ConfirmationServiceError(f"Application {application_id} not found.")
+    if application.status not in ("Applied", "Interviewing"):
+        raise ConfirmationServiceError(f"Application is '{application.status}', not Applied or Interviewing.")
+
+    application.status = "Not Selected"
+    application.not_selected_at = datetime.utcnow()
+    company = application.posting.company
+    if company:
+        company.ghosted_count = (company.ghosted_count or 0) + 1
+    db.commit()
+    log_activity(db, f"Marked '{application.posting.job_title}' at {application.posting.company_name_raw} as Not Selected.", "INFO")
+    return application
+
+
 def sweep_expired_confirmations(db: Session) -> int:
     """Called by the scheduler tick. Auto-proceeds any Pending
     Confirmation application whose deadline has passed -- Needs Review
