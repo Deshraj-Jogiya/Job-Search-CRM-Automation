@@ -27,7 +27,7 @@ class MatchingServiceError(Exception):
 
 # Re-scoring one of these would silently undo a decision the human
 # already made (submitted, cleared to submit, or explicitly passed on).
-_FINAL_STATUSES = ("Applied", "Approved", "Rejected")
+_FINAL_STATUSES = ("Applied", "Approved", "Rejected", "Interviewing", "Offer", "Not Selected")
 
 
 def get_profile_content_for_application(db: Session, application: JobApplication) -> tuple[dict, int]:
