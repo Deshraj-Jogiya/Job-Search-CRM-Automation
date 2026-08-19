@@ -13,7 +13,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy.orm import Session
 
-from .database import engine, Base, get_db
+from .app_mode import is_showcase_mode
+from .database import engine, Base, SessionLocal, get_db
 from .models import GlobalSettings, get_or_create_settings, JobApplication, ProfileVariant
 from .csrf import CSRFMiddleware
 from .templating import render
@@ -22,7 +23,7 @@ from .routers import jobs as jobs_router
 from .routers import confirmation as confirmation_router
 from .routers import outreach as outreach_router
 from .routers import analytics as analytics_router
-from .services import backup_service
+from .services import backup_service, profile_service
 from .services import scheduler as bg_scheduler
 
 Base.metadata.create_all(bind=engine)
@@ -73,8 +74,31 @@ app.include_router(outreach_router.router, dependencies=app_dependencies)
 app.include_router(analytics_router.router, dependencies=app_dependencies)
 
 
+def _seed_demo_profile_if_needed() -> None:
+    """Phase 8: a fresh showcase deployment shouldn't be an empty shell
+    -- seed a fictional demo profile so a visitor immediately has
+    something to score/tailor/explore against. Only runs in showcase
+    mode, and only if no profile variant exists yet at all (never
+    touches a deployment -- including this project's real personal
+    instance -- that already has real profile data)."""
+    if not is_showcase_mode():
+        return
+    db = SessionLocal()
+    try:
+        if db.query(ProfileVariant).first():
+            return
+        fixture_path = os.path.join(os.path.dirname(__file__), "fixtures", "demo_profile.json")
+        with open(fixture_path, "r", encoding="utf-8") as f:
+            demo_content = f.read()
+        variant = profile_service.create_variant(db, "Demo Profile", is_default=True)
+        profile_service.create_manual_version(db, variant.id, demo_content)
+    finally:
+        db.close()
+
+
 @app.on_event("startup")
 def on_startup():
+    _seed_demo_profile_if_needed()
     bg_scheduler.start_scheduler()
 
 
@@ -102,6 +126,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
             "total_applications": total_applications,
             "profile_variants": profile_variants,
             "backup_configured": backup_service.is_configured(),
+            "showcase_mode": is_showcase_mode(),
             "message": request.query_params.get("message"),
             "error": request.query_params.get("error"),
         },
