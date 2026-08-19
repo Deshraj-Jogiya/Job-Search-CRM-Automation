@@ -496,11 +496,57 @@ not a patch of the old repo. Don't reintroduce those patterns.
         -- no Dockerfile or service unit shipped, since the right choice
         depends on the user's own OS/hosting decision, not something
         this project should assume.
-- [ ] **Phase 11**: Design/polish pass — this is deliberately LAST. Don't
-      over-invest in UI before the backend phases are solid; the "magic"
-      layer (glassmorphism, live dashboards — see the user's portfolio at
-      https://deshraj-jogiya.github.io for the target aesthetic) is its
-      own dedicated pass once functionality is proven.
+- [x] **Phase 11**: Design/polish pass — deliberately LAST, done only once
+      every backend phase (0-10) was solid. **Built 2026-08-19**
+      (`app/templates/_base.html`, `app/static/css/style.css`,
+      `app/static/js/theme.js`, all 7 page templates refactored to
+      extend the new base): matched the real design tokens pulled
+      directly from the portfolio site's source
+      (`Deshraj-Jogiya.github.io` repo, `style.css` -- not guessed from
+      a screenshot) -- glassmorphism cards (`backdrop-filter: blur`,
+      translucent panels, soft shadow), Inter/Outfit typography, the
+      indigo/purple/emerald/amber accent palette and gradients, and the
+      exact working light/dark theme-toggle pattern (localStorage +
+      `prefers-color-scheme` fallback, adapted here to apply the theme
+      class to `<html>` via a synchronous inline script in `_base.html`'s
+      `<head>` -- not `<body>` at the end of the page like the portfolio
+      does -- specifically to avoid a flash-of-wrong-theme on load,
+      confirmed via live testing that the portfolio's own approach would
+      have shown a flash here). No decorative animation (floating orbs
+      etc.) carried over -- appropriate for a marketing page, not a
+      working daily-use dashboard tool.
+      - Introduced `_base.html` (title/header_title/nav/content/scripts
+        blocks) since none of the 7 templates previously shared one,
+        each duplicating the same head/header boilerplate -- fixed here
+        since it's exactly the kind of thing a real polish pass should
+        clean up, not just re-duplicate a theme toggle into 7 files.
+      - Accessibility pass: every previously-unlabeled input (found via
+        direct audit, not assumed) now has a real `<label for>` or
+        wrapping label; deliberate `:focus-visible` outlines on every
+        interactive element (previously relying only on browser
+        defaults); `role="status"`/`role="alert"` on flash messages.
+      - Responsive: `@media` breakpoints at 768px/480px (previously
+        zero anywhere); the bulk review table and every analytics table
+        now sit inside a `.table-scroll` container (`overflow-x: auto`)
+        instead of overflowing the page horizontally on a narrow screen.
+      - **Verification note**: this tool's embedded browser reports
+        `document.visibilityState === "hidden"` for its tab, which
+        defers Chromium's paint/style-recalc pipeline after runtime DOM
+        mutations (confirmed: `classList.toggle()` + a forced reflow
+        left `getComputedStyle()` results stale, while the underlying
+        CSS custom property, DOM class, and localStorage all updated
+        correctly) -- screenshots aren't available here either, for the
+        same reason. Worked around it by re-navigating fresh with the
+        target theme already in `localStorage` (a full navigation does
+        paint correctly, confirmed repeatedly) rather than toggling at
+        runtime and reading the result -- verified light theme, dark
+        theme, and the 768px/480px responsive collapse (including zero
+        `scrollWidth` overflow and real table-scroll-container
+        measurements showing contained horizontal scroll) this way. If
+        this environment's browser tooling is touched again, know that
+        runtime style mutations on this tab won't repaint -- re-navigate
+        instead of trusting a live `getComputedStyle()` read after a
+        DOM change.
 
 ## Known open risks (raised during design, keep in view)
 
