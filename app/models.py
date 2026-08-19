@@ -13,6 +13,7 @@ from sqlalchemy import (
     Column, Integer, String, Text, DateTime, ForeignKey, Boolean, Float
 )
 from sqlalchemy.orm import relationship
+from .app_mode import is_showcase_mode
 from .database import Base
 
 
@@ -302,9 +303,17 @@ class GlobalSettings(Base):
 
 
 def get_or_create_settings(db) -> "GlobalSettings":
+    """Phase 8: a brand-new deployment in showcase mode gets automation
+    OFF by default (per CLAUDE.md's "Two-face product" section) --
+    applied only at row-creation time, not as a forced override on
+    every read, so it's a real, user-toggleable default (a showcase
+    forker can still explicitly opt in after reading the ethical-use
+    docs) rather than a hard lock. Existing deployments -- including
+    this project's real personal instance -- already have a row, so
+    this has zero effect on them regardless of APP_MODE."""
     settings = db.query(GlobalSettings).first()
     if not settings:
-        settings = GlobalSettings()
+        settings = GlobalSettings(automation_enabled=not is_showcase_mode())
         db.add(settings)
         db.commit()
         db.refresh(settings)
