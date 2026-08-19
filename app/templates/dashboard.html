@@ -23,6 +23,13 @@
     </header>
 
     <main>
+        {% if showcase_mode %}
+        <div class="flash flash-error">
+            Running in public showcase/demo mode (<code>APP_MODE=showcase</code>). A fictional demo profile was
+            auto-seeded, and automation defaults to OFF. See the README's "Public Showcase Mode" section before
+            turning it on -- this is a live demo of the architecture, not a scraping/spam service.
+        </div>
+        {% endif %}
         {% if message %}
         <div class="flash flash-ok">{{ message }}</div>
         {% endif %}
