@@ -357,7 +357,7 @@ def discover_outreach_contacts(application_id: int, request: Request, db: Sessio
     return render(request, "application_detail.html", context)
 
 
-_FINAL_STATUSES = ("Applied", "Approved", "Rejected")
+_FINAL_STATUSES = ("Applied", "Approved", "Rejected", "Interviewing", "Offer", "Not Selected")
 
 
 @router.post("/{application_id}/score")
@@ -420,5 +420,32 @@ def mark_applied_now(application_id: int, db: Session = Depends(get_db)):
     try:
         confirmation_service.mark_applied(db, application_id)
         return _redirect_detail(application_id, message="Marked as Applied.")
+    except ConfirmationServiceError as e:
+        return _redirect_detail(application_id, error=str(e))
+
+
+@router.post("/{application_id}/mark-interviewing")
+def mark_interviewing_now(application_id: int, db: Session = Depends(get_db)):
+    try:
+        confirmation_service.mark_interviewing(db, application_id)
+        return _redirect_detail(application_id, message="Marked as Interviewing.")
+    except ConfirmationServiceError as e:
+        return _redirect_detail(application_id, error=str(e))
+
+
+@router.post("/{application_id}/mark-offer")
+def mark_offer_now(application_id: int, db: Session = Depends(get_db)):
+    try:
+        confirmation_service.mark_offer(db, application_id)
+        return _redirect_detail(application_id, message="Marked as Offer.")
+    except ConfirmationServiceError as e:
+        return _redirect_detail(application_id, error=str(e))
+
+
+@router.post("/{application_id}/mark-not-selected")
+def mark_not_selected_now(application_id: int, db: Session = Depends(get_db)):
+    try:
+        confirmation_service.mark_not_selected(db, application_id)
+        return _redirect_detail(application_id, message="Marked as Not Selected.")
     except ConfirmationServiceError as e:
         return _redirect_detail(application_id, error=str(e))

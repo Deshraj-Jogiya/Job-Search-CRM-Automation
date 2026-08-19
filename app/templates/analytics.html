@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Career Pilot -- Analytics</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <header class="topbar">
+        <h1><a href="/" class="plain-link">Career Pilot</a> / Analytics</h1>
+        <nav class="topnav">
+            <a href="/jobs">Jobs</a>
+            <a href="/jobs/review">Review Queue</a>
+        </nav>
+    </header>
+
+    <main>
+        <div class="empty-state">
+            Every number below comes directly from data this app actually has. Two honesty limits worth knowing:
+            there's no inbox scanning in this build, so interview/offer numbers are only as complete as your own
+            "Mark as Interviewing/Offer/Not Selected" clicks on each application; and an application that skipped
+            straight from Applied to Offer without a tracked Interviewing click won't count toward the interview
+            rate below, even if an interview genuinely happened.
+        </div>
+
+        <section class="summary-cards">
+            <div class="card">
+                <span class="card-label">Total Postings</span>
+                <span class="card-value">{{ conversion.total_postings }}</span>
+            </div>
+            <div class="card">
+                <span class="card-label">Applied</span>
+                <span class="card-value">{{ conversion.applied }}</span>
+            </div>
+            <div class="card">
+                <span class="card-label">Apply Rate</span>
+                <span class="card-value">{{ conversion.apply_rate ~ "%" if conversion.apply_rate is not none else "--" }}</span>
+            </div>
+            <div class="card">
+                <span class="card-label">Interview Rate (of Applied)</span>
+                <span class="card-value">{{ conversion.interview_rate_of_applied ~ "%" if conversion.interview_rate_of_applied is not none else "--" }}</span>
+            </div>
+            <div class="card">
+                <span class="card-label">Offer Rate (of Applied)</span>
+                <span class="card-value">{{ conversion.offer_rate_of_applied ~ "%" if conversion.offer_rate_of_applied is not none else "--" }}</span>
+            </div>
+        </section>
+
+        <section class="variant-block">
+            <h2>Status Funnel</h2>
+            {% if funnel %}
+            <table class="review-table">
+                <thead><tr><th>Status</th><th>Count</th><th>% of Total</th></tr></thead>
+                <tbody>
+                    {% for row in funnel %}
+                    <tr><td>{{ row.status }}</td><td>{{ row.count }}</td><td>{{ row.pct_of_total ~ "%" if row.pct_of_total is not none else "--" }}</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="muted-note">No applications ingested yet.</p>
+            {% endif %}
+        </section>
+
+        <section class="variant-block">
+            <h2>Speed to Apply</h2>
+            {% if speed.count %}
+            <p class="muted-note">
+                Across {{ speed.count }} applied posting(s): median <strong>{{ speed.median_hours }}h</strong>,
+                average <strong>{{ speed.avg_hours }}h</strong> from first seen to applied. Directly reflects
+                whether the early-applicant goal (poll frequency + low-indexing-lag sources) is actually working.
+            </p>
+            {% else %}
+            <p class="muted-note">No applied postings yet -- nothing to measure.</p>
+            {% endif %}
+        </section>
+
+        <section class="variant-block">
+            <h2>By Source</h2>
+            {% if by_source %}
+            <table class="review-table">
+                <thead><tr><th>Source</th><th>Total</th><th>Applied</th><th>Apply Rate</th><th>Avg Match Score</th></tr></thead>
+                <tbody>
+                    {% for row in by_source %}
+                    <tr>
+                        <td>{{ row.source }}</td>
+                        <td>{{ row.total }}</td>
+                        <td>{{ row.applied }}</td>
+                        <td>{{ row.apply_rate ~ "%" if row.apply_rate is not none else "--" }}</td>
+                        <td>{{ row.avg_match_score if row.avg_match_score is not none else "--" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="muted-note">No postings ingested yet.</p>
+            {% endif %}
+        </section>
+
+        <section class="variant-block">
+            <h2>By Match-Score Band</h2>
+            <table class="review-table">
+                <thead><tr><th>Band</th><th>Total</th><th>Applied</th><th>Apply Rate</th></tr></thead>
+                <tbody>
+                    {% for row in by_score_band %}
+                    <tr>
+                        <td>{{ row.band }}</td>
+                        <td>{{ row.total }}</td>
+                        <td>{{ row.applied }}</td>
+                        <td>{{ row.apply_rate ~ "%" if row.apply_rate is not none else "--" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+
+        <section class="variant-block">
+            <h2>Flagged vs. Clean Postings</h2>
+            <p class="muted-note">
+                Scam/repost/stale flags are informational-only elsewhere in this app -- this just shows whether
+                that caution has actually correlated with lower apply rates.
+            </p>
+            <table class="review-table">
+                <thead><tr><th></th><th>Total</th><th>Applied</th><th>Apply Rate</th></tr></thead>
+                <tbody>
+                    <tr><td>Flagged</td><td>{{ flags.flagged.total }}</td><td>{{ flags.flagged.applied }}</td><td>{{ flags.flagged.apply_rate ~ "%" if flags.flagged.apply_rate is not none else "--" }}</td></tr>
+                    <tr><td>Clean</td><td>{{ flags.clean.total }}</td><td>{{ flags.clean.applied }}</td><td>{{ flags.clean.apply_rate ~ "%" if flags.clean.apply_rate is not none else "--" }}</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section class="variant-block">
+            <h2>Company Memory</h2>
+            {% if company_memory.deprioritized_or_blocked %}
+            <p><strong>Deprioritized / Blocked</strong></p>
+            <ul class="version-history">
+                {% for c in company_memory.deprioritized_or_blocked %}
+                <li>{{ c.name }} <span class="badge">{{ c.status }}</span>{% if c.status_reason %} -- {{ c.status_reason }}{% endif %}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+            {% if company_memory.most_ghosted %}
+            <p><strong>Most "Not Selected" outcomes</strong></p>
+            <ul class="version-history">
+                {% for c in company_memory.most_ghosted %}
+                <li>{{ c.name }} -- {{ c.ghosted_count }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+            {% if not company_memory.deprioritized_or_blocked and not company_memory.most_ghosted %}
+            <p class="muted-note">Nothing to show yet.</p>
+            {% endif %}
+        </section>
+    </main>
+</body>
+</html>
