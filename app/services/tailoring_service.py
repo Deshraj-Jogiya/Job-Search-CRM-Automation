@@ -27,7 +27,7 @@ MAX_REFINE_PASSES = 2
 # Re-tailoring one of these would silently undo a decision the human
 # already made (submitted, cleared to submit, or explicitly passed on) --
 # refuse rather than reverting status back into the confirmation queue.
-_FINAL_STATUSES = ("Applied", "Approved", "Rejected")
+_FINAL_STATUSES = ("Applied", "Approved", "Rejected", "Interviewing", "Offer", "Not Selected")
 
 
 def _tailor_experience_pass(experience: list, jd_text: str) -> list:

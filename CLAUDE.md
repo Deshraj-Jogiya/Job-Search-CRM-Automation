@@ -353,9 +353,61 @@ not a patch of the old repo. Don't reintroduce those patterns.
       pipeline throughput and named technologies, not generic
       boilerplate) and that the Rejected-application gate blocks both
       the button rendering and the route itself.
-- [ ] **Phase 7**: Outcome analytics — surface what's already being
-      logged (status transitions, email classifications) as real
-      keyword/source/score-band conversion insight.
+- [x] **Phase 7**: Outcome analytics. **Built 2026-08-19**
+      (`app/services/analytics_service.py`, `app/routers/analytics.py`,
+      `app/templates/analytics.html`, new `/analytics` page): status
+      funnel, apply/interview/offer conversion rates, speed-to-apply
+      (validates the early-applicant goal directly), by-source and
+      by-score-band apply rates, flagged-vs-clean apply rates, and
+      company memory (deprioritized/blocked list, most "Not Selected"
+      outcomes). Every number is computed live from real data --
+      no synthetic/estimated values.
+      **Scope correction found before building**: the original phase
+      description mentioned surfacing "email classifications," but
+      there is no inbox-scanning/email-classification integration
+      anywhere in this build (the `IMAP_*` env vars in `.env` are
+      unused leftovers, not a real feature) -- that data source simply
+      doesn't exist, so it's not part of what this surfaces. More
+      importantly, live inspection of the schema found that
+      `JobApplication.status` never actually progressed past `Applied`
+      anywhere in the app -- `Interviewing`/`Offer` were named in a
+      schema comment since Phase 0 but no route or service ever set
+      them, and `Company.ghosted_count` was defined but never
+      incremented. Real conversion analytics would have been hollow
+      without that data, so this phase also wires up the missing
+      transitions: `confirmation_service.mark_interviewing/mark_offer/
+      mark_not_selected`, same manual self-report trust model as
+      `mark_applied` (nothing infers these automatically). Added a new
+      `Not Selected` terminal status distinct from `Rejected` on
+      purpose -- `Rejected` means declined before applying and is
+      swept/deleted after `rejected_retention_days`; `Not Selected`
+      means the user DID apply and the outcome was a decline or
+      silence, which is real history worth keeping, not something to
+      auto-delete. `mark_not_selected` increments `Company.ghosted_count`
+      as a simple, real signal for company memory. Also added dedicated
+      `interviewing_at`/`offer_at`/`not_selected_at` timestamp columns
+      (matching the existing `applied_at`/`rejected_at` pattern) rather
+      than relying on current `status` alone -- needed so an
+      application that goes straight from Applied to Offer (a real,
+      allowed path; not every offer is preceded by a tracked
+      "Interviewing" click) still counts correctly in conversion math,
+      instead of silently vanishing because it's no longer "currently
+      Interviewing."
+      **Bug found and fixed during live verification**: `match_score`'s
+      column default is `0`, not `NULL` -- an application that has
+      never been scored yet has `match_score == 0`, not `None`. The
+      first cut of `by_source`'s average-score and `by_score_band`'s
+      bucketing both filtered on `match_score.isnot(None)`, which does
+      NOT exclude never-scored applications (0 is a real, non-null
+      value) -- silently dragging every source's average toward 0 and
+      inflating the "0-59% match" band with postings that were simply
+      never evaluated, not genuinely poor matches. Fixed by filtering
+      on `match_analysis_json.isnot(None)` instead -- the field that's
+      actually only set once `matching_service.score_application()`
+      has really run. Caught by hand-computing expected values against
+      a seeded dataset and finding a real mismatch, not by inspection
+      alone -- worth doing the same hand-check if this logic is
+      touched again.
 - [ ] **Phase 8**: Two-face packaging (personal vs. showcase config).
 - [x] **Phase 9**: Data safety — encrypted local DB backup/export.
       **Built 2026-08-18** (`app/services/backup_service.py`, route in
