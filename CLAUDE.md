@@ -432,8 +432,41 @@ not a patch of the old repo. Don't reintroduce those patterns.
         (`PRAGMA integrity_check` = ok) with schema matching the
         source exactly, and confirmed a wrong key is correctly
         rejected (`InvalidToken`).
-- [ ] **Phase 10**: $0 deployment hardening (local-first; Oracle Always
-      Free VM path documented as fallback).
+- [x] **Phase 10**: $0 deployment hardening (local-first; Oracle Always
+      Free VM path documented as fallback). **Built 2026-08-19**
+      (`app/database.py`, `app/services/scheduler.py`,
+      `ARCHITECTURE.md`'s new Deployment section): closed two risks
+      that were flagged since the original design discussion but never
+      addressed --
+      - **SQLite concurrent-writer locking**: this app opens several
+        independent SQLite connections at once by design (the
+        scheduler thread, plus a fresh background thread per manual
+        intake/score/tailor trigger). Under SQLite's default rollback-
+        journal mode, one writer holds an exclusive file lock and any
+        other connection attempting to write at the same moment fails
+        immediately (default busy timeout is 0). Fixed by enabling WAL
+        mode + a 10s `busy_timeout` on every new connection (an
+        `event.listens_for(engine, "connect")` hook, since PRAGMAs
+        aren't persistent across Python's sqlite3 connections) --
+        verified live that a fresh connection actually reports
+        `journal_mode=wal` and `busy_timeout=10000`.
+      - **Scheduler tick had no failure isolation**: the original
+        `_tick()` shared one DB session and one try/except across all 4
+        of its concerns (intake, expired-confirmation sweep, rejected-
+        retention sweep, notification digest) -- an unhandled error in
+        intake silently skipped the other three for that entire tick,
+        and failures only ever went to a `print()` nobody's watching on
+        an unattended local-first box. Fixed: each concern now gets its
+        own session and its own exception handling, with failures
+        logged via `log_activity` so they're visible in the dashboard.
+      - Deployment guidance itself (keeping the process alive across
+        reboots on Windows/macOS/Linux, the Oracle Always Free VM
+        fallback for 24/7-independent-of-laptop uptime, periodic
+        `/settings/backup/export` reminders since restore isn't built)
+        is documentation in `ARCHITECTURE.md`, not new automation/code
+        -- no Dockerfile or service unit shipped, since the right choice
+        depends on the user's own OS/hosting decision, not something
+        this project should assume.
 - [ ] **Phase 11**: Design/polish pass — this is deliberately LAST. Don't
       over-invest in UI before the backend phases are solid; the "magic"
       layer (glassmorphism, live dashboards — see the user's portfolio at

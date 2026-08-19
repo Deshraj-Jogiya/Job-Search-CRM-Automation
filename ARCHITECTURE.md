@@ -39,6 +39,8 @@ this foundation instead of retrofitting it.
 | Interview prep (Phase 6) | `app/services/interview_prep_service.py`, routes in `app/routers/jobs.py`, section in `app/templates/application_detail.html` | On-demand (real LLM cost, not automatic), two independent passes: general prep grounded only in the candidate's real profile (role-generic), and company-specific prep grounded in the JD plus optional live company research via Tavily (`contact_discovery_service.tavily_search`, promoted to shared) -- gracefully degrades to JD-only when Tavily isn't configured, same posture as every other optional integration here. Available for any application except Rejected. |
 | Outcome analytics (Phase 7) | `app/services/analytics_service.py`, `app/routers/analytics.py`, `app/templates/analytics.html` | Read-only `/analytics` page: status funnel, apply/interview/offer conversion rates, speed-to-apply, by-source and by-score-band apply rates, flagged-vs-clean apply rates, company memory (deprioritized/blocked, most "Not Selected"). Required first wiring up `Interviewing`/`Offer`/a new `Not Selected` status (manual self-report via `confirmation_service.mark_interviewing/mark_offer/mark_not_selected`, same trust model as `mark_applied`) -- those states existed only in a schema comment before this, so there was no real data past `Applied` to analyze. `Not Selected` is deliberately distinct from `Rejected` (which means declined-before-applying and gets swept/deleted) since it's real applied-and-declined history worth keeping. |
 
+| $0 deployment hardening (Phase 10) | `app/database.py`, `app/services/scheduler.py` | SQLite WAL mode + busy_timeout to close a known concurrent-writer "database is locked" risk; scheduler tick failure isolation (4 independent concerns, each own session/exception handling, failures logged visibly instead of printed to an unwatched console). See the Deployment section below for the local-first-vs-Oracle-fallback operational guidance (documentation, not new automation). |
+
 ## What's NOT built yet (by design — next phases)
 
 - Real portal-submission automation (Playwright-style auto-fill/submit) — explicitly out of Phase 4's scope; a separate, later, ToS-sensitive decision, not assumed by default
@@ -66,3 +68,52 @@ uvicorn app.main:app --reload --port 8000
 
 Visit `http://localhost:8000/` — you should see the dashboard shell with
 the kill switch and settings panel live.
+
+## Deployment (Phase 10)
+
+**The $0 constraint is about hosting, not total cost.** Render was tried
+and cost money, so it's ruled out — there is no paid hosting anywhere in
+this project's design. LLM API calls (Claude by default) are a separate,
+small, unavoidable per-call cost (a few cents per score/tailor/prep
+generation, since those are on-demand, not automatic) — switching
+`LLM_PROVIDER` to `ollama` in `.env` removes even that, at the cost of
+local model quality/speed.
+
+**Local-first is the default and the recommended mode.** Run
+`uvicorn app.main:app --port 8000` continuously on your own machine.
+For it to survive logging out or a reboot without you remembering to
+restart it by hand:
+- **Windows**: a Task Scheduler task triggered at log-on, "run whether
+  user is logged on or not," with a restart-on-failure action.
+- **macOS**: a `launchd` user agent (`~/Library/LaunchAgents/`) with
+  `KeepAlive` set.
+- **Linux**: a `systemd --user` service with `Restart=on-failure`.
+
+None of these are shipped as files in this repo (no Dockerfile, no
+service unit) — this is a documented decision point, not automated
+tooling, since it depends on which OS you're actually running on.
+
+**Reliability hardening now in place** (this phase): SQLite runs in WAL
+mode with a 10s `busy_timeout` (`app/database.py`) so the scheduler
+thread and per-request background threads (intake/score/tailor, each
+opens its own connection) don't throw "database is locked" when they
+write at the same moment — a risk flagged since the original design
+discussion, now closed. The scheduler's 4 periodic concerns (intake,
+expired-confirmation sweep, rejected-retention sweep, notification
+digest) each now run in their own session with their own exception
+isolation, logged to the visible activity log on failure — previously
+one shared try/except meant an intake failure silently skipped the
+other three for that entire tick.
+
+**If 24/7 uptime independent of your own machine is ever needed**:
+Oracle Cloud's Always Free tier includes a small ARM VM (Ampere A1, up
+to 4 OCPU / 24GB RAM) that is genuinely free indefinitely, not a trial
+— point `DATABASE_URL` at a file on that VM and run the same way as
+local-first. Not built or scripted here; this is the documented
+fallback path, not a default, since local-first covers the actual
+current need.
+
+**Backups**: since backup *restore* is deliberately not built (see
+Phase 9 above), periodically use `/settings/backup/export` if running
+this unattended for extended stretches, and keep the downloaded file
+somewhere outside the machine running the app.
