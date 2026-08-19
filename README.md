@@ -39,8 +39,11 @@ confirmation windows, retention days, outreach caps) live-editable.
 
 ## Status
 
-Foundation phase (Phase 0) is complete: database, full data model, LLM
-abstraction, CSRF, kill switch, and live-editable settings are all in
-place and running. Job intake, AI tailoring, the confirmation-gated
-auto-apply queue, outreach, and interview prep are the next phases — see
-`ARCHITECTURE.md` for the full roadmap.
+Foundation, living profile, multi-source job intake (LinkedIn, Adzuna,
+and direct Greenhouse/Lever/Ashby board polling), AI matching/tailoring
+with a fabrication safeguard, the confirmation-gated auto-apply queue,
+outreach automation with contact discovery, interview prep generation,
+outcome analytics, and encrypted backup/export are all built and live.
+Two-face packaging (personal vs. public-showcase config), further
+deployment hardening, and a dedicated design/polish pass are what's
+left — see `ARCHITECTURE.md` for the full, up-to-date phase table.
