@@ -1,10 +1,9 @@
 """
 Phase 4: notifications for the confirmation queue.
 
-Two paths, deliberately not one-email-per-application (see CLAUDE.md's
-2026-08-17 notification volume revision -- the first version of this
-sent an individual email for every queued application, which is a
-disaster the moment several queue at once):
+Deliberately not one-email-per-application -- an email per queued
+application becomes a flood the moment several queue at once, so this
+splits into two paths instead:
 
 - send_confirmation_notification(): an immediate, individual one-click
   email. Only called for fast-track applications (see
@@ -22,10 +21,11 @@ optional integration in this project (Adzuna, portfolio sync).
 """
 
 import os
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from sqlalchemy.orm import Session
 
+from ..database import utcnow
 from ..models import JobApplication, get_or_create_settings
 from . import confirmation_tokens
 from .activity_logger import log_activity
@@ -82,6 +82,39 @@ def send_confirmation_notification(db: Session, application: JobApplication) -> 
         return False
 
 
+def send_autofill_ready_notification(db: Session, application: JobApplication) -> bool:
+    """Called from confirmation_service's auto-launch-on-clean-tailor
+    path. Unlike the two notifications above, there's no remote action
+    to link to: the real, already-filled browser window is open locally
+    on this machine, waiting for the human to review and click its own
+    submit button. This just makes sure they know to go look, since
+    they might not be watching the dashboard when tailoring finishes."""
+    if not is_configured():
+        log_activity(db, "Skipping autofill-ready email: SMTP not configured.", "WARNING")
+        return False
+
+    to_addr = os.getenv("SMTP_USER")
+    posting = application.posting
+    subject = f"Ready to review: {posting.job_title} at {posting.company_name_raw}"
+    body = (
+        f"{posting.job_title} at {posting.company_name_raw}\n"
+        f"Match score: {application.match_score}%\n\n"
+        "This one tailored clean, so a real browser window has been opened on this machine with "
+        "the application form pre-filled. Nothing has been submitted -- review every field, "
+        "including any left blank on purpose, then click Submit in that window yourself when ready.\n"
+    )
+
+    try:
+        _send_email(to_addr, subject, body)
+        log_activity(
+            db, f"Sent autofill-ready email for '{posting.job_title}' at {posting.company_name_raw}.", "INFO"
+        )
+        return True
+    except Exception as e:
+        log_activity(db, f"Failed to send autofill-ready email: {e}", "ERROR")
+        return False
+
+
 def send_digest(db: Session) -> int:
     """Batches every application that's queued (Pending Confirmation or
     Needs Review) and hasn't been notified about yet into ONE email,
@@ -92,7 +125,7 @@ def send_digest(db: Session) -> int:
         return 0
 
     settings = get_or_create_settings(db)
-    now = datetime.utcnow()
+    now = utcnow()
     if settings.last_digest_sent_at is not None:
         elapsed = now - settings.last_digest_sent_at
         if elapsed < timedelta(minutes=settings.notification_digest_interval_minutes):

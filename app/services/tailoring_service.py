@@ -3,9 +3,12 @@ Phase 3: resume/cover-letter tailoring. Unlike the deleted prototype
 (which called a single-shot LLM tailoring pass and then set the score
 to a hardcoded random.randint(95, 98) -- explicitly called out in
 CLAUDE.md as something not to carry forward), this runs a genuine
-tailor -> verify -> refine loop against the experience section and
-reports whatever score the LAST verify pass actually produced, capped
-at max_refine_passes so a stubborn JD can't loop forever.
+tailor -> verify -> refine loop against experience AND projects
+together and reports whatever score the LAST verify pass actually
+produced, capped at max_refine_passes so a stubborn JD can't loop
+forever. Project selection is relevance-driven, not a fixed count --
+a JD keyword can be genuinely resolved by either an experience bullet
+or a project bullet.
 
 Cover letter scoring is a separate, independent LLM pass -- it is not
 derived from the resume's ATS score, since a resume can be a strong
@@ -24,40 +27,131 @@ from .matching_service import MatchingServiceError, get_profile_content_for_appl
 TARGET_ATS_SCORE = 90
 MAX_REFINE_PASSES = 2
 
+# Hard, mechanical cap on how many projects can land in a tailored
+# resume -- the LLM is told to select by relevance, not by count, but
+# this still bounds real-world resume length regardless of what it
+# returns. Enforced in code, not just prompt wording.
+_MAX_TAILORED_PROJECTS = 6
+
+# Tools genuinely interchangeable at a skill level, within a single
+# narrow category -- e.g. real hands-on Tableau experience is honest
+# evidence of BI/data-visualization capability even when a JD names
+# Power BI specifically. Used both to soften the tailoring prompts'
+# stance on naming a JD's specific tool and, mechanically, in
+# _find_unsupported_keywords() below so the fabrication check doesn't
+# flag an honest "I used the equivalent tool" claim as fabrication.
+# Deliberately narrow and hand-curated (not an LLM judgment call) --
+# only tools that are truly substitutable day-to-day are grouped
+# together, never whole platforms/ecosystems (e.g. AWS vs. GCP stays
+# ungrouped -- genuinely different, non-transferable operational depth).
+_TOOL_EQUIVALENCE_GROUPS = [
+    {"tableau", "power bi", "powerbi", "looker", "qlik", "qlikview", "metabase"},
+    {"airflow", "apache airflow", "prefect", "dagster", "luigi"},
+    {"kafka", "apache kafka", "kinesis", "aws kinesis", "pub/sub", "pubsub", "rabbitmq"},
+    {"github actions", "gitlab ci", "jenkins", "circleci", "travis ci", "azure devops"},
+    {"kubernetes", "amazon ecs", "ecs", "docker swarm", "nomad"},
+]
+
 # Re-tailoring one of these would silently undo a decision the human
 # already made (submitted, cleared to submit, or explicitly passed on) --
 # refuse rather than reverting status back into the confirmation queue.
 _FINAL_STATUSES = ("Applied", "Approved", "Rejected", "Interviewing", "Offer", "Not Selected")
 
 
-def _tailor_experience_pass(experience: list, jd_text: str) -> list:
+def _tailor_experience_and_projects_pass(experience: list, projects: list, jd_text: str) -> dict:
+    """Rewrites experience bullets AND selects + rewrites whichever
+    projects are genuinely relevant to this JD -- one unified pass
+    instead of two disconnected ones. Project selection is relevance-
+    driven, not a fixed count: a candidate with many real projects
+    (this app's own personal instance has 19) shouldn't have 16 of them
+    permanently invisible to every tailored resume just because an
+    earlier version hard-capped selection at "exactly 3" regardless of
+    the JD."""
     llm = get_llm_provider()
     raw = llm.complete_json(
         system="You are an expert resume writer. You return only raw JSON.",
         prompt=(
-            "Rewrite these professional experience bullets to highlight skills and achievements relevant to "
-            "the job description below.\n\n"
-            "RULES: Do not fabricate any work history, dates, companies, or metrics -- every statement must "
-            "stay genuine. Align framing and emphasis with high-frequency, important keywords from the JD.\n\n"
+            "Rewrite this candidate's professional experience bullets, and separately select + rewrite "
+            "whichever of their real projects are genuinely relevant to this job description, to highlight "
+            "the skills and achievements -- already present below -- that matter for this JD.\n\n"
+            "The experience and projects below are your only source of truth about what this candidate "
+            "actually did -- the job description is context for which real achievements to emphasize, "
+            "never a source of facts about the candidate. Do not fabricate any work history, dates, "
+            "companies, metrics, tools, or techniques, and do not stretch a bullet to imply skills or "
+            "domain experience it doesn't genuinely describe. It is normal and expected for a real "
+            "candidate's background to not cover every skill a job description mentions -- reflecting that "
+            "honestly is correct, not a shortfall to fix.\n\n"
+            "One narrow exception: skill and tool are not the same thing. If the JD names a specific tool "
+            "the candidate hasn't used, but a bullet already shows hands-on use of a directly comparable "
+            "tool in the exact same category (e.g. Tableau vs. Power BI -- both BI/data-visualization "
+            "tools; Airflow vs. Prefect/Dagster -- both workflow orchestrators), it is honest to word that "
+            "bullet around the real tool the candidate actually used, not the JD's tool name -- the "
+            "underlying skill genuinely transfers even though the product name doesn't match. Never claim "
+            "hands-on use of the JD's specific tool itself if the candidate has never touched it.\n\n"
+            "For projects specifically: select based on genuine relevance to THIS job description, not a "
+            "fixed count -- include as many or as few as are actually strong matches (up to 6). A project "
+            "belongs in the selection because its real technologies or outcomes would matter to whoever "
+            "reads this JD, not to hit a target number. Rewrite each selected project into 2 concise, "
+            "metrics-driven bullets using the same real-evidence-only rules as experience above.\n\n"
             f"Original Experience:\n{json.dumps(experience, indent=2)}\n\n"
+            f"Original Projects:\n{json.dumps(projects, indent=2)}\n\n"
             f"Job Description:\n{jd_text}\n\n"
-            "Respond with EXACTLY this JSON shape (same roles, same order, same dates -- only bullets change):\n"
-            '[{"role": "...", "company": "...", "location": "...", "date": "...", "bullets": ["...", "..."]}]\n'
-            "Do not wrap the output in markdown code fences."
+            "Respond with EXACTLY this JSON shape:\n"
+            "{\n"
+            '  "experience": [{"role": "...", "company": "...", "location": "...", "date": "...", "bullets": ["...", "..."]}],\n'
+            '  "projects": [{"name": "...", "bullets": ["...", "..."], "technologies": ["..."]}]\n'
+            "}\n"
+            "experience must have the same roles, same order, same dates as the input -- only bullets "
+            "change. projects must each be a real project from the input (same name), selected by "
+            "relevance, at most 6. Do not wrap the output in markdown code fences."
         ),
         temperature=0.3,
+        # Default complete_json budget (2000 tokens) was sized for a
+        # single section (just experience, or just summary/skills/3
+        # projects) -- this call asks for experience AND up to 6
+        # projects together, and a real run hit real truncation (a
+        # response cut off mid-string fails JSON parsing outright, not
+        # a graceful partial result). Sized generously, not tightly,
+        # since underestimating here means a hard failure, not just a
+        # shorter response.
+        max_tokens=4000,
     )
-    return parse_json_response(raw)
+    result = parse_json_response(raw)
+    return {
+        "experience": result.get("experience", experience),
+        "projects": result.get("projects", [])[:_MAX_TAILORED_PROJECTS],
+    }
 
 
-def _verify_ats_score(experience: list, jd_text: str) -> dict:
+def _verify_ats_score(experience: list, projects: list, jd_text: str) -> dict:
+    """Scores against the candidate's tailored projects too, not just
+    experience bullets -- the tailoring loop's own re-score was
+    previously blind to projects entirely (same root issue as the
+    match_score fix in matching_service.py). Both are already-tailored
+    by this point (_tailor_experience_and_projects_pass /
+    _refine_experience_and_projects_pass); this function only scores,
+    it never rewrites."""
     llm = get_llm_provider()
     raw = llm.complete_json(
         system="You are an ATS parser. You return only raw JSON.",
         prompt=(
-            "Score how well this candidate experience matches the job description (0-100), and list any "
-            "high-priority JD keywords still missing from the experience.\n\n"
+            "Score how well this candidate's experience AND projects together match the job description "
+            "(0-100), and list any high-priority JD keywords still missing from both. A specific "
+            "accomplishment or technology named in a project counts as real evidence, same as an "
+            "experience bullet. Skill and tool are not the same thing: if the JD names a specific tool and "
+            "the candidate's experience or projects show hands-on use of a directly comparable tool in the "
+            "exact same category instead (e.g. Tableau vs. Power BI -- both BI/data-visualization tools; "
+            "Airflow vs. Prefect/Dagster -- both workflow orchestrators), treat that as the underlying "
+            "skill being covered -- do not list the JD's specific tool name as missing just because the "
+            "product name differs from a genuinely equivalent one already shown.\n\n"
+            "Weight REQUIRED qualifications far more heavily than PREFERRED/nice-to-have ones -- most JDs "
+            "separate the two explicitly (a 'Requirements' section vs. a 'Nice to Have'/'Bonus' section, or "
+            "inline phrasing like 'is a plus', 'familiarity with', 'exposure to'). A candidate who strongly "
+            "satisfies every required qualification but lacks several explicitly-optional ones should score "
+            "85%+, not be capped just because the missing_keywords list has several items on it -- only "
+            "list a keyword as high-priority/missing if the JD phrases it as required or a must-have.\n\n"
             f"Candidate Experience:\n{json.dumps(experience, indent=2)}\n\n"
+            f"Candidate Projects:\n{json.dumps(projects, indent=2)}\n\n"
             f"Job Description:\n{jd_text}\n\n"
             'Respond with EXACTLY this JSON shape: {"score": 90, "missing_keywords": ["Spark", "Kubernetes"]}\n'
             "Do not wrap the output in markdown code fences."
@@ -67,49 +161,81 @@ def _verify_ats_score(experience: list, jd_text: str) -> dict:
     return parse_json_response(raw)
 
 
-def _refine_experience_pass(experience: list, jd_text: str, missing_keywords: list) -> list:
+def _refine_experience_and_projects_pass(experience: list, projects: list, jd_text: str, missing_keywords: list) -> dict:
     llm = get_llm_provider()
     raw = llm.complete_json(
         system="You are an expert resume writer. You return only raw JSON.",
         prompt=(
-            "Refine these experience bullets to naturally and genuinely weave in the following missing "
-            "keywords, without fabricating anything. Only add a keyword where it genuinely fits an existing "
-            "achievement (e.g. only mention 'Docker' if a bullet already involves containerization/deployment).\n\n"
-            f"Missing Keywords: {json.dumps(missing_keywords)}\n\n"
-            f"Current Experience:\n{json.dumps(experience, indent=2)}\n\n"
+            "For each keyword below, decide honestly whether it genuinely applies to something this "
+            "candidate actually did, based only on their real experience and projects below -- then weave "
+            "it into whichever genuinely fits, an experience bullet or a project bullet. Leaving a keyword "
+            "out is the correct outcome whenever it doesn't genuinely apply to either; do not force one in "
+            "by stretching an unrelated bullet or adding a claim the experience/projects don't support "
+            "(e.g. only mention 'Docker' if a bullet already involves containerization/deployment). The "
+            "job description is context for interpreting these keywords, never a source of facts about the "
+            "candidate.\n\n"
+            "One narrow exception: a keyword naming a specific tool can genuinely apply even when the "
+            "candidate used a different, directly comparable tool in the exact same category (e.g. real "
+            "Tableau experience genuinely supports a 'Power BI' keyword -- both are BI/data-visualization "
+            "tools; real Airflow experience genuinely supports a 'Dagster' keyword -- both are workflow "
+            "orchestrators). In that case, weave in the REAL tool the candidate actually used, never the "
+            "JD's tool name -- the underlying skill transfers, the product name still shouldn't be "
+            "invented. If no genuinely comparable tool exists anywhere in the real experience/projects, "
+            "leave the keyword out as usual.\n\n"
+            f"Keywords to check (include ONLY the ones that genuinely fit): {json.dumps(missing_keywords)}\n\n"
+            f"Candidate's real, existing experience (the only source of truth):\n{json.dumps(experience, indent=2)}\n\n"
+            f"Candidate's already-selected, real projects (the only source of truth):\n{json.dumps(projects, indent=2)}\n\n"
             f"Job Description:\n{jd_text}\n\n"
-            "Respond with EXACTLY the same JSON shape as the input (same roles, same order, same dates -- only "
-            "bullets change). Do not wrap the output in markdown code fences."
+            "Respond with EXACTLY this JSON shape (same roles/projects, same order, same dates/names -- only "
+            "bullets change, and only where a keyword genuinely applies):\n"
+            "{\n"
+            '  "experience": [...],\n'
+            '  "projects": [...]\n'
+            "}\n"
+            "Do not wrap the output in markdown code fences."
         ),
         temperature=0.3,
+        max_tokens=4000,  # same reasoning as _tailor_experience_and_projects_pass above
     )
-    return parse_json_response(raw)
+    result = parse_json_response(raw)
+    return {
+        "experience": result.get("experience", experience),
+        "projects": result.get("projects", projects)[:_MAX_TAILORED_PROJECTS],
+    }
 
 
-def run_multi_pass_tailoring(experience: list, jd_text: str) -> tuple[list, int, list, list]:
+def run_multi_pass_tailoring(experience: list, projects: list, jd_text: str) -> tuple[list, list, int, list, list]:
     """The real tailor -> verify -> refine loop. Returns
-    (final_experience, final_score, initial_missing_keywords,
-    remaining_missing_keywords) -- the score is whatever the LAST
-    verify pass actually reported, never a placeholder. initial_missing
-    (the gap BEFORE any refinement) lets the caller detect fabrication:
-    any keyword that moved from "missing" to "resolved" needs checking
-    against the candidate's real, untouched profile -- see
-    _find_unsupported_keywords()."""
-    tailored = _tailor_experience_pass(experience, jd_text)
-    verification = _verify_ats_score(tailored, jd_text)
+    (final_experience, final_projects, final_score,
+    initial_missing_keywords, remaining_missing_keywords) -- the score
+    is whatever the LAST verify pass actually reported, never a
+    placeholder. initial_missing (the gap BEFORE any refinement) lets
+    the caller detect fabrication: any keyword that moved from
+    "missing" to "resolved" needs checking against the candidate's
+    real, untouched profile -- see _find_unsupported_keywords().
+
+    Experience and projects are tailored and refined together in the
+    same loop -- a JD keyword can be genuinely resolved by either an
+    experience bullet or a project bullet, and project selection is
+    relevance-driven (not a fixed count) so a candidate's strongest
+    project evidence for THIS JD isn't permanently capped out."""
+    tailored = _tailor_experience_and_projects_pass(experience, projects, jd_text)
+    tailored_experience, tailored_projects = tailored["experience"], tailored["projects"]
+    verification = _verify_ats_score(tailored_experience, tailored_projects, jd_text)
     score = int(verification.get("score", 0))
     missing = verification.get("missing_keywords", [])
     initial_missing = list(missing)
 
     passes = 0
     while score < TARGET_ATS_SCORE and missing and passes < MAX_REFINE_PASSES:
-        tailored = _refine_experience_pass(tailored, jd_text, missing)
-        verification = _verify_ats_score(tailored, jd_text)
+        refined = _refine_experience_and_projects_pass(tailored_experience, tailored_projects, jd_text, missing)
+        tailored_experience, tailored_projects = refined["experience"], refined["projects"]
+        verification = _verify_ats_score(tailored_experience, tailored_projects, jd_text)
         score = int(verification.get("score", score))
         missing = verification.get("missing_keywords", [])
         passes += 1
 
-    return tailored, score, initial_missing, missing
+    return tailored_experience, tailored_projects, score, initial_missing, missing
 
 
 def _find_unsupported_keywords(original_profile_content: dict, resolved_keywords: list, extra_text: str = "") -> list:
@@ -118,28 +244,49 @@ def _find_unsupported_keywords(original_profile_content: dict, resolved_keywords
     untouched profile -- a strong fabrication signal, since there'd be
     no genuine source material for the LLM to have drawn from. Checked
     mechanically (substring match) rather than by another LLM call, so
-    it can't be fooled by the same failure mode it's checking for."""
+    it can't be fooled by the same failure mode it's checking for.
+
+    A keyword also counts as supported if the profile shows hands-on
+    experience with a directly comparable tool in the same
+    _TOOL_EQUIVALENCE_GROUPS category -- e.g. real Tableau experience
+    is honest evidence for a "Power BI" keyword, since the underlying
+    BI/visualization skill genuinely transfers even though the product
+    name differs. Still fully mechanical/deterministic, not an LLM
+    judgment call -- only the narrow, curated equivalence groups count,
+    nothing else."""
     haystack = (json.dumps(original_profile_content) + " " + extra_text).lower()
-    return [kw for kw in resolved_keywords if kw.lower() not in haystack]
+
+    def _is_supported(keyword: str) -> bool:
+        kw_lower = keyword.lower()
+        if kw_lower in haystack:
+            return True
+        for group in _TOOL_EQUIVALENCE_GROUPS:
+            if kw_lower in group and any(equivalent in haystack for equivalent in group if equivalent != kw_lower):
+                return True
+        return False
+
+    return [kw for kw in resolved_keywords if not _is_supported(kw)]
 
 
-def _tailor_summary_skills_projects(profile_content: dict, jd_text: str) -> dict:
+def _tailor_summary_skills(profile_content: dict, jd_text: str) -> dict:
+    """Summary/skills only -- project selection and tailoring now
+    happens inside run_multi_pass_tailoring, alongside experience, so
+    it can participate in the same JD-keyword refine loop instead of a
+    disconnected single-shot pass."""
     llm = get_llm_provider()
     raw = llm.complete_json(
         system="You are an expert resume writer. You return only raw JSON.",
         prompt=(
-            "Tailor this candidate's professional summary, skills grouping, and project selection to align "
-            "with the job description. Select exactly 3 projects from the candidate's project list that are "
-            "most relevant, and rewrite each into 2 concise, metrics-driven bullets. Do not fabricate anything.\n\n"
+            "Tailor this candidate's professional summary and skills grouping to align with the job "
+            "description. Do not fabricate anything.\n\n"
             f"Candidate Profile:\n{json.dumps(profile_content, indent=2)}\n\n"
             f"Job Description:\n{jd_text}\n\n"
             "Respond with EXACTLY this JSON shape:\n"
             "{\n"
             '  "summary": "tailored professional summary",\n'
-            '  "skills": { ...same grouping keys as the input profile skills... },\n'
-            '  "projects": [{"name": "...", "bullets": ["...", "..."], "technologies": ["..."]}]\n'
+            '  "skills": { ...same grouping keys as the input profile skills... }\n'
             "}\n"
-            "projects must contain exactly 3 items. Do not wrap the output in markdown code fences."
+            "Do not wrap the output in markdown code fences."
         ),
         temperature=0.3,
     )
@@ -252,10 +399,10 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
     jd_text = posting.job_description
 
     try:
-        tailored_experience, final_score, initial_missing, remaining_missing = run_multi_pass_tailoring(
-            profile_content.get("experience", []), jd_text
+        tailored_experience, tailored_projects, final_score, initial_missing, remaining_missing = run_multi_pass_tailoring(
+            profile_content.get("experience", []), profile_content.get("projects", []), jd_text
         )
-        extras = _tailor_summary_skills_projects(profile_content, jd_text)
+        extras = _tailor_summary_skills(profile_content, jd_text)
     except Exception as e:
         raise MatchingServiceError(f"Resume tailoring failed: {e}") from e
 
@@ -269,7 +416,7 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
         "summary": extras.get("summary", profile_content.get("summary")),
         "skills": extras.get("skills", profile_content.get("skills")),
         "experience": tailored_experience,
-        "projects": extras.get("projects", profile_content.get("projects", []))[:3],
+        "projects": tailored_projects,
         "education": profile_content.get("education", []),
         "certifications": profile_content.get("certifications", []),
     }

@@ -26,12 +26,15 @@ from ..models import (
     JobApplication,
     JobPosting,
     JobSource,
+    LocationExclusion,
     OutreachMessage,
     SearchKeyword,
+    SeniorityExclusion,
     TailoredDocument,
     get_or_create_settings,
 )
 from ..services import (
+    autofill_service,
     confirmation_service,
     contact_discovery_service,
     intake_service,
@@ -40,9 +43,8 @@ from ..services import (
     outreach_service,
     tailoring_service,
 )
+from ..services.activity_logger import log_activity, log_exception
 from ..services.confirmation_service import ConfirmationServiceError
-from ..services.interview_prep_service import InterviewPrepServiceError
-from ..services.matching_service import MatchingServiceError
 from ..templating import render
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -70,11 +72,25 @@ def _run_intake_in_background():
     db = SessionLocal()
     try:
         intake_service.run_intake_cycle(db, force=True)
+    except Exception as e:
+        # Phase 18: this manual "Run Intake Now" path previously had no
+        # exception handling at all -- unlike the scheduler's own
+        # automatic intake calls (scheduler._run_isolated, Phase 10),
+        # anything that slipped past run_intake_cycle's internal
+        # per-source handling would crash this thread with zero visible
+        # trace anywhere, not even a log entry.
+        log_activity(db, f"Manual intake run failed: {e}", "ERROR")
     finally:
         db.close()
 
 
 def _record_failure(db: Session, application_id: int, error: Exception):
+    # attention_reason (truncated to 250 chars) is the user-visible surface
+    # for this on the application's own detail page -- log_exception adds
+    # the full traceback to the retained log file alongside it, since a
+    # truncated one-liner is rarely enough to actually diagnose a real
+    # LLM-provider or Playwright failure after the fact.
+    log_exception(f"Application {application_id} background task failed: {error}")
     application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
     if application:
         application.attention_reason = str(error)[:250]
@@ -85,7 +101,12 @@ def _score_in_background(application_id: int):
     db = SessionLocal()
     try:
         matching_service.score_application(db, application_id)
-    except MatchingServiceError as e:
+    except Exception as e:
+        # Broad on purpose (Phase 18): a real LLM-provider failure (rate
+        # limit, timeout, malformed response not already wrapped as
+        # MatchingServiceError) previously propagated past this narrower
+        # catch and crashed the thread silently -- the application just
+        # sat at "Ingested" forever with no visible reason why.
         _record_failure(db, application_id, e)
     finally:
         db.close()
@@ -95,10 +116,12 @@ def _tailor_in_background(application_id: int):
     db = SessionLocal()
     try:
         tailoring_service.tailor_application(db, application_id)
-    except (MatchingServiceError, ConfirmationServiceError) as e:
-        # tailor_application hands off to confirmation_service.evaluate_and_enqueue()
-        # at the end, which can raise ConfirmationServiceError -- catch both so a
-        # failure there is recorded instead of dying silently in this thread.
+    except Exception as e:
+        # Broad on purpose (Phase 18) -- same reasoning as
+        # _score_in_background, plus tailor_application hands off to
+        # confirmation_service.evaluate_and_enqueue() at the end, which
+        # can raise ConfirmationServiceError or trigger a real autofill
+        # launch with its own failure surface.
         _record_failure(db, application_id, e)
     finally:
         db.close()
@@ -108,7 +131,7 @@ def _interview_prep_in_background(application_id: int):
     db = SessionLocal()
     try:
         interview_prep_service.generate_interview_prep(db, application_id)
-    except InterviewPrepServiceError as e:
+    except Exception as e:
         _record_failure(db, application_id, e)
     finally:
         db.close()
@@ -125,6 +148,8 @@ def jobs_page(request: Request, db: Session = Depends(get_db)):
     )
     sources = db.query(JobSource).order_by(JobSource.name).all()
     keywords = db.query(SearchKeyword).order_by(SearchKeyword.keyword).all()
+    seniority_exclusions = db.query(SeniorityExclusion).order_by(SeniorityExclusion.term).all()
+    location_exclusions = db.query(LocationExclusion).order_by(LocationExclusion.term).all()
     target_companies = (
         db.query(Company)
         .filter(or_(Company.greenhouse_slug.isnot(None), Company.lever_slug.isnot(None), Company.ashby_slug.isnot(None)))
@@ -140,6 +165,8 @@ def jobs_page(request: Request, db: Session = Depends(get_db)):
             "applications": applications,
             "sources": sources,
             "keywords": keywords,
+            "seniority_exclusions": seniority_exclusions,
+            "location_exclusions": location_exclusions,
             "target_companies": target_companies,
             "automation_enabled": settings.automation_enabled,
             "message": request.query_params.get("message"),
@@ -213,10 +240,73 @@ def delete_keyword(keyword_id: int, db: Session = Depends(get_db)):
     return _redirect(message="Keyword deleted.")
 
 
+@router.post("/seniority-exclusions")
+def add_seniority_exclusion(term: str = Form(...), db: Session = Depends(get_db)):
+    term = term.strip()
+    if not term:
+        return _redirect(error="Seniority exclusion term cannot be empty.")
+    exists = db.query(SeniorityExclusion).filter(SeniorityExclusion.term == term).first()
+    if exists:
+        return _redirect(error=f"'{term}' is already in the list.")
+    db.add(SeniorityExclusion(term=term, is_active=True))
+    db.commit()
+    return _redirect(message=f"Added seniority exclusion '{term}'.")
+
+
+@router.post("/seniority-exclusions/{exclusion_id}/toggle")
+def toggle_seniority_exclusion(exclusion_id: int, db: Session = Depends(get_db)):
+    ex = db.query(SeniorityExclusion).filter(SeniorityExclusion.id == exclusion_id).first()
+    if not ex:
+        return _redirect(error=f"Seniority exclusion {exclusion_id} not found.")
+    ex.is_active = not ex.is_active
+    db.commit()
+    return _redirect(message=f"'{ex.term}' is now {'active' if ex.is_active else 'paused'}.")
+
+
+@router.post("/seniority-exclusions/{exclusion_id}/delete")
+def delete_seniority_exclusion(exclusion_id: int, db: Session = Depends(get_db)):
+    ex = db.query(SeniorityExclusion).filter(SeniorityExclusion.id == exclusion_id).first()
+    if ex:
+        db.delete(ex)
+        db.commit()
+    return _redirect(message="Seniority exclusion deleted.")
+
+
+@router.post("/location-exclusions")
+def add_location_exclusion(term: str = Form(...), db: Session = Depends(get_db)):
+    term = term.strip()
+    if not term:
+        return _redirect(error="Location exclusion term cannot be empty.")
+    exists = db.query(LocationExclusion).filter(LocationExclusion.term == term).first()
+    if exists:
+        return _redirect(error=f"'{term}' is already in the list.")
+    db.add(LocationExclusion(term=term, is_active=True))
+    db.commit()
+    return _redirect(message=f"Added location exclusion '{term}'.")
+
+
+@router.post("/location-exclusions/{exclusion_id}/toggle")
+def toggle_location_exclusion(exclusion_id: int, db: Session = Depends(get_db)):
+    ex = db.query(LocationExclusion).filter(LocationExclusion.id == exclusion_id).first()
+    if not ex:
+        return _redirect(error=f"Location exclusion {exclusion_id} not found.")
+    ex.is_active = not ex.is_active
+    db.commit()
+    return _redirect(message=f"'{ex.term}' is now {'active' if ex.is_active else 'paused'}.")
+
+
+@router.post("/location-exclusions/{exclusion_id}/delete")
+def delete_location_exclusion(exclusion_id: int, db: Session = Depends(get_db)):
+    ex = db.query(LocationExclusion).filter(LocationExclusion.id == exclusion_id).first()
+    if ex:
+        db.delete(ex)
+        db.commit()
+    return _redirect(message="Location exclusion deleted.")
+
+
 @router.get("/review", response_class=HTMLResponse)
 def review_page(request: Request, db: Session = Depends(get_db)):
-    """Bulk review: the primary surface for processing volume, per
-    CLAUDE.md's 2026-08-17 notification-volume revision. Pending
+    """Bulk review: the primary surface for processing volume. Pending
     Confirmation (clean, safe to bulk) and Needs Review (flagged) are
     kept in structurally separate sections/forms -- not just visually --
     so a "select all" in one section can never sweep up a flagged item
@@ -328,6 +418,8 @@ def _build_detail_context(application_id: int, request: Request, db: Session, di
         "outreach_sent_today": outreach_service.sent_count_last_24h(db),
         "discovery_available": contact_discovery_service.is_tavily_configured(),
         "discovered_contacts": discovered_contacts,
+        "autofill_supported": autofill_service.is_supported(application.posting.source),
+        "autofill_supported_sources": autofill_service.supported_sources(),
         "message": request.query_params.get("message"),
         "error": request.query_params.get("error"),
     }
@@ -350,7 +442,7 @@ def discover_outreach_contacts(application_id: int, request: Request, db: Sessio
         context["error"] = "Contact discovery isn't configured -- add TAVILY_API_KEY (and optionally HUNTER_API_KEY) to .env."
         return render(request, "application_detail.html", context)
 
-    discovered = contact_discovery_service.discover_contacts(application.posting.company_name_raw)
+    discovered = contact_discovery_service.discover_contacts(db, application.posting.company_name_raw)
     context = _build_detail_context(application_id, request, db, discovered_contacts=discovered)
     if not discovered:
         context["message"] = "No candidates found -- try manual entry below."
@@ -397,13 +489,53 @@ def generate_interview_prep_now(application_id: int, db: Session = Depends(get_d
     )
 
 
+@router.post("/{application_id}/autofill")
+def autofill_application_now(application_id: int, db: Session = Depends(get_db)):
+    application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+    if application.status != "Approved":
+        return _redirect_detail(
+            application_id,
+            error=f"Application is '{application.status}' -- autofill only runs on Approved applications.",
+        )
+    if not autofill_service.is_supported(application.posting.source):
+        return _redirect_detail(
+            application_id,
+            error=(
+                f"Autofill isn't built yet for '{application.posting.source}' postings "
+                f"(currently: {', '.join(autofill_service.supported_sources())})."
+            ),
+        )
+    autofill_service.launch_autofill_in_background(application_id)
+    return _redirect_detail(
+        application_id,
+        message="Opening a real browser window to pre-fill the application -- review everything there before clicking submit yourself.",
+    )
+
+
 @router.post("/{application_id}/approve")
 def approve_application_now(application_id: int, db: Session = Depends(get_db)):
+    """A single, individual approval (unlike the bulk review-queue
+    action below) is a deliberate enough decision to also launch
+    autofill immediately -- no separate 'Open Application' click
+    needed. Approving a flagged (Needs Review) application still
+    required the human to see the flag and choose to approve first;
+    this only removes the redundant second click after that decision,
+    it doesn't skip the decision itself."""
     try:
-        confirmation_service.approve_application(db, application_id)
-        return _redirect_detail(application_id, message="Approved.")
+        application = confirmation_service.approve_application(db, application_id)
     except ConfirmationServiceError as e:
         return _redirect_detail(application_id, error=str(e))
+
+    if autofill_service.is_supported(application.posting.source):
+        autofill_service.launch_autofill_in_background(application_id)
+        return _redirect_detail(
+            application_id,
+            message="Approved -- opening a real browser window to pre-fill the application. "
+            "Review everything there before clicking submit yourself.",
+        )
+    return _redirect_detail(application_id, message="Approved.")
 
 
 @router.post("/{application_id}/reject")

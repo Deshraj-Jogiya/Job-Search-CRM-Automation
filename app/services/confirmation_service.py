@@ -1,16 +1,20 @@
 """
 Phase 4: the confirmation-gated queue. An application that finishes
-tailoring lands here -- either straight into a timed Pending
-Confirmation queue, or into Needs Review if Phase 2/3 flagged something
-serious, which has NO timeout and always waits for an explicit human
-decision. See CLAUDE.md's "Phase 4" section for the full settled design
-this implements.
+tailoring lands here -- into Needs Review if Phase 2/3 flagged something
+serious (no timeout, always waits for an explicit human decision), into
+a timed Pending Confirmation queue (clean but no real autofill support
+for its source), or -- for a clean, autofill-supported application --
+straight to Approved with a real browser auto-launched immediately (see
+the auto-launch design note in CLAUDE.md's Phase 4 section). See
+CLAUDE.md's "Phase 4" section for the full settled design this
+implements.
 
 Nothing here does real portal submission -- there is no such engine in
 this rebuild. "Approved" means tailored documents are ready and the
-human has (explicitly or by not objecting within the window) cleared
-this to go out; a separate explicit "Mark as Applied" action records
-that the human actually submitted it somewhere.
+human has (explicitly, by not objecting within the window, or via the
+auto-launch path above) cleared this to go out; a separate explicit
+"Mark as Applied" action records that the human actually submitted it
+somewhere.
 """
 
 from datetime import datetime, timedelta
@@ -18,6 +22,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
+from ..database import utcnow
 from ..models import GlobalSettings, JobApplication, TailoredDocument, get_or_create_settings
 from .activity_logger import log_activity
 
@@ -81,19 +86,24 @@ def has_hard_stop_flag(application: JobApplication) -> str | None:
         return application.attention_reason
     if application.posting.scam_flag_reason:
         return f"Scam-pattern warning on the posting: {application.posting.scam_flag_reason}"
+    if application.posting.eligibility_flag_reason:
+        return f"Eligibility requirement stated in the posting: {application.posting.eligibility_flag_reason}"
     return None
 
 
 def evaluate_and_enqueue(db: Session, application_id: int) -> JobApplication:
     """Call once tailoring succeeds. Routes to Needs Review (flagged, no
-    timeout) or Pending Confirmation (clean, timed).
+    timeout), straight to Approved + an auto-launched real browser
+    (clean AND autofill-supported -- see the Phase 4 auto-launch design
+    note in CLAUDE.md), or Pending Confirmation (clean but not
+    autofill-supported, timed).
 
-    Notification volume fix (2026-08-17): queueing many applications at
-    once must not mean an email per application -- only fast-track
-    (rare, speed-critical) gets an immediate individual email. Everything
-    else is left with notification_sent=False and picked up by the next
-    periodic digest (see notification_service.send_digest()), which
-    points at the bulk review page instead of listing every item inline."""
+    Queueing many applications at once must not mean an email per
+    application -- only fast-track (rare, speed-critical) gets an
+    immediate individual email. Everything else is left with
+    notification_sent=False and picked up by the next periodic digest
+    (see notification_service.send_digest()), which points at the bulk
+    review page instead of listing every item inline."""
     application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
     if not application:
         raise ConfirmationServiceError(f"Application {application_id} not found.")
@@ -108,6 +118,8 @@ def evaluate_and_enqueue(db: Session, application_id: int) -> JobApplication:
     # before under a since-resolved state.
     application.notification_sent = False
 
+    from . import autofill_service
+
     if hard_stop_reason:
         application.status = "Needs Review"
         application.confirmation_deadline = None
@@ -118,8 +130,46 @@ def evaluate_and_enqueue(db: Session, application_id: int) -> JobApplication:
             f"before it can proceed: {hard_stop_reason}",
             "WARNING",
         )
+    elif (
+        autofill_service.is_supported(application.posting.source)
+        and application.match_score >= settings.min_score_for_auto_launch
+    ):
+        # A clean (no hard-stop flag), autofill-supported, AND
+        # sufficiently-well-matched application skips the timed Pending
+        # Confirmation step entirely -- the human's own click on the
+        # real submit button in the auto-launched browser is the
+        # confirmation, no other approval gate for this path. This is
+        # actually safer than the timeout-based auto-proceed below,
+        # which can flip an application to Approved with zero human
+        # action if the user is unreachable -- nothing here ever
+        # becomes Applied without a genuine human submit click on the
+        # real site, since the automation never clicks submit itself
+        # (see autofill_service/autofill/* docstrings). The match_score
+        # gate exists because being clean/unflagged is not the same as
+        # being a good fit -- a low-scoring application that happens
+        # not to trigger the fabrication check would otherwise still
+        # pop open a real, unattended browser for a job the candidate
+        # is a poor match for. Below the bar, it still falls through to
+        # the ordinary timed Pending Confirmation branch, same as any
+        # other clean application on a non-autofill source.
+        application.status = "Approved"
+        application.confirmed_by_user = False  # no explicit UI click -- auto-proceeded, same convention as the timeout path below
+        application.confirmation_deadline = None
+        db.commit()
+        log_activity(
+            db,
+            f"'{application.posting.job_title}' at {application.posting.company_name_raw} tailored clean -- "
+            "opening a real browser now to pre-fill the application for your review.",
+            "INFO",
+        )
+        autofill_service.launch_autofill_in_background(application.id)
+
+        from . import notification_service
+
+        application.notification_sent = notification_service.send_autofill_ready_notification(db, application)
+        db.commit()
     else:
-        now = datetime.utcnow()
+        now = utcnow()
         deadline, is_fast_track = compute_confirmation_deadline(settings, application, now)
         application.status = "Pending Confirmation"
         application.confirmation_deadline = deadline
@@ -166,7 +216,7 @@ def reject_application(db: Session, application_id: int) -> JobApplication:
         raise ConfirmationServiceError(f"Application is '{application.status}', not awaiting confirmation.")
 
     application.status = "Rejected"
-    application.rejected_at = datetime.utcnow()
+    application.rejected_at = utcnow()
     application.confirmation_deadline = None
     db.commit()
     log_activity(db, f"Rejected '{application.posting.job_title}' at {application.posting.company_name_raw}.", "INFO")
@@ -174,9 +224,12 @@ def reject_application(db: Session, application_id: int) -> JobApplication:
 
 
 def mark_applied(db: Session, application_id: int) -> JobApplication:
-    """Explicit human confirmation that they actually submitted this
-    somewhere -- there is no automated submission step to infer this
-    from."""
+    """Confirmation that the application was actually submitted --
+    either an explicit human click (the dashboard button), or, since
+    Phase 17, autofill_service's own submission-confirmation watcher
+    calling this after observing a real post-submit page signal. Either
+    way this is the single source of truth for "submitted," not a
+    guess."""
     application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
     if not application:
         raise ConfirmationServiceError(f"Application {application_id} not found.")
@@ -184,7 +237,7 @@ def mark_applied(db: Session, application_id: int) -> JobApplication:
         raise ConfirmationServiceError(f"Application is '{application.status}', not yet Approved.")
 
     application.status = "Applied"
-    application.applied_at = datetime.utcnow()
+    application.applied_at = utcnow()
     db.commit()
     log_activity(db, f"Marked '{application.posting.job_title}' at {application.posting.company_name_raw} as Applied.", "INFO")
     return application
@@ -202,7 +255,7 @@ def mark_interviewing(db: Session, application_id: int) -> JobApplication:
         raise ConfirmationServiceError(f"Application is '{application.status}', not yet Applied.")
 
     application.status = "Interviewing"
-    application.interviewing_at = datetime.utcnow()
+    application.interviewing_at = utcnow()
     db.commit()
     log_activity(db, f"Marked '{application.posting.job_title}' at {application.posting.company_name_raw} as Interviewing.", "INFO")
     return application
@@ -218,7 +271,7 @@ def mark_offer(db: Session, application_id: int) -> JobApplication:
         raise ConfirmationServiceError(f"Application is '{application.status}', not Applied or Interviewing.")
 
     application.status = "Offer"
-    application.offer_at = datetime.utcnow()
+    application.offer_at = utcnow()
     db.commit()
     log_activity(db, f"Marked '{application.posting.job_title}' at {application.posting.company_name_raw} as Offer.", "INFO")
     return application
@@ -238,7 +291,7 @@ def mark_not_selected(db: Session, application_id: int) -> JobApplication:
         raise ConfirmationServiceError(f"Application is '{application.status}', not Applied or Interviewing.")
 
     application.status = "Not Selected"
-    application.not_selected_at = datetime.utcnow()
+    application.not_selected_at = utcnow()
     company = application.posting.company
     if company:
         company.ghosted_count = (company.ghosted_count or 0) + 1
@@ -251,7 +304,7 @@ def sweep_expired_confirmations(db: Session) -> int:
     """Called by the scheduler tick. Auto-proceeds any Pending
     Confirmation application whose deadline has passed -- Needs Review
     items are untouched here since they have no deadline by design."""
-    now = datetime.utcnow()
+    now = utcnow()
     expired = (
         db.query(JobApplication)
         .filter(JobApplication.status == "Pending Confirmation", JobApplication.confirmation_deadline <= now)
@@ -279,7 +332,7 @@ def sweep_rejected_retention(db: Session) -> int:
     relationship, but NOT the JobPosting (company memory / repost
     detection still wants that posting to have existed)."""
     settings = get_or_create_settings(db)
-    cutoff = datetime.utcnow() - timedelta(days=settings.rejected_retention_days)
+    cutoff = utcnow() - timedelta(days=settings.rejected_retention_days)
     old_rejected = (
         db.query(JobApplication)
         .filter(JobApplication.status == "Rejected", JobApplication.rejected_at <= cutoff)

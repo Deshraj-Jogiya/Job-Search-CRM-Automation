@@ -8,13 +8,40 @@ intentional; it means each phase just fills in behavior against a schema
 that already fits, instead of migrating tables mid-project.
 """
 
-from datetime import datetime
 from sqlalchemy import (
     Column, Integer, String, Text, DateTime, ForeignKey, Boolean, Float
 )
 from sqlalchemy.orm import relationship
 from .app_mode import is_showcase_mode
-from .database import Base
+from .database import Base, utcnow
+
+
+# ---------------------------------------------------------------------------
+# Operator account (Phase 22: real login/signup/password-reset)
+# ---------------------------------------------------------------------------
+
+class AdminAccount(Base):
+    """The one operator account for THIS deployment. Deliberately not a
+    multi-tenant User table -- this project's "public" model is one
+    person forks/deploys their own instance with their own .env
+    secrets and their own database, not many strangers sharing one
+    deployment. This table replaces the old bare DASHBOARD_PASSWORD
+    env-var comparison with a real signup/login/forgot-password flow;
+    "signup" here means first-run setup (create the one account this
+    instance will ever have), not open registration -- see
+    app/routers/auth.py's guard against creating a second row.
+
+    A deployment with zero rows here falls back to the legacy
+    DASHBOARD_PASSWORD-env-var-or-open behavior (app/main.py's
+    require_auth) so nothing breaks for an existing install that hasn't
+    signed up yet."""
+    __tablename__ = "admin_accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, nullable=False)
+    password_hash = Column(String, nullable=False)
+    recovery_email = Column(String, nullable=True)  # required for forgot-password to work
+    created_at = Column(DateTime, default=utcnow)
 
 
 # ---------------------------------------------------------------------------
@@ -31,7 +58,7 @@ class ProfileVariant(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False, unique=True)  # e.g. "Data Engineering"
     is_default = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
     versions = relationship("ProfileVersion", back_populates="variant", cascade="all, delete-orphan")
 
@@ -49,7 +76,7 @@ class ProfileVersion(Base):
     source = Column(String, default="manual")  # 'portfolio_sync' | 'linkedin_diff' | 'manual'
     change_summary = Column(Text, nullable=True)  # human-readable diff summary, AI-generated
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
     variant = relationship("ProfileVariant", back_populates="versions")
 
@@ -67,7 +94,7 @@ class Company(Base):
     status = Column(String, default="Neutral")  # 'Neutral' | 'Deprioritized' | 'Blocked'
     status_reason = Column(String, nullable=True)  # e.g. "Ghosted after application", "Not interested"
     ghosted_count = Column(Integer, default=0)  # applications that went silent
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
     # Phase 2 slice 2: direct ATS board polling. Auto-detected (see
     # board_discovery.py) the first time this company is seen via any
@@ -97,19 +124,30 @@ class JobPosting(Base):
     company_name_raw = Column(String, nullable=False)  # as scraped, before normalization
     job_title = Column(String, nullable=False, index=True)
     job_url = Column(String, nullable=True)
+    location = Column(String, nullable=True)  # structured location text from the source's own API, when available
     job_description = Column(Text, nullable=False)
     source = Column(String, nullable=False)  # 'linkedin' | 'adzuna' | 'greenhouse' | 'lever' | 'ashby' | 'manual'
     external_id = Column(String, nullable=True, index=True)  # source's own posting id, when available
 
-    first_seen_at = Column(DateTime, default=datetime.utcnow)  # earliest time this exact posting was observed
-    last_seen_at = Column(DateTime, default=datetime.utcnow)   # most recent time it was still live
+    first_seen_at = Column(DateTime, default=utcnow)  # earliest time this exact posting was observed
+    last_seen_at = Column(DateTime, default=utcnow)   # most recent time it was still live
     repost_count = Column(Integer, default=0)
 
     # Scam/ghost-job signals -- surfaced, never silently filtered
     scam_flag_reason = Column(String, nullable=True)
     staleness_flag = Column(Boolean, default=False)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    # Hard eligibility requirements mechanically detected in the JD text at
+    # intake time (U.S. citizenship, active security clearance, HIPAA/PHI
+    # handling authorization, etc.) -- surfaced as a warning, same as scam
+    # flags, never a silent intake-time filter (whether a given requirement
+    # actually excludes this candidate depends on personal facts this
+    # project doesn't assume). confirmation_service.has_hard_stop_flag()
+    # additionally treats this as a hard-stop so a flagged posting always
+    # needs an explicit human look before ever auto-proceeding.
+    eligibility_flag_reason = Column(String, nullable=True)
+
+    created_at = Column(DateTime, default=utcnow)
 
     company = relationship("Company", back_populates="postings")
     application = relationship("JobApplication", back_populates="posting", uselist=False, cascade="all, delete-orphan")
@@ -137,8 +175,8 @@ class JobApplication(Base):
     #                                                            -> Needs Review
     #          -> Rejected (declined before applying; retained briefly, then swept)
     #
-    # Interviewing/Offer/Not Selected (Phase 7, added 2026-08-19) are manual
-    # self-reports via confirmation_service.mark_interviewing/mark_offer/
+    # Interviewing/Offer/Not Selected are manual self-reports via
+    # confirmation_service.mark_interviewing/mark_offer/
     # mark_not_selected, same trust model as mark_applied -- nothing infers
     # these automatically. "Not Selected" is deliberately a different status
     # from "Rejected": "Rejected" means the user declined to apply and is
@@ -166,7 +204,7 @@ class JobApplication(Base):
     notes = Column(Text, nullable=True)
     attention_reason = Column(String, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
     posting = relationship("JobPosting", back_populates="application")
     documents = relationship("TailoredDocument", back_populates="application", cascade="all, delete-orphan")
@@ -182,7 +220,7 @@ class TailoredDocument(Base):
     document_type = Column(String, nullable=False)  # 'resume' | 'cover_letter'
     content = Column(Text, nullable=False)
     ats_score = Column(Integer, nullable=True)
-    generated_at = Column(DateTime, default=datetime.utcnow)
+    generated_at = Column(DateTime, default=utcnow)
 
     application = relationship("JobApplication", back_populates="documents")
 
@@ -208,7 +246,7 @@ class OutreachMessage(Base):
 
     email_verified = Column(Boolean, default=False)  # syntax + MX check passed
     sent_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
     application = relationship("JobApplication", back_populates="outreach_messages")
 
@@ -225,7 +263,7 @@ class InterviewPrep(Base):
 
     general_prep_json = Column(Text, nullable=True)   # questions/talking points based on your background
     company_prep_json = Column(Text, nullable=True)   # company-specific angles, from JD + light research
-    generated_at = Column(DateTime, default=datetime.utcnow)
+    generated_at = Column(DateTime, default=utcnow)
 
     application = relationship("JobApplication", back_populates="interview_prep")
 
@@ -242,6 +280,37 @@ class SearchKeyword(Base):
     is_active = Column(Boolean, default=True)
 
 
+class SeniorityExclusion(Base):
+    """Title-level seniority terms to exclude from intake (e.g. "Staff",
+    "Director") -- mirrors SearchKeyword's table/UI shape so it gets the
+    same live add/toggle/delete management rather than a flat settings
+    string. Both this table and SearchKeyword are auto-derived from the
+    candidate's own profile the first time intake needs them and finds
+    neither configured -- see intake_service.ensure_intake_targeting."""
+    __tablename__ = "seniority_exclusions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    term = Column(String, nullable=False, unique=True, index=True)
+    is_active = Column(Boolean, default=True)
+
+
+class LocationExclusion(Base):
+    """Location-text terms (country/region names, e.g. "Poland", "India")
+    to exclude from intake -- a company's own Greenhouse/Lever/Ashby board
+    has no location filter at all, so without this a US-based candidate's
+    intake fills up with roles they're not actually eligible for. Mirrors
+    SeniorityExclusion's table/UI shape. Seeded with a static default list
+    of common non-US location signals the first time intake needs it and
+    finds the table empty -- see intake_service.ensure_location_exclusions_
+    seeded. Unlike SearchKeyword/SeniorityExclusion, not LLM-derived: "which
+    countries aren't the US" doesn't need a profile-grounded guess."""
+    __tablename__ = "location_exclusions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    term = Column(String, nullable=False, unique=True, index=True)
+    is_active = Column(Boolean, default=True)
+
+
 class JobSource(Base):
     """Which intake sources are enabled, and their own health/quota state
     -- so we can respect each free-tier API budget independently instead
@@ -255,6 +324,22 @@ class JobSource(Base):
     period_reset_at = Column(DateTime, nullable=True)
     last_polled_at = Column(DateTime, nullable=True)
     last_error = Column(String, nullable=True)
+    # For sources that cost one real external call per keyword
+    # (Adzuna, LinkedIn) -- where in the active keyword list the next
+    # cycle's rotating subset should start, so repeated cycles cover
+    # the full list over time instead of re-querying the same few
+    # keywords, or every keyword, every cycle.
+    keyword_rotation_offset = Column(Integer, default=0)
+
+    # Phase 19: daily pacing for a hard-capped monthly budget (Adzuna).
+    # Without this, calls_used_this_period/period_reset_at alone let a
+    # source burn its entire monthly quota in the first day or two at a
+    # normal polling cadence, then go completely dark for the rest of
+    # the period -- confirmed for real: at this project's own default
+    # settings (15-min poll interval, 5 keywords/cycle), Adzuna's real
+    # 900-call/month budget was being exhausted in under 2 days.
+    calls_used_today = Column(Integer, default=0)
+    daily_reset_at = Column(DateTime, nullable=True)
 
 
 # ---------------------------------------------------------------------------
@@ -274,12 +359,42 @@ class GlobalSettings(Base):
     full_ingest_interval_minutes = Column(Integer, default=15)  # full scoring/tailoring pass
     stale_posting_threshold_days = Column(Integer, default=45)  # flag postings open longer than this (warning only)
 
+    # Phase 2: location targeting -- the search-string param sent to Adzuna/
+    # LinkedIn's real search APIs (Greenhouse/Lever/Ashby have no location
+    # search param at all; those are filtered locally via LocationExclusion
+    # instead, see keyword_matching.location_allowed).
+    location_query = Column(String, default="United States")
+
+    # Phase 2: JobRight company-discovery cadence -- the underlying repo
+    # only updates once a day, so polling more often than this wastes a
+    # fetch for no new data. Not a paid-API-budget concern like Adzuna,
+    # but still a real tunable rather than a hardcoded constant.
+    jobright_poll_interval_hours = Column(Integer, default=24)
+
     # Phase 4: confirmation queue
     confirmation_window_hours = Column(Float, default=15.0)
     fast_track_score_threshold = Column(Integer, default=90)   # very high match...
     fast_track_freshness_minutes = Column(Integer, default=30)  # ...and very fresh -> shrink the window
     fast_track_window_hours = Column(Float, default=2.0)
     rejected_retention_days = Column(Integer, default=7)
+
+    # Phase 12/16: minimum match_score required for a clean, autofill-
+    # supported application to skip straight to auto-launching a real
+    # browser. Originally there was no score gate here at all -- routing
+    # only checked for a fabrication/scam/eligibility flag, so even a
+    # very low-scoring application could reach a real, unattended
+    # browser auto-launch as long as tailoring happened not to trigger
+    # the fabrication check. A clean-but-low-scoring application still
+    # gets tailored and still gets a normal timed Pending Confirmation
+    # window (with notification) below this bar -- it just doesn't skip
+    # straight to auto-launch. Default (65) chosen from this instance's
+    # own real observed score distribution (2026-08-23): a natural gap
+    # sits between a cluster of clearly-mismatched postings (28-52%,
+    # each with named structural gaps in their gaps_analysis) and a
+    # cluster of plausible near-fits (62-78%) -- see CLAUDE.md's Phase 16
+    # entry for the full data. Live-editable; not a judgment this app
+    # should hardcode for every user's risk tolerance.
+    min_score_for_auto_launch = Column(Integer, default=65)
 
     # Phase 4: quiet hours -- a confirmation deadline that would land inside
     # this daily local-time window gets pushed to the end of it, so it
@@ -299,7 +414,23 @@ class GlobalSettings(Base):
     # Phase 5: outreach
     daily_outreach_cap = Column(Integer, default=10)
 
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    # Phase 19: Tavily/Hunter.io budget tracking. Unlike Adzuna (polled
+    # on a fixed schedule, where daily pacing matters -- see JobSource's
+    # calls_used_today), these are called on-demand per human click
+    # ("Discover Contact", interview prep's company research), so a
+    # simple monthly counter + hard cap fits better than daily pacing.
+    # Defaults match each provider's real free-tier limit (see
+    # .env.example). Before this, a real quota exhaustion looked
+    # identical to "genuinely found nothing" in the logs -- both
+    # contact_discovery_service.py functions now distinguish the two.
+    tavily_monthly_call_budget = Column(Integer, default=1000)
+    tavily_calls_used_this_month = Column(Integer, default=0)
+    tavily_month_reset_at = Column(DateTime, nullable=True)
+    hunter_monthly_call_budget = Column(Integer, default=25)
+    hunter_calls_used_this_month = Column(Integer, default=0)
+    hunter_month_reset_at = Column(DateTime, nullable=True)
+
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
 
 def get_or_create_settings(db) -> "GlobalSettings":
@@ -330,4 +461,4 @@ class ActivityLog(Base):
     id = Column(Integer, primary_key=True, index=True)
     message = Column(Text, nullable=False)
     level = Column(String, default="INFO")
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=utcnow)
