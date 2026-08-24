@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the Career Pilot health-check watchdog every 3 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=3min
+Unit=career-pilot-watchdog.service
+
+[Install]
+WantedBy=timers.target

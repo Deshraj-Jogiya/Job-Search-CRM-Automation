@@ -1,0 +1,11 @@
+[Unit]
+Description=Career Pilot health-check watchdog (restarts the app if it hangs)
+After=career-pilot.service
+
+[Service]
+Type=oneshot
+# Runs as root (unlike career-pilot.service itself) because restarting
+# another systemd unit needs that privilege -- this script only ever
+# curls a local port and calls "systemctl restart career-pilot.service",
+# nothing else.
+ExecStart=/opt/career-pilot/deploy/health-watchdog.sh
