@@ -1,42 +1,37 @@
 """
-Phase 9: encrypted data backup/export. First real use of the Fernet key
-introduced back in Phase 0 (CREDENTIAL_ENCRYPTION_KEY) -- exists so a
-copy of your data (profile, applications, tailored documents, outreach
+Encrypted data backup, export, and restore. Backup exists so a copy of
+your data (profile, applications, tailored documents, outreach
 messages) can safely leave this machine (e.g. to a personal cloud
 drive) without exposing that content in plaintext if the copy is ever
 lost, synced somewhere unexpected, or seen by someone else.
 
-Restore (Phase 9 continuation) is built alongside export now, with the
-careful design export's original docstring deferred it for: an
-automatic safety-net backup of the CURRENT database taken right before
-any restore actually runs (so a bad restore is itself undoable), gated
-behind ADMIN_PASSWORD (checked by the caller in app/main.py, not here),
-a two-step upload-preview-then-confirm flow (see stage_uploaded_backup/
-preview_staged_backup/execute_restore below) rather than one-click, and
-all-or-nothing replacement -- no selective/partial restore, which would
-add real FK-consistency complexity for what's meant to be a rare
-emergency tool, not a routine one.
+Restore is a deliberately careful, separate flow: an automatic
+safety-net backup of the CURRENT database is taken right before any
+restore actually runs (so a bad restore is itself undoable), it's
+gated behind ADMIN_PASSWORD (checked by the caller in app/main.py, not
+here), it's a two-step upload-preview-then-confirm flow (see
+stage_uploaded_backup/preview_staged_backup/execute_restore below)
+rather than one click, and it's all-or-nothing -- no selective/partial
+restore, which would add real FK-consistency complexity for what's
+meant to be a rare emergency tool, not a routine one.
 
 Restore only supports same-dialect backups (a SQLite backup can only
-restore into a SQLite deployment, a Postgres export only into Postgres)
--- cross-format restore would need real data-mapping work for a
-scenario (restoring a pre-migration SQLite backup onto today's Postgres
-deployment) this project doesn't actually need to support.
+restore into a SQLite deployment, a Postgres export only into
+Postgres) -- cross-format restore would need real data-mapping work
+this project doesn't currently need to support.
 
-Two real snapshot mechanisms, dispatched on DATABASE_URL's scheme:
+Two snapshot mechanisms, dispatched on DATABASE_URL's scheme:
 - SQLite: sqlite3's own online backup API -- a real binary .db file,
   safe even mid-write from the background scheduler thread.
-- Postgres (this project's own real deployment, via Supabase): a
-  dialect-agnostic row-level JSON export via SQLAlchemy's own
-  reflected Base.metadata, not pg_dump. Deliberately not shelling out
-  to pg_dump -- it isn't installed on this dev machine and can't be
-  assumed present on a fresh Oracle Cloud VM either without extra setup
-  this project's own $0/minimal-setup philosophy argues against.
-  Iterates Base.metadata.sorted_tables, which only contains tables this
-  app's own models.py actually defines -- correctly excludes the
-  portfolio site's separate tables that happen to live in the same
-  Supabase project (found during the Phase 21 Alembic setup) without
-  needing any manual exclusion list here.
+- Postgres: a dialect-agnostic row-level JSON export via SQLAlchemy's
+  own reflected Base.metadata, not pg_dump. Deliberately not shelling
+  out to pg_dump -- it may not be installed everywhere this runs, and
+  this project's own $0/minimal-setup philosophy argues against
+  requiring extra system packages just for backups. Iterates
+  Base.metadata.sorted_tables, which only contains tables this app's
+  own models.py actually defines -- correctly excludes any other
+  application's tables that happen to share the same database, without
+  needing a manual exclusion list here.
 """
 
 import json

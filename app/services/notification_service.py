@@ -1,5 +1,5 @@
 """
-Phase 4: notifications for the confirmation queue.
+Notifications for the confirmation queue.
 
 Deliberately not one-email-per-application -- an email per queued
 application becomes a flood the moment several queue at once, so this

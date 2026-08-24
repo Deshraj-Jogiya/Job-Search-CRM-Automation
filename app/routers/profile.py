@@ -1,5 +1,5 @@
 """
-Phase 1 routes: living profile management -- variants, portfolio sync,
+Living profile management routes -- variants, portfolio sync,
 LinkedIn paste-diff approval flow. See app/services/profile_service.py
 for the actual logic; routes here just translate HTTP <-> that service
 and turn ProfileServiceError into a friendly redirect message instead of

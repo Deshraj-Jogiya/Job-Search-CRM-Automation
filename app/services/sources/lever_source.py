@@ -1,5 +1,5 @@
 """
-Direct Lever job board intake (Phase 2 slice 2) -- same shape as
+Direct Lever job board intake -- same shape as
 greenhouse_source.py, driven by Company rows with a lever_slug set.
 Lever's public postings API (https://api.lever.co/v1/postings/{slug}
 ?mode=json) returns the full description in the same listing call, no

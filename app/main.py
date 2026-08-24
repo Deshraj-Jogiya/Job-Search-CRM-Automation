@@ -51,7 +51,7 @@ class NotAuthenticated(Exception):
 
 
 def require_auth(request: Request, db: Session = Depends(get_db)):
-    """Real per-request auth check (Phase 22): if an AdminAccount has
+    """Real per-request auth check: if an AdminAccount has
     been created (via /signup), a valid signed session cookie is
     required, redirecting to /login otherwise. If no account exists
     yet, falls back unchanged to the legacy DASHBOARD_PASSWORD-env-var-
@@ -129,7 +129,7 @@ app.include_router(analytics_router.router, dependencies=app_dependencies)
 
 
 def _seed_demo_profile_if_needed() -> None:
-    """Phase 8: a fresh showcase deployment shouldn't be an empty shell
+    """A fresh showcase deployment shouldn't be an empty shell
     -- seed a fictional demo profile so a visitor immediately has
     something to score/tailor/explore against. Only runs in showcase
     mode, and only if no profile variant exists yet at all (never
@@ -163,7 +163,7 @@ def on_shutdown():
 
 @app.get("/api/health")
 def health_check(db: Session = Depends(get_db)):
-    """Phase 18: deliberately NOT behind app_dependencies -- external
+    """Deliberately NOT behind app_dependencies -- external
     uptime monitoring (Oracle's own health probes, UptimeRobot,
     Healthchecks.io) can't supply dashboard credentials, and a health
     endpoint gated behind the same auth as the real dashboard defeats
@@ -266,7 +266,7 @@ async def restore_backup_preview(
     admin_password: str = Form(...),
     backup_file: UploadFile = File(...),
 ):
-    """Step 1 of Phase 9 restore: upload + decrypt just far enough to
+    """Step 1 of restore: upload + decrypt just far enough to
     show what the backup actually contains (row counts, when it was
     taken) -- nothing about the live database is touched here. Staged
     to a local file so the confirm step (step 2, a separate request)

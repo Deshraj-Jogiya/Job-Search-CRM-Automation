@@ -1,6 +1,5 @@
 """
-Phase 8: two-face packaging. Same codebase, config-driven, per
-the project notes's "Two-face product" section:
+Two-face packaging. Same codebase, config-driven:
 
     Personal instance: real profile, real credentials, full automation.
     Public showcase: demo profile, automation off by default, clear
