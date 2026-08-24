@@ -51,6 +51,12 @@ each piece works.
 
 ## Public Showcase Mode
 
+**Live demo:** [demo.129-146-36-193.sslip.io](https://demo.129-146-36-193.sslip.io)
+-- open to browse, no login. Seeded with a fictional profile, automation
+off, and no LLM/job-board/outreach API keys configured on that instance
+at all, so nothing there can spend real money, scrape on your behalf,
+or touch your real data.
+
 This is primarily a real, personal-use tool, but the same codebase can
 run as a public demo (`APP_MODE=showcase` in `.env`) instead of the
 default personal mode. Showcase mode:

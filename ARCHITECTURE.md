@@ -94,7 +94,9 @@ choices, see [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 - **Two-face packaging.** One codebase, `APP_MODE` selects between a
   real personal deployment and a public showcase (a fictional seeded
   profile, automation off by default) — see the README's
-  [Public Showcase Mode](./README.md#public-showcase-mode) section.
+  [Public Showcase Mode](./README.md#public-showcase-mode) section, or
+  the live demo directly at
+  [demo.129-146-36-193.sslip.io](https://demo.129-146-36-193.sslip.io).
 
 ## Every setting is live-editable
 
