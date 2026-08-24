@@ -1,4 +1,4 @@
-"""Phase 17: submission auto-detection. The detection heuristic itself
+"""Submission auto-detection. The detection heuristic itself
 (_looks_like_submission_confirmation) is pure and tested directly; the
 watch loop is tested against a fake Playwright Page so it never opens a
 real browser."""

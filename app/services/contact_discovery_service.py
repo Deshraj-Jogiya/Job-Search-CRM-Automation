@@ -1,12 +1,12 @@
 """
-Phase 5 contact discovery -- optional, gracefully-degrading (same
-pattern as Adzuna/portfolio sync: if not configured, this just returns
-nothing and the user falls back to typing a contact in manually).
+Contact discovery -- optional, gracefully-degrading (same pattern as
+Adzuna/portfolio sync: if not configured, this just returns nothing
+and the user falls back to typing a contact in manually).
 
-Added in response to a direct concern: "manual entry only" solves
-CLAUDE.md's "no blind auto-email to guessed addresses" mandate but
-doesn't help someone who doesn't have a recruiter contact in the first
-place. The distinction this module holds onto: DISCOVERING a real,
+"Manual entry only" satisfies the no-blind-auto-email-to-guessed-
+addresses rule elsewhere in this app, but doesn't help someone who
+doesn't have a recruiter contact in the first place. The distinction
+this module holds onto: DISCOVERING a real,
 already-published person/email is not the same as GUESSING one via a
 first.last@domain pattern from scratch. Every suggestion here is
 labeled with its source and, for emails, a confidence score -- nothing

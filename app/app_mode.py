@@ -1,6 +1,5 @@
 """
-Phase 8: two-face packaging. Same codebase, config-driven, per
-CLAUDE.md's "Two-face product" section:
+Two-face packaging. Same codebase, config-driven:
 
     Personal instance: real profile, real credentials, full automation.
     Public showcase: demo profile, automation off by default, clear

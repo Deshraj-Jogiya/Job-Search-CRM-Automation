@@ -1,22 +1,21 @@
 """
-Phase 5: recruiter outreach. Deliberately narrower than the deleted
-prototype's networking_service.py, which searched the web for a
-recruiter and then GUESSED their email via a first.last@domain
-pattern -- exactly the "blind auto-email to guessed addresses" sin
-CLAUDE.md's Origin note says not to reintroduce. This version never
-guesses: the recipient is entered by the user (they already know who
-they're reaching out to), and email_verified is a syntax + MX-record
-sanity check on what the user supplied, not a claim that the address
-is real -- it's surfaced as a warning, not a hard block.
+Recruiter outreach. Deliberately avoids the common failure mode of
+searching the web for a recruiter and then GUESSING their email via a
+first.last@domain pattern. This version never guesses: the recipient
+is entered by the user (they already know who they're reaching out
+to), and email_verified is a syntax + MX-record sanity check on what
+the user supplied, not a claim that the address is real -- it's
+surfaced as a warning, not a hard block.
 
-Safety-critical distinction from Phase 4's confirmation queue: sending
-a real email to a real external person is immediately irreversible
-and externally visible, unlike Phase 4's "Approved" (which just flips
-an internal status -- there's no submission engine to act on it).
-So outreach has NO timers and NO auto-send-on-timeout anywhere in this
-file -- Draft -> Approved -> Sent always requires two separate,
-explicit human clicks, with the actual send only ever happening inside
-send_outreach(), called directly from a live request.
+Safety-critical distinction from the confirmation-gated auto-apply
+queue: sending a real email to a real external person is immediately
+irreversible and externally visible, unlike an application's
+"Approved" status (which just flips an internal flag -- there's no
+submission engine to act on it). So outreach has NO timers and NO
+auto-send-on-timeout anywhere in this file -- Draft -> Approved -> Sent
+always requires two separate, explicit human clicks, with the actual
+send only ever happening inside send_outreach(), called directly from
+a live request.
 
 LinkedIn channels (connection note / InMail) are drafted here but
 never sent automatically -- LinkedIn automation of any kind was

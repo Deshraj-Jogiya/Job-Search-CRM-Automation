@@ -67,7 +67,7 @@ looks like `postgresql://postgres.<ref>:<password>@aws-<n>-<region>
 
 ```
 sudo useradd --system --create-home --home-dir /opt/career-pilot --shell /usr/sbin/nologin career-pilot
-sudo -u career-pilot git clone git@github.com:Deshraj-Jogiya/Job-Search-CRM-Automation.git /opt/career-pilot
+sudo -u career-pilot git clone git@github.com:<your-github-username>/Job-Search-CRM-Automation.git /opt/career-pilot
 sudo -u career-pilot python3.11 -m venv /opt/career-pilot/venv
 sudo -u career-pilot /opt/career-pilot/venv/bin/pip install -r /opt/career-pilot/requirements-lock.txt
 # scp your real .env over (never through git), then:

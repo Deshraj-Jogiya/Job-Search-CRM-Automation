@@ -1,13 +1,13 @@
 """
-Phase 3: match evaluation. Compares a JobApplication's posting against
-a candidate profile (from Phase 1's ProfileVariant/ProfileVersion) via
-the LLM provider abstraction and stores the result on the application.
+Match evaluation. Compares a JobApplication's posting against a
+candidate profile (ProfileVariant/ProfileVersion) via the LLM provider
+abstraction and stores the result on the application.
 
-Scoring is deliberately NOT run automatically on every ingested
-posting -- each call is a real LLM request with real cost, and intake
-can produce dozens of postings per cycle (see Phase 2). It's triggered
-on demand (viewing/scoring a specific application), same "user stays
-in control" posture as the rest of this build.
+Scoring is deliberately NOT run automatically on every posting found --
+each call is a real LLM request with real cost, and search can produce
+dozens of postings per cycle. It's triggered on demand (viewing/scoring
+a specific application), same "user stays in control" posture as the
+rest of this app.
 """
 
 import json

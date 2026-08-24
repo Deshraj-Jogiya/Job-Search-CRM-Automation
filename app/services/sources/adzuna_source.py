@@ -1,6 +1,6 @@
 """
-Adzuna job search API -- free tier (~1,000 calls/month per CLAUDE.md's
-noted budget), requires ADZUNA_APP_ID / ADZUNA_APP_KEY. Unlike LinkedIn,
+Adzuna job search API -- free tier (~1,000 calls/month), requires
+ADZUNA_APP_ID / ADZUNA_APP_KEY. Unlike LinkedIn,
 every search call here counts against a real quota, so intake_service
 is responsible for polling this source less often (see JobSource /
 GlobalSettings), not this module. If credentials aren't configured,

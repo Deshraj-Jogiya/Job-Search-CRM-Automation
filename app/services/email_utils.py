@@ -1,6 +1,6 @@
 """
 Shared SMTP send helper -- used by notification_service (confirmation
-queue emails) and outreach_service (Phase 5). Kept separate so both
+queue emails) and outreach_service. Kept separate so both
 callers share one implementation of "is SMTP configured" and "actually
 send," rather than duplicating smtplib boilerplate.
 """

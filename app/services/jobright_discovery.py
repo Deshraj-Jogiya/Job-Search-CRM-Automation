@@ -1,6 +1,5 @@
 """
-Company discovery from JobRight's free public job-list repo (researched
-in Phase 2, see CLAUDE.md; not integrated until now). This is
+Company discovery from JobRight's free public job-list repo. This is
 deliberately NOT a `sources/*` intake module -- JobRight's own listing
 has no real per-posting JD text and its "apply" links route through
 jobright.ai rather than the employer's own ATS page, so treating it as

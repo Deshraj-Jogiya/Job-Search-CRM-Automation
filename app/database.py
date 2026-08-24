@@ -42,7 +42,7 @@ else:
     engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=300)
 
 if IS_SQLITE:
-    # Phase 10: this app runs several independent SQLite connections at
+    # This app runs several independent SQLite connections at
     # once by design (the scheduler thread, plus a fresh background
     # thread per manual intake/score/tailor trigger -- see the routers/
     # scheduler.py) -- under SQLite's default rollback-journal mode,

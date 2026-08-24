@@ -5,7 +5,7 @@ at once. Also covers the mechanical eligibility-flag detector -- the
 free, JD-text-based check for hard compliance/eligibility requirements
 (citizenship, clearance, HIPAA) that confirmation_service.has_hard_stop_flag
 treats as a hard-stop, independent of the LLM-based fabrication check --
-and Phase 19's daily budget-pacing math for Adzuna's hard monthly cap.
+and the daily budget-pacing math for Adzuna's hard monthly cap.
 """
 
 from datetime import timedelta
@@ -89,9 +89,9 @@ def test_daily_budget_spreads_a_fresh_period_evenly_across_the_month():
     source, now = _fake_source(calls_used_this_period=0, days_left=30)
     daily = _adzuna_daily_budget(source, now, monthly_budget=900)
     # Must keep Adzuna alive for the whole month, not exhaust it in the
-    # first couple of days like the unpaced version did (900 / 5 keywords
-    # per cycle / (15 min cadence) = exhausted in <2 days -- confirmed
-    # for real, see CLAUDE.md Phase 19). 30/day * 30 days = exactly 900.
+    # first couple of days like an unpaced version would (900 / 5 keywords
+    # per cycle / (15 min cadence) = exhausted in <2 days). 30/day * 30
+    # days = exactly 900.
     assert daily == 30
 
 

@@ -1,12 +1,12 @@
 """
-Direct Greenhouse job board intake (Phase 2 slice 2). Unlike LinkedIn/
-Adzuna, this isn't a keyword search across all employers -- Greenhouse's
-public board API is per-company (https://boards-api.greenhouse.io/v1/
-boards/{slug}/jobs), so this source is driven by which Company rows
-have a greenhouse_slug set (auto-detected by board_discovery.py, or set
-manually from the Jobs page) rather than by a global search term.
+Direct Greenhouse job board intake. Unlike LinkedIn/Adzuna, this isn't
+a keyword search across all employers -- Greenhouse's public board API
+is per-company (https://boards-api.greenhouse.io/v1/boards/{slug}/jobs),
+so this source is driven by which Company rows have a greenhouse_slug
+set (auto-detected by board_discovery.py, or set manually from the Jobs
+page) rather than by a global search term.
 
-This is exactly the low-indexing-lag source CLAUDE.md prioritizes --
+This is exactly the low-indexing-lag source this project prioritizes --
 Greenhouse's own board reflects a new posting the moment the employer
 publishes it, no aggregator re-crawl delay. `?content=true` returns the
 full HTML job description in the same listing call, so (like Adzuna,

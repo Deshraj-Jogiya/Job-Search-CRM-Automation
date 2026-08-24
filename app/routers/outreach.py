@@ -1,5 +1,5 @@
 """
-Phase 5 routes: recruiter outreach, tied to a specific application.
+Recruiter outreach routes, tied to a specific application.
 Draft -> Approve -> Send (email) or Draft -> Approve -> Mark as Sent
 (LinkedIn, manual -- see outreach_service's module docstring for why).
 No timers anywhere here -- every state change is a live, explicit

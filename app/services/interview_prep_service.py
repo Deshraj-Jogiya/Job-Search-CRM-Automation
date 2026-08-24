@@ -1,7 +1,5 @@
 """
-Phase 6: interview prep generation. Two independent pieces, matching
-CLAUDE.md's "general (candidate background) + company-specific (JD +
-light company research)":
+Interview prep generation. Two independent pieces:
 
 - General prep: likely questions and talking points grounded in the
   candidate's real profile -- the kind of prep that applies to this

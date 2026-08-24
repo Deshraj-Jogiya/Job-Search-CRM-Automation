@@ -1,9 +1,9 @@
 """Location exclusion matching used by every direct-board source
 (Greenhouse/Lever/Ashby have no location search param at all, so this is
 the only thing standing between a US-based candidate and a country-only
-posting -- see keyword_matching.location_allowed and CLAUDE.md's Phase 2
-location-filtering note). Fails open by design: absence of location data
-should never silently drop a posting, only a positive match should.
+posting -- see keyword_matching.location_allowed). Fails open by design:
+absence of location data should never silently drop a posting, only a
+positive match should.
 """
 
 from app.services.sources.keyword_matching import location_allowed

@@ -17,7 +17,7 @@ from .database import Base, utcnow
 
 
 # ---------------------------------------------------------------------------
-# Operator account (Phase 22: real login/signup/password-reset)
+# Operator account (real login/signup/password-reset)
 # ---------------------------------------------------------------------------
 
 class AdminAccount(Base):
@@ -45,7 +45,7 @@ class AdminAccount(Base):
 
 
 # ---------------------------------------------------------------------------
-# Profile (Phase 1: living profile, versioned, multi-variant)
+# Profile (living, versioned, multi-variant)
 # ---------------------------------------------------------------------------
 
 class ProfileVariant(Base):
@@ -82,7 +82,7 @@ class ProfileVersion(Base):
 
 
 # ---------------------------------------------------------------------------
-# Companies (Phase 2: company memory / block-deprioritize list)
+# Companies (company memory / block-deprioritize list)
 # ---------------------------------------------------------------------------
 
 class Company(Base):
@@ -96,7 +96,7 @@ class Company(Base):
     ghosted_count = Column(Integer, default=0)  # applications that went silent
     created_at = Column(DateTime, default=utcnow)
 
-    # Phase 2 slice 2: direct ATS board polling. Auto-detected (see
+    # Direct ATS board polling. Auto-detected (see
     # board_discovery.py) the first time this company is seen via any
     # source, or manually set/overridden from the Jobs page -- null
     # means "no board found/configured on that ATS," not "not checked
@@ -110,7 +110,7 @@ class Company(Base):
 
 
 # ---------------------------------------------------------------------------
-# Job postings & applications (Phase 2-4)
+# Job postings & applications
 # ---------------------------------------------------------------------------
 
 class JobPosting(Base):
@@ -185,7 +185,7 @@ class JobApplication(Base):
     # was a decline or silence post-application -- real analytics history
     # worth keeping, not garbage to sweep.
 
-    # Confirmation queue (Phase 4)
+    # Confirmation queue
     confirmation_deadline = Column(DateTime, nullable=True)
     confirmed_by_user = Column(Boolean, default=False)
     notification_sent = Column(Boolean, default=False)  # individual (fast-track) or included in a digest yet?
@@ -226,7 +226,7 @@ class TailoredDocument(Base):
 
 
 # ---------------------------------------------------------------------------
-# Outreach (Phase 5: review-gated, capped)
+# Outreach (review-gated, capped)
 # ---------------------------------------------------------------------------
 
 class OutreachMessage(Base):
@@ -252,7 +252,7 @@ class OutreachMessage(Base):
 
 
 # ---------------------------------------------------------------------------
-# Interview prep (Phase 6)
+# Interview prep
 # ---------------------------------------------------------------------------
 
 class InterviewPrep(Base):
@@ -331,7 +331,7 @@ class JobSource(Base):
     # keywords, or every keyword, every cycle.
     keyword_rotation_offset = Column(Integer, default=0)
 
-    # Phase 19: daily pacing for a hard-capped monthly budget (Adzuna).
+    # Daily pacing for a hard-capped monthly budget (Adzuna).
     # Without this, calls_used_this_period/period_reset_at alone let a
     # source burn its entire monthly quota in the first day or two at a
     # normal polling cadence, then go completely dark for the rest of
@@ -354,31 +354,31 @@ class GlobalSettings(Base):
     # Kill switch
     automation_enabled = Column(Boolean, default=True)
 
-    # Phase 2: intake cadence
+    # Intake cadence
     fast_poll_interval_minutes = Column(Integer, default=10)   # cheap "anything new?" check
     full_ingest_interval_minutes = Column(Integer, default=15)  # full scoring/tailoring pass
     stale_posting_threshold_days = Column(Integer, default=45)  # flag postings open longer than this (warning only)
 
-    # Phase 2: location targeting -- the search-string param sent to Adzuna/
+    # Location targeting -- the search-string param sent to Adzuna/
     # LinkedIn's real search APIs (Greenhouse/Lever/Ashby have no location
     # search param at all; those are filtered locally via LocationExclusion
     # instead, see keyword_matching.location_allowed).
     location_query = Column(String, default="United States")
 
-    # Phase 2: JobRight company-discovery cadence -- the underlying repo
+    # JobRight company-discovery cadence -- the underlying repo
     # only updates once a day, so polling more often than this wastes a
     # fetch for no new data. Not a paid-API-budget concern like Adzuna,
     # but still a real tunable rather than a hardcoded constant.
     jobright_poll_interval_hours = Column(Integer, default=24)
 
-    # Phase 4: confirmation queue
+    # Confirmation queue
     confirmation_window_hours = Column(Float, default=15.0)
     fast_track_score_threshold = Column(Integer, default=90)   # very high match...
     fast_track_freshness_minutes = Column(Integer, default=30)  # ...and very fresh -> shrink the window
     fast_track_window_hours = Column(Float, default=2.0)
     rejected_retention_days = Column(Integer, default=7)
 
-    # Phase 12/16: minimum match_score required for a clean, autofill-
+    # Minimum match_score required for a clean, autofill-
     # supported application to skip straight to auto-launching a real
     # browser. Originally there was no score gate here at all -- routing
     # only checked for a fabrication/scam/eligibility flag, so even a
@@ -387,34 +387,32 @@ class GlobalSettings(Base):
     # the fabrication check. A clean-but-low-scoring application still
     # gets tailored and still gets a normal timed Pending Confirmation
     # window (with notification) below this bar -- it just doesn't skip
-    # straight to auto-launch. Default (65) chosen from this instance's
-    # own real observed score distribution (2026-08-23): a natural gap
-    # sits between a cluster of clearly-mismatched postings (28-52%,
-    # each with named structural gaps in their gaps_analysis) and a
-    # cluster of plausible near-fits (62-78%) -- see CLAUDE.md's Phase 16
-    # entry for the full data. Live-editable; not a judgment this app
-    # should hardcode for every user's risk tolerance.
+    # straight to auto-launch. Default (65) chosen from a natural gap
+    # observed between clearly-mismatched postings (28-52%, each with
+    # named structural gaps in their gaps_analysis) and plausible
+    # near-fits (62-78%). Live-editable; not a judgment this app should
+    # hardcode for every user's risk tolerance.
     min_score_for_auto_launch = Column(Integer, default=65)
 
-    # Phase 4: quiet hours -- a confirmation deadline that would land inside
+    # Quiet hours -- a confirmation deadline that would land inside
     # this daily local-time window gets pushed to the end of it, so it
     # never silently lapses while the user is predictably unreachable
     # (e.g. asleep). Generic on purpose -- not specific to one schedule.
     quiet_hours_enabled = Column(Boolean, default=True)
     quiet_hours_start_hour = Column(Integer, default=23)  # local 24h clock
     quiet_hours_end_hour = Column(Integer, default=7)
-    local_timezone = Column(String, default="America/Phoenix")  # IANA tz name
+    local_timezone = Column(String, default="UTC")  # IANA tz name -- set this to your own on the dashboard
 
-    # Phase 4: notification digest -- individual emails are reserved for
+    # Notification digest -- individual emails are reserved for
     # fast-track only; everything else batches into one periodic digest
     # so queueing many applications at once can't spam the inbox.
     notification_digest_interval_minutes = Column(Integer, default=30)
     last_digest_sent_at = Column(DateTime, nullable=True)
 
-    # Phase 5: outreach
+    # Outreach
     daily_outreach_cap = Column(Integer, default=10)
 
-    # Phase 19: Tavily/Hunter.io budget tracking. Unlike Adzuna (polled
+    # Tavily/Hunter.io budget tracking. Unlike Adzuna (polled
     # on a fixed schedule, where daily pacing matters -- see JobSource's
     # calls_used_today), these are called on-demand per human click
     # ("Discover Contact", interview prep's company research), so a
@@ -434,14 +432,13 @@ class GlobalSettings(Base):
 
 
 def get_or_create_settings(db) -> "GlobalSettings":
-    """Phase 8: a brand-new deployment in showcase mode gets automation
-    OFF by default (per CLAUDE.md's "Two-face product" section) --
-    applied only at row-creation time, not as a forced override on
-    every read, so it's a real, user-toggleable default (a showcase
-    forker can still explicitly opt in after reading the ethical-use
-    docs) rather than a hard lock. Existing deployments -- including
-    this project's real personal instance -- already have a row, so
-    this has zero effect on them regardless of APP_MODE."""
+    """A brand-new deployment in showcase mode gets automation OFF by
+    default -- applied only at row-creation time, not as a forced
+    override on every read, so it's a real, user-toggleable default (a
+    showcase forker can still explicitly opt in after reading the
+    ethical-use docs) rather than a hard lock. Existing deployments
+    already have a row, so this has zero effect on them regardless of
+    APP_MODE."""
     settings = db.query(GlobalSettings).first()
     if not settings:
         settings = GlobalSettings(automation_enabled=not is_showcase_mode())
