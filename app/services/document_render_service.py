@@ -29,23 +29,63 @@ import json
 from xml.sax.saxutils import escape as _esc
 
 from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 _styles = getSampleStyleSheet()
 
 _name_style = ParagraphStyle("NameStyle", parent=_styles["Title"], fontSize=18, spaceAfter=2)
-_contact_style = ParagraphStyle("ContactStyle", parent=_styles["Normal"], fontSize=9, textColor=colors.grey, spaceAfter=10)
+_contact_style = ParagraphStyle(
+    "ContactStyle", parent=_styles["Normal"], fontSize=9, textColor=colors.grey,
+    spaceAfter=10, alignment=TA_CENTER,
+)
 _section_style = ParagraphStyle(
-    "SectionStyle", parent=_styles["Heading2"], fontSize=12, spaceBefore=12, spaceAfter=4,
+    "SectionStyle", parent=_styles["Heading2"], fontSize=11, spaceBefore=12, spaceAfter=2,
     textColor=colors.HexColor("#1a1a1a"), borderPadding=0,
 )
 _role_style = ParagraphStyle("RoleStyle", parent=_styles["Normal"], fontSize=10.5, fontName="Helvetica-Bold", spaceAfter=1)
+_role_italic_style = ParagraphStyle("RoleItalicStyle", parent=_styles["Normal"], fontSize=10, fontName="Helvetica-Oblique", spaceAfter=1)
 _meta_style = ParagraphStyle("MetaStyle", parent=_styles["Normal"], fontSize=9, textColor=colors.grey, spaceAfter=3)
+_meta_right_style = ParagraphStyle("MetaRightStyle", parent=_meta_style, alignment=TA_RIGHT)
 _body_style = ParagraphStyle("BodyStyle", parent=_styles["Normal"], fontSize=9.5, leading=13, spaceAfter=8)
 _bullet_style = ParagraphStyle("BulletStyle", parent=_styles["Normal"], fontSize=9.5, leading=13, leftIndent=14, spaceAfter=2)
+
+_CONTENT_WIDTH = letter[0] - 1.4 * inch  # page width minus left+right margins (0.7in each)
+
+_TWO_COL_TABLE_STYLE = TableStyle([
+    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+    ("TOPPADDING", (0, 0), (-1, -1), 0),
+    ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+])
+
+
+def _section_header(title: str) -> list:
+    """Uppercase heading + a thin rule underneath, matching the
+    résumé format Deshraj specifically asked to match (see the two
+    example PDFs reviewed for this pass) -- plain colored Heading2 text
+    alone read as noticeably plainer than that reference."""
+    return [
+        Paragraph(title.upper(), _section_style),
+        HRFlowable(width="100%", thickness=0.75, color=colors.HexColor("#1a1a1a"), spaceAfter=4),
+    ]
+
+
+def _two_col_row(left, right, left_style, right_style) -> Table:
+    """A left-aligned cell and a right-aligned cell sharing one line
+    (company + location, role + dates, degree + GPA) -- the reference
+    format's defining structural trait, and something a plain
+    Paragraph can't do without tab stops or a table."""
+    table = Table(
+        [[Paragraph(_esc(left or ""), left_style), Paragraph(_esc(right or ""), right_style)]],
+        colWidths=[_CONTENT_WIDTH * 0.65, _CONTENT_WIDTH * 0.35],
+    )
+    table.setStyle(_TWO_COL_TABLE_STYLE)
+    return table
 
 
 _KNOWN_ACRONYMS = {"ai", "llm", "llms", "bi", "ml", "etl", "elt", "sql", "ui", "ux", "api", "qa"}
@@ -56,9 +96,16 @@ def _humanize_skill_category(category: str) -> str:
     return " ".join(w.upper() if w.lower() in _KNOWN_ACRONYMS else w.capitalize() for w in words)
 
 
-def _contact_line(contact: dict) -> str:
-    parts = [v for v in (contact or {}).values() if v]
-    return " &nbsp;|&nbsp; ".join(_esc(str(p)) for p in parts)
+def _contact_lines(contact: dict) -> list[str]:
+    """Info (location/phone/email) and links (LinkedIn/GitHub/portfolio
+    URLs) as two separate centered lines rather than one long run --
+    matches the reference format, and reads better once a candidate has
+    both a phone number and 2-3 URLs."""
+    values = [str(v) for v in (contact or {}).values() if v]
+    info = [v for v in values if not v.startswith("http")]
+    links = [v for v in values if v.startswith("http")]
+    sep = " &nbsp;|&nbsp; "
+    return [sep.join(_esc(v) for v in group) for group in (info, links) if group]
 
 
 def render_resume_pdf(resume_content: dict) -> bytes:
@@ -71,58 +118,53 @@ def render_resume_pdf(resume_content: dict) -> bytes:
         topMargin=0.6 * inch, bottomMargin=0.6 * inch,
         leftMargin=0.7 * inch, rightMargin=0.7 * inch,
     )
-    flow = [
-        Paragraph(_esc(resume_content.get("name") or ""), _name_style),
-        Paragraph(_esc(resume_content.get("title") or ""), _contact_style),
-        Paragraph(_contact_line(resume_content.get("contact") or {}), _contact_style),
-    ]
+    flow = [Paragraph(_esc(resume_content.get("name") or ""), _name_style)]
+    flow += [Paragraph(line, _contact_style) for line in _contact_lines(resume_content.get("contact") or {})]
 
     if resume_content.get("summary"):
-        flow.append(Paragraph("Summary", _section_style))
+        flow += _section_header("Professional Summary")
         flow.append(Paragraph(_esc(resume_content["summary"]), _body_style))
 
     skills = resume_content.get("skills") or {}
     if skills:
-        flow.append(Paragraph("Skills", _section_style))
+        flow += _section_header("Technical Skills")
         for category, items in skills.items():
             label = _esc(_humanize_skill_category(category))
             flow.append(Paragraph(f"<b>{label}:</b> {_esc(', '.join(items))}", _body_style))
 
     experience = resume_content.get("experience") or []
     if experience:
-        flow.append(Paragraph("Experience", _section_style))
+        flow += _section_header("Professional Experience")
         for job in experience:
-            flow.append(Paragraph(f"{_esc(job.get('role', ''))} &mdash; {_esc(job.get('company', ''))}", _role_style))
-            meta = " | ".join(_esc(x) for x in (job.get("location"), job.get("date")) if x)
-            if meta:
-                flow.append(Paragraph(meta, _meta_style))
+            flow.append(_two_col_row(job.get("company"), job.get("location"), _role_style, _meta_right_style))
+            flow.append(_two_col_row(job.get("role"), job.get("date"), _role_italic_style, _meta_right_style))
+            flow.append(Spacer(1, 2))
             for bullet in job.get("bullets", []):
                 flow.append(Paragraph(f"&bull; {_esc(bullet)}", _bullet_style))
             flow.append(Spacer(1, 4))
 
     projects = resume_content.get("projects") or []
     if projects:
-        flow.append(Paragraph("Projects", _section_style))
+        flow += _section_header("Key Projects")
         for proj in projects:
-            flow.append(Paragraph(_esc(proj.get("name", "")), _role_style))
+            tech = ", ".join(proj.get("technologies") or [])
+            flow.append(_two_col_row(proj.get("name"), tech, _role_style, _meta_right_style))
+            flow.append(Spacer(1, 2))
             for bullet in proj.get("bullets", []):
                 flow.append(Paragraph(f"&bull; {_esc(bullet)}", _bullet_style))
-            if proj.get("technologies"):
-                flow.append(Paragraph(f"<i>{_esc(', '.join(proj['technologies']))}</i>", _meta_style))
             flow.append(Spacer(1, 4))
 
     education = resume_content.get("education") or []
     if education:
-        flow.append(Paragraph("Education", _section_style))
+        flow += _section_header("Education")
         for edu in education:
-            line = " &mdash; ".join(_esc(x) for x in (edu.get("degree"), edu.get("school")) if x)
-            flow.append(Paragraph(line, _role_style))
-            if edu.get("date"):
-                flow.append(Paragraph(_esc(edu["date"]), _meta_style))
+            flow.append(_two_col_row(edu.get("school"), edu.get("location"), _role_style, _meta_right_style))
+            flow.append(_two_col_row(edu.get("degree"), edu.get("date"), _role_italic_style, _meta_right_style))
+            flow.append(Spacer(1, 4))
 
     certifications = resume_content.get("certifications") or []
     if certifications:
-        flow.append(Paragraph("Certifications", _section_style))
+        flow += _section_header("Certifications")
         for cert in certifications:
             flow.append(Paragraph(f"&bull; {_esc(cert)}", _bullet_style))
 
