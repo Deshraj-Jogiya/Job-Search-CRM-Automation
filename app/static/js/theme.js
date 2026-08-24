@@ -17,6 +17,16 @@
         if (icon) icon.textContent = isLight() ? "☀️" : "🌙";
     }
 
+    function syncColorScheme() {
+        // Keeps native browser controls (select dropdown popups,
+        // scrollbars) in sync with a runtime theme toggle, not just the
+        // page-load value _base.html's inline script sets -- without
+        // this, toggling theme mid-session would leave native popups
+        // rendering the old theme until the next full page load.
+        var meta = document.getElementById("color-scheme-meta");
+        if (meta) meta.setAttribute("content", isLight() ? "light" : "dark");
+    }
+
     syncIcon();
 
     toggleBtn.addEventListener("click", function () {
@@ -25,5 +35,6 @@
             localStorage.setItem("theme", isLight() ? "light" : "dark");
         } catch (e) { /* localStorage unavailable -- theme just won't persist across loads */ }
         syncIcon();
+        syncColorScheme();
     });
 })();

@@ -27,7 +27,7 @@
     <p class="muted-note">No timeout on this one -- it waits for your decision.</p>
     {% endif %}
 
-    <p><a href="{{ posting.job_url }}" target="_blank" rel="noopener">View original posting &#8599;</a></p>
+    <p><a href="{{ posting.job_url }}" target="_blank" rel="noopener noreferrer">View original posting &#8599;</a></p>
 
     {% if application.status in ("Pending Confirmation", "Needs Review") %}
     <div class="pending-actions">

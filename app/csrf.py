@@ -9,8 +9,7 @@ import hashlib
 import secrets
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
-from fastapi import HTTPException
+from starlette.responses import JSONResponse, Response
 
 CSRF_COOKIE_NAME = "csrf_token"
 CSRF_FORM_FIELD = "csrf_token"
@@ -78,7 +77,17 @@ class CSRFMiddleware(BaseHTTPMiddleware):
                 form_token = form.get(CSRF_FORM_FIELD)
 
             if not incoming_token or not form_token or not _verify(incoming_token) or not hmac.compare_digest(incoming_token, form_token):
-                raise HTTPException(status_code=403, detail="CSRF validation failed. Please refresh and try again.")
+                # Returning the response directly, not raising
+                # HTTPException -- an exception raised inside
+                # BaseHTTPMiddleware.dispatch() isn't caught by FastAPI's
+                # normal exception-handler registration and surfaces as
+                # an unhandled 500 instead of a clean 403 (a real,
+                # latent bug found live: an actual CSRF mismatch had
+                # never been exercised through this exact path before).
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "CSRF validation failed. Please refresh and try again."},
+                )
 
         if incoming_token and _verify(incoming_token):
             request.state.csrf_token = incoming_token
@@ -88,6 +97,15 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             rotate = True
 
         response: Response = await call_next(request)
+
+        # Defense-in-depth alongside rel="noopener noreferrer" on external
+        # links: several pages (confirm.html especially) are reached via a
+        # URL-embedded bearer token (see confirmation_tokens.py) -- without
+        # this, a browser's default referrer behavior would hand that token
+        # to whatever external site a link on the page points to (e.g. a
+        # scam posting's own "view original posting" link, straight back to
+        # the operator who posted it).
+        response.headers["Referrer-Policy"] = "no-referrer"
 
         if rotate:
             response.set_cookie(

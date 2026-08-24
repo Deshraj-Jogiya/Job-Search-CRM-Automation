@@ -31,15 +31,23 @@
     <ul class="version-history">
         {% for source in sources %}
         <li>
-            <span class="badge {% if source.is_active %}badge-active{% endif %}">{{ source.name }}</span>
-            {{ "active" if source.is_active else "paused" }}
-            &middot; last polled: {{ source.last_polled_at.strftime("%Y-%m-%d %H:%M") if source.last_polled_at else "never" }} UTC
-            &middot; calls this period: {{ source.calls_used_this_period }}
-            {% if source.last_error %}&middot; <span class="flash-error-inline">{{ source.last_error }}</span>{% endif %}
-            <form method="post" action="/jobs/sources/{{ source.id }}/toggle" class="inline-form">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <button type="submit" class="btn-secondary">{{ "Pause" if source.is_active else "Resume" }}</button>
-            </form>
+            <div class="row-info">
+                <span class="badge {% if source.is_active %}badge-active{% endif %}">{{ source.name }}</span>
+                {{ "active" if source.is_active else "paused" }}
+                &middot; last polled: {{ source.last_polled_at.strftime("%Y-%m-%d %H:%M") if source.last_polled_at else "never" }} UTC
+                &middot; calls this period: {{ source.calls_used_this_period }}
+                {% if source.last_error == "not_configured" %}
+                &middot; <span class="badge">not configured</span>
+                {% elif source.last_error %}
+                &middot; <span class="flash-error-inline">{{ source.last_error }}</span>
+                {% endif %}
+            </div>
+            <div class="row-actions">
+                <form method="post" action="/jobs/sources/{{ source.id }}/toggle" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn-secondary">{{ "Pause" if source.is_active else "Resume" }}</button>
+                </form>
+            </div>
         </li>
         {% else %}
         <li class="muted-note">No sources polled yet -- run intake once to initialize them.</li>
@@ -56,24 +64,89 @@
         <button type="submit">Add</button>
     </form>
     {% if keywords %}
-    <ul class="version-history">
+    <ul class="tag-chip-list">
         {% for kw in keywords %}
-        <li>
-            <span class="badge {% if kw.is_active %}badge-active{% endif %}">{{ "active" if kw.is_active else "paused" }}</span>
-            {{ kw.keyword }}
-            <form method="post" action="/jobs/keywords/{{ kw.id }}/toggle" class="inline-form">
+        <li class="tag-chip {{ 'tag-chip-active' if kw.is_active else 'tag-chip-paused' }}">
+            <form method="post" action="/jobs/keywords/{{ kw.id }}/toggle">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <button type="submit" class="btn-secondary">{{ "Pause" if kw.is_active else "Resume" }}</button>
+                <button type="submit" class="tag-chip-label" title="Click to {{ 'pause' if kw.is_active else 'resume' }}">{{ kw.keyword }}</button>
             </form>
-            <form method="post" action="/jobs/keywords/{{ kw.id }}/delete" class="inline-form">
+            <form method="post" action="/jobs/keywords/{{ kw.id }}/delete">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <button type="submit" class="btn-danger">Delete</button>
+                <button type="submit" class="tag-chip-delete" aria-label="Delete '{{ kw.keyword }}'" title="Delete">&times;</button>
             </form>
         </li>
         {% endfor %}
     </ul>
     {% else %}
-    <p class="muted-note">No custom keywords configured -- intake falls back to a default role list (ML Engineer, Data Engineer, Data Scientist, etc.).</p>
+    <p class="muted-note" role="alert">No custom keywords configured -- intake falls back to 5 generic default
+        titles rather than anything tailored to you. This should auto-fill itself from your active profile the
+        next time intake runs; if it stays generic, seed a profile on the Profile page first.</p>
+    {% endif %}
+</section>
+
+<section class="settings-panel">
+    <h2>Seniority Exclusions</h2>
+    <p class="muted-note">Title-level terms to exclude from direct-board intake (Greenhouse/Lever/Ashby) -- a
+        company's own board has no seniority filter, so this is what keeps a Staff/Director/VP-level posting
+        from ever reaching you if that's not the level you're targeting.</p>
+    <form method="post" action="/jobs/seniority-exclusions" class="inline-form-row">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="visually-hidden" for="seniority-exclusion-input">Seniority exclusion term</label>
+        <input type="text" id="seniority-exclusion-input" name="term" placeholder="e.g. Staff" required>
+        <button type="submit">Add</button>
+    </form>
+    {% if seniority_exclusions %}
+    <ul class="tag-chip-list">
+        {% for ex in seniority_exclusions %}
+        <li class="tag-chip {{ 'tag-chip-active' if ex.is_active else 'tag-chip-paused' }}">
+            <form method="post" action="/jobs/seniority-exclusions/{{ ex.id }}/toggle">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="tag-chip-label" title="Click to {{ 'pause' if ex.is_active else 'resume' }}">{{ ex.term }}</button>
+            </form>
+            <form method="post" action="/jobs/seniority-exclusions/{{ ex.id }}/delete">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="tag-chip-delete" aria-label="Delete '{{ ex.term }}'" title="Delete">&times;</button>
+            </form>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted-note">No seniority exclusions configured -- direct-board intake will not filter by level.
+        This should auto-fill itself from your active profile the next time intake runs.</p>
+    {% endif %}
+</section>
+
+<section class="settings-panel">
+    <h2>Location Exclusions</h2>
+    <p class="muted-note">Location-text terms (countries/regions) to hard-exclude at intake, across every source --
+        a company's own Greenhouse/Lever/Ashby board has no location filter at all, so without this, roles open
+        only in another country can reach scoring/tailoring even though you're not eligible for them. The base
+        search location for Adzuna/LinkedIn is set separately under Tunable Settings on the dashboard.</p>
+    <form method="post" action="/jobs/location-exclusions" class="inline-form-row">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="visually-hidden" for="location-exclusion-input">Location exclusion term</label>
+        <input type="text" id="location-exclusion-input" name="term" placeholder="e.g. India" required>
+        <button type="submit">Add</button>
+    </form>
+    {% if location_exclusions %}
+    <ul class="tag-chip-list">
+        {% for ex in location_exclusions %}
+        <li class="tag-chip {{ 'tag-chip-active' if ex.is_active else 'tag-chip-paused' }}">
+            <form method="post" action="/jobs/location-exclusions/{{ ex.id }}/toggle">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="tag-chip-label" title="Click to {{ 'pause' if ex.is_active else 'resume' }}">{{ ex.term }}</button>
+            </form>
+            <form method="post" action="/jobs/location-exclusions/{{ ex.id }}/delete">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="tag-chip-delete" aria-label="Delete '{{ ex.term }}'" title="Delete">&times;</button>
+            </form>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted-note">No location exclusions configured -- intake will not filter by country. This should
+        auto-fill itself with a default non-US list the next time intake runs.</p>
     {% endif %}
 </section>
 
@@ -131,7 +204,7 @@
             <p class="muted-note">
                 {{ app.posting.company_name_raw }}
                 &middot; first seen {{ app.posting.first_seen_at.strftime("%Y-%m-%d") }}
-                &middot; <a href="{{ app.posting.job_url }}" target="_blank" rel="noopener">view posting &#8599;</a>
+                &middot; <a href="{{ app.posting.job_url }}" target="_blank" rel="noopener noreferrer">view posting &#8599;</a>
                 {% if app.status == "Pending Confirmation" and app.confirmation_deadline %}
                 &middot; auto-proceeds {{ app.confirmation_deadline.strftime("%Y-%m-%d %H:%M") }} UTC
                 {% endif %}
@@ -139,11 +212,12 @@
             {% if app.attention_reason %}
             <p class="flash-error-inline">{{ app.attention_reason }}</p>
             {% endif %}
-            {% if app.posting.staleness_flag or app.posting.scam_flag_reason or app.posting.repost_count > 0 %}
+            {% if app.posting.staleness_flag or app.posting.scam_flag_reason or app.posting.eligibility_flag_reason or app.posting.repost_count > 0 %}
             <div class="flag-row">
                 {% if app.posting.staleness_flag %}<span class="flag-warning">stale listing</span>{% endif %}
                 {% if app.posting.repost_count > 0 %}<span class="flag-warning">repost x{{ app.posting.repost_count }}</span>{% endif %}
                 {% if app.posting.scam_flag_reason %}<span class="flag-warning">scam pattern: {{ app.posting.scam_flag_reason }}</span>{% endif %}
+                {% if app.posting.eligibility_flag_reason %}<span class="flag-warning">eligibility: {{ app.posting.eligibility_flag_reason }}</span>{% endif %}
             </div>
             {% endif %}
         </li>
