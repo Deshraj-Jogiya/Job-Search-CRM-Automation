@@ -104,6 +104,8 @@ class Company(Base):
     greenhouse_slug = Column(String, nullable=True)
     lever_slug = Column(String, nullable=True)
     ashby_slug = Column(String, nullable=True)
+    recruitee_slug = Column(String, nullable=True)
+    personio_slug = Column(String, nullable=True)  # bare slug only -- see personio_source.py for the .com/.de split
     board_slugs_checked_at = Column(DateTime, nullable=True)
 
     postings = relationship("JobPosting", back_populates="company")
@@ -126,7 +128,7 @@ class JobPosting(Base):
     job_url = Column(String, nullable=True)
     location = Column(String, nullable=True)  # structured location text from the source's own API, when available
     job_description = Column(Text, nullable=False)
-    source = Column(String, nullable=False)  # 'linkedin' | 'adzuna' | 'greenhouse' | 'lever' | 'ashby' | 'manual'
+    source = Column(String, nullable=False)  # 'linkedin' | 'adzuna' | 'greenhouse' | 'lever' | 'ashby' | 'recruitee' | 'personio' | 'jobspipe' | 'manual'
     external_id = Column(String, nullable=True, index=True)  # source's own posting id, when available
 
     first_seen_at = Column(DateTime, default=utcnow)  # earliest time this exact posting was observed
@@ -318,7 +320,7 @@ class JobSource(Base):
     __tablename__ = "job_sources"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, nullable=False, unique=True)  # 'linkedin' | 'adzuna' | 'greenhouse' | 'lever' | 'ashby'
+    name = Column(String, nullable=False, unique=True)  # 'linkedin' | 'adzuna' | 'greenhouse' | 'lever' | 'ashby' | 'recruitee' | 'personio' | 'jobspipe'
     is_active = Column(Boolean, default=True)
     calls_used_this_period = Column(Integer, default=0)
     period_reset_at = Column(DateTime, nullable=True)
