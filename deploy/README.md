@@ -141,7 +141,34 @@ your-domain-or-sslip-io-address {
 }
 ```
 
-## 7. HTTPS without an owned domain
+## 7. Health-check watchdog
+
+`Restart=on-failure` on `career-pilot.service` only fires when the
+process actually exits or crashes -- it does nothing for a process
+that's still running but hung (a deadlocked thread, an exhausted DB
+connection pool). `career-pilot-watchdog.timer` covers that gap:
+every 3 minutes it curls `/api/health` and restarts `career-pilot`
+if that fails.
+
+```
+sudo cp /opt/career-pilot/deploy/health-watchdog.sh /opt/career-pilot/deploy/
+sudo chmod +x /opt/career-pilot/deploy/health-watchdog.sh
+sudo cp /opt/career-pilot/deploy/career-pilot-watchdog.service /opt/career-pilot/deploy/career-pilot-watchdog.timer /etc/systemd/system/
+sudo restorecon -v /etc/systemd/system/career-pilot-watchdog.* /opt/career-pilot/deploy/health-watchdog.sh
+sudo systemctl daemon-reload
+sudo systemctl enable --now career-pilot-watchdog.timer
+```
+
+This is local self-healing only -- it can't detect the VM itself going
+fully unreachable (crashed, network-partitioned, out of disk). For
+that, point a free external uptime checker (e.g.
+[UptimeRobot](https://uptimerobot.com) or
+[healthchecks.io](https://healthchecks.io)) at
+`https://<your-domain-or-sslip-io-address>/api/health` from outside
+this VM -- that's a per-deployment choice (which service, whether you
+want the alert email/SMS) this repo doesn't make for you.
+
+## 8. HTTPS without an owned domain
 
 [sslip.io](https://sslip.io) resolves `<ip-with-dashes>.sslip.io` to
 that IP automatically, with zero DNS setup -- e.g. `129-146-36-193
