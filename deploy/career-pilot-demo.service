@@ -1,0 +1,24 @@
+[Unit]
+Description=Career Pilot -- public showcase demo (APP_MODE=showcase)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=career-pilot-demo
+WorkingDirectory=/opt/career-pilot-demo
+EnvironmentFile=/opt/career-pilot-demo/.env
+# No DISPLAY set (unlike career-pilot.service) -- the interactive
+# autofill browser needs a real job application to autofill, and
+# showcase mode never has one without automation turned on (see
+# app_mode.py + intake_service.run_intake_cycle's automation_enabled
+# check), so there's nothing for it to open against here.
+ExecStart=/opt/career-pilot-demo/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8001
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/career-pilot-demo
+
+[Install]
+WantedBy=multi-user.target
