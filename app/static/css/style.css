@@ -743,10 +743,6 @@ html.light-theme .flag-warning {
     background: rgba(99, 102, 241, 0.1);
 }
 
-.tag-chip.tag-chip-paused {
-    opacity: 0.55;
-}
-
 .tag-chip form {
     display: inline-flex;
     margin: 0;
@@ -771,23 +767,7 @@ html.light-theme .flag-warning {
 }
 
 .tag-chip-label {
-    padding: 6px 4px 6px 14px;
-}
-
-.tag-chip.tag-chip-paused .tag-chip-label {
-    text-decoration: line-through;
-    color: var(--text-secondary);
-}
-
-.tag-chip-delete {
-    padding: 6px 12px 6px 6px;
-    color: var(--text-secondary);
-    font-size: 1rem;
-    line-height: 1;
-}
-
-.tag-chip-delete:hover {
-    color: #f87171;
+    padding: 6px 14px;
 }
 
 .variant-header,

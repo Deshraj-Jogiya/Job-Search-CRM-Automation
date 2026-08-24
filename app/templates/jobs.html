@@ -63,17 +63,15 @@
         <input type="text" id="keyword-input" name="keyword" placeholder="e.g. Data Engineer" required>
         <button type="submit">Add</button>
     </form>
-    {% if keywords %}
+    {% set active_keywords = keywords|selectattr('is_active')|list %}
+    {% set paused_keywords = keywords|rejectattr('is_active')|list %}
+    {% if active_keywords %}
     <ul class="tag-chip-list">
-        {% for kw in keywords %}
-        <li class="tag-chip {{ 'tag-chip-active' if kw.is_active else 'tag-chip-paused' }}">
+        {% for kw in active_keywords %}
+        <li class="tag-chip tag-chip-active">
             <form method="post" action="/jobs/keywords/{{ kw.id }}/toggle">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <button type="submit" class="tag-chip-label" title="Click to {{ 'pause' if kw.is_active else 'resume' }}">{{ kw.keyword }}</button>
-            </form>
-            <form method="post" action="/jobs/keywords/{{ kw.id }}/delete">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <button type="submit" class="tag-chip-delete" aria-label="Delete '{{ kw.keyword }}'" title="Delete">&times;</button>
+                <button type="submit" class="tag-chip-label" title="Click to pause">{{ kw.keyword }}</button>
             </form>
         </li>
         {% endfor %}
@@ -82,6 +80,18 @@
     <p class="muted-note" role="alert">No custom keywords configured -- search falls back to 5 generic default
         titles rather than anything tailored to you. This should fill in automatically from your active profile
         the next time a search runs; if it stays generic, set up a profile on the Profile page first.</p>
+    {% endif %}
+    {% if paused_keywords %}
+    <form method="post" action="/jobs/keywords/reactivate" class="inline-form-row">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="visually-hidden" for="paused-keyword-select">Paused keyword</label>
+        <select id="paused-keyword-select" name="keyword_id">
+            {% for kw in paused_keywords %}
+            <option value="{{ kw.id }}">{{ kw.keyword }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn-secondary">Re-add</button>
+    </form>
     {% endif %}
 </section>
 
@@ -96,17 +106,15 @@
         <input type="text" id="seniority-exclusion-input" name="term" placeholder="e.g. Staff" required>
         <button type="submit">Add</button>
     </form>
-    {% if seniority_exclusions %}
+    {% set active_seniority = seniority_exclusions|selectattr('is_active')|list %}
+    {% set paused_seniority = seniority_exclusions|rejectattr('is_active')|list %}
+    {% if active_seniority %}
     <ul class="tag-chip-list">
-        {% for ex in seniority_exclusions %}
-        <li class="tag-chip {{ 'tag-chip-active' if ex.is_active else 'tag-chip-paused' }}">
+        {% for ex in active_seniority %}
+        <li class="tag-chip tag-chip-active">
             <form method="post" action="/jobs/seniority-exclusions/{{ ex.id }}/toggle">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <button type="submit" class="tag-chip-label" title="Click to {{ 'pause' if ex.is_active else 'resume' }}">{{ ex.term }}</button>
-            </form>
-            <form method="post" action="/jobs/seniority-exclusions/{{ ex.id }}/delete">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <button type="submit" class="tag-chip-delete" aria-label="Delete '{{ ex.term }}'" title="Delete">&times;</button>
+                <button type="submit" class="tag-chip-label" title="Click to pause">{{ ex.term }}</button>
             </form>
         </li>
         {% endfor %}
@@ -114,6 +122,18 @@
     {% else %}
     <p class="muted-note">No seniority exclusions configured -- these boards won't filter by level.
         This should fill in automatically from your active profile the next time a search runs.</p>
+    {% endif %}
+    {% if paused_seniority %}
+    <form method="post" action="/jobs/seniority-exclusions/reactivate" class="inline-form-row">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="visually-hidden" for="paused-seniority-select">Paused seniority exclusion</label>
+        <select id="paused-seniority-select" name="exclusion_id">
+            {% for ex in paused_seniority %}
+            <option value="{{ ex.id }}">{{ ex.term }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn-secondary">Re-add</button>
+    </form>
     {% endif %}
 </section>
 
@@ -129,17 +149,15 @@
         <input type="text" id="location-exclusion-input" name="term" placeholder="e.g. India" required>
         <button type="submit">Add</button>
     </form>
-    {% if location_exclusions %}
+    {% set active_location = location_exclusions|selectattr('is_active')|list %}
+    {% set paused_location = location_exclusions|rejectattr('is_active')|list %}
+    {% if active_location %}
     <ul class="tag-chip-list">
-        {% for ex in location_exclusions %}
-        <li class="tag-chip {{ 'tag-chip-active' if ex.is_active else 'tag-chip-paused' }}">
+        {% for ex in active_location %}
+        <li class="tag-chip tag-chip-active">
             <form method="post" action="/jobs/location-exclusions/{{ ex.id }}/toggle">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <button type="submit" class="tag-chip-label" title="Click to {{ 'pause' if ex.is_active else 'resume' }}">{{ ex.term }}</button>
-            </form>
-            <form method="post" action="/jobs/location-exclusions/{{ ex.id }}/delete">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <button type="submit" class="tag-chip-delete" aria-label="Delete '{{ ex.term }}'" title="Delete">&times;</button>
+                <button type="submit" class="tag-chip-label" title="Click to pause">{{ ex.term }}</button>
             </form>
         </li>
         {% endfor %}
@@ -147,6 +165,18 @@
     {% else %}
     <p class="muted-note">No location exclusions configured -- search will not filter by country. This should
         fill in with a default non-US list the next time a search runs.</p>
+    {% endif %}
+    {% if paused_location %}
+    <form method="post" action="/jobs/location-exclusions/reactivate" class="inline-form-row">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="visually-hidden" for="paused-location-select">Paused location exclusion</label>
+        <select id="paused-location-select" name="exclusion_id">
+            {% for ex in paused_location %}
+            <option value="{{ ex.id }}">{{ ex.term }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn-secondary">Re-add</button>
+    </form>
     {% endif %}
 </section>
 
