@@ -206,5 +206,5 @@ push and PR; `dependency-audit.yml` runs a vulnerability scan weekly.
 
 - No automated/scheduled backups — export is manual, on-demand
 - No process supervision/auto-restart baked into the deploy scripts beyond systemd's own `Restart=on-failure`
-- No external uptime monitoring configured against `/health` by default
+- No external uptime monitoring configured against `/api/health` by default
 - Outreach handoff (the "we're now emailing back and forth" phase) is intentionally out of scope for now
