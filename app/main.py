@@ -385,6 +385,8 @@ def update_settings(
     quiet_hours_end_hour: int = Form(...),
     local_timezone: str = Form(...),
     notification_digest_interval_minutes: int = Form(...),
+    automated_backups_enabled: bool = Form(False),
+    backup_retention_count: int = Form(14),
     db: Session = Depends(get_db),
 ):
     """Every tunable number in the product is editable here -- nothing
@@ -409,5 +411,7 @@ def update_settings(
     settings.quiet_hours_start_hour = quiet_hours_start_hour
     settings.quiet_hours_end_hour = quiet_hours_end_hour
     settings.local_timezone = local_timezone.strip()
+    settings.automated_backups_enabled = automated_backups_enabled
+    settings.backup_retention_count = backup_retention_count
     db.commit()
     return RedirectResponse(url="/", status_code=303)

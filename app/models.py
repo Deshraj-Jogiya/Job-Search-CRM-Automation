@@ -414,6 +414,14 @@ class GlobalSettings(Base):
     # Outreach
     daily_outreach_cap = Column(Integer, default=10)
 
+    # Automated backups -- export used to be manual-only, so a gap
+    # unattended for weeks meant zero recent recovery point. Runs once a
+    # day (see scheduler.py) straight to local disk (backups/scheduled/,
+    # gitignored) using the same encrypted format as the on-demand
+    # download, then prunes down to the retention count.
+    automated_backups_enabled = Column(Boolean, default=True)
+    backup_retention_count = Column(Integer, default=14)
+
     # Tavily/Hunter.io budget tracking. Unlike Adzuna (polled
     # on a fixed schedule, where daily pacing matters -- see JobSource's
     # calls_used_today), these are called on-demand per human click
