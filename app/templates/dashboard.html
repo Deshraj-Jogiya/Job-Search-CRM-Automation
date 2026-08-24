@@ -84,6 +84,7 @@
     {% if backup_configured %}
     <p class="muted-note">Downloads an encrypted copy of all your data (profile, applications, outreach). Keep it somewhere safe -- you'll need your encryption key to open it again.</p>
     <p><a href="/settings/backup/export">Download Encrypted Backup</a></p>
+    <p class="muted-note">A daily automated backup also saves to disk on its own -- see "Take an automated encrypted backup daily" further down in Settings.</p>
 
     <h3>Restore from Backup</h3>
     <p class="muted-note">
@@ -166,6 +167,17 @@
         <label>Daily outreach limit
             <input type="number" name="daily_outreach_cap" value="{{ settings.daily_outreach_cap }}" min="0">
         </label>
+
+        {% if backup_configured %}
+        <label class="checkbox-label">
+            <input type="checkbox" name="automated_backups_enabled" value="true" {{ "checked" if settings.automated_backups_enabled }}>
+            Take an automated encrypted backup daily
+        </label>
+
+        <label>Keep this many automated backups
+            <input type="number" name="backup_retention_count" value="{{ settings.backup_retention_count }}" min="1">
+        </label>
+        {% endif %}
 
         <label class="checkbox-label">
             <input type="checkbox" name="quiet_hours_enabled" value="true" {{ "checked" if settings.quiet_hours_enabled }}>
