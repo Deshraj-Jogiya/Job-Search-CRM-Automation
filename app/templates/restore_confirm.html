@@ -1,0 +1,56 @@
+{% extends "_base.html" %}
+
+{% block title %}Confirm Restore -- Career Pilot{% endblock %}
+
+{% block content %}
+<section class="settings-panel">
+    <h2>Confirm Database Restore</h2>
+    <div class="flash flash-error" role="alert">
+        This will <strong>replace every row in the live database</strong> with the contents of the uploaded
+        backup. A safety-net backup of your <em>current</em> data will be saved to the server's local
+        <code>backups/pre_restore/</code> folder automatically, immediately before anything else changes --
+        keep that file if you need to undo this. This action cannot be undone from within the app itself.
+    </div>
+
+    <p><strong>Backup contents:</strong></p>
+    <ul>
+        <li>Format: {{ "SQLite snapshot" if preview.format == "sqlite" else "Postgres row export" }}</li>
+        {% if preview.exported_at %}
+        <li>Taken at: {{ preview.exported_at }}</li>
+        {% endif %}
+        <li>Total rows: {{ preview.total_rows }}</li>
+    </ul>
+
+    <div class="table-scroll">
+        <table class="review-table">
+            <thead><tr><th>Table</th><th>Rows in backup</th></tr></thead>
+            <tbody>
+                {% for name, count in preview.row_counts.items() %}
+                <tr><td>{{ name }}</td><td>{{ count }}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <form method="post" action="/settings/backup/restore/confirm" style="margin-top: 1.5rem;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="token" value="{{ token }}">
+
+        <label>Admin password (again, to confirm)
+            <input type="password" name="admin_password" required autocomplete="off">
+        </label>
+
+        <label>Type RESTORE to confirm
+            <input type="text" name="confirm_text" required autocomplete="off" placeholder="RESTORE">
+        </label>
+
+        <button type="submit" class="btn-danger">Replace All Data Now</button>
+    </form>
+
+    <form method="post" action="/settings/backup/restore/cancel" style="margin-top: 0.75rem;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="token" value="{{ token }}">
+        <button type="submit" class="btn-secondary">Cancel -- don't restore</button>
+    </form>
+</section>
+{% endblock %}

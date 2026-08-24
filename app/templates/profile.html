@@ -100,6 +100,85 @@
         </form>
     </details>
 
+    {% macro select_field(name, label, options, current) %}
+    <label>{{ label }}
+        <select name="{{ name }}">
+            <option value="" {% if not current %}selected{% endif %}>-- Not set --</option>
+            {% for opt in options %}
+            <option value="{{ opt }}" {% if current == opt %}selected{% endif %}>{{ opt }}</option>
+            {% endfor %}
+        </select>
+    </label>
+    {% endmacro %}
+    <details class="sub-panel">
+        <summary>Application preferences (EEO, work authorization, salary, etc.)</summary>
+        <p class="muted-note">
+            These are fixed personal facts, answered the same way on every application -- saved here once,
+            autofill answers matching screening questions automatically instead of leaving them blank or
+            asking an AI to guess. Leave any field set to "Not set" to leave it unanswered.
+        </p>
+        <form method="post" action="/profile/variants/{{ variant.id }}/preferences" class="preferences-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+            <h3>Work &amp; Compensation</h3>
+            {{ select_field('work_authorization', 'Work authorization', [
+                'US Citizen',
+                'US Permanent Resident (Green Card)',
+                'Authorized to work in the US without sponsorship',
+                'Will require sponsorship now or in the future',
+                'Not authorized to work in the US',
+            ], entry.application_preferences.work_authorization) }}
+
+            {{ select_field('visa_sponsorship', 'Visa sponsorship', ['No', 'Yes, now', 'Yes, in the future'], entry.application_preferences.visa_sponsorship) }}
+
+            {{ select_field('willing_to_relocate', 'Willing to relocate', ['Yes', 'No', 'Depends on the role'], entry.application_preferences.willing_to_relocate) }}
+
+            <label>Minimum salary (your floor -- the lowest you'd accept)
+                <select name="salary_minimum">
+                    <option value="" {% if not entry.application_preferences.salary_minimum %}selected{% endif %}>-- Not set --</option>
+                    {% for opt in ['$60,000+', '$80,000+', '$100,000+', '$120,000+', '$140,000+', '$160,000+', '$180,000+', '$200,000+'] %}
+                    <option value="{{ opt }}" {% if entry.application_preferences.salary_minimum == opt %}selected{% endif %}>{{ opt }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label class="checkbox-label">
+                <input type="checkbox" name="salary_negotiable" value="true" {% if entry.application_preferences.salary_negotiable %}checked{% endif %}>
+                Open to negotiation
+            </label>
+
+            {{ select_field('notice_period', 'Notice period / earliest start date', [
+                'Immediately available', '1 week', '2 weeks', '3 weeks', '1 month', 'More than 1 month',
+            ], entry.application_preferences.notice_period) }}
+
+            {{ select_field('currently_employed', 'Currently employed', ['Yes', 'No'], entry.application_preferences.currently_employed) }}
+
+            <h3>Voluntary Self-Identification (EEO)</h3>
+            {{ select_field('gender', 'Gender', ['Male', 'Female', 'Decline To Self Identify'], entry.eeo.gender) }}
+
+            {{ select_field('hispanic_or_latino', 'Hispanic or Latino', ['Yes', 'No', 'Decline To Self Identify'], entry.eeo.hispanic_or_latino) }}
+
+            {{ select_field('race', 'Race', [
+                'American Indian or Alaska Native', 'Asian', 'Black or African American',
+                'Hispanic or Latino', 'Native Hawaiian or Other Pacific Islander', 'White',
+                'Two or More Races', 'Decline To Self Identify',
+            ], entry.eeo.race) }}
+
+            {{ select_field('veteran_status', 'Veteran status', [
+                'I am not a protected veteran',
+                'I identify as one or more of the classifications of a protected veteran',
+                "I don't wish to answer",
+            ], entry.eeo.veteran_status) }}
+
+            {{ select_field('disability_status', 'Disability status', [
+                'Yes, I have a disability, or have had one in the past',
+                'No, I do not have a disability and have not had one in the past',
+                'I do not want to answer',
+            ], entry.eeo.disability_status) }}
+
+            <button type="submit">Save Preferences</button>
+        </form>
+    </details>
+
     <details class="sub-panel">
         <summary>Manual edit / seed profile JSON</summary>
         <form method="post" action="/profile/variants/{{ variant.id }}/manual-save">

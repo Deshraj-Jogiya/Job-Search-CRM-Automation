@@ -14,5 +14,22 @@ env/
 *.db
 *.sqlite
 
+# Retained application logs (Phase 18 -- rotated locally, not committed)
+logs/
+
+# Restore staging + pre-restore safety-net backups (Phase 9 restore) --
+# real encrypted snapshots of the live database, never committed
+backups/
+
 # Environment configuration
 .env
+
+# Author's private working notes (used with my own tooling during
+# development) -- includes real job-search activity specific to the
+# author's own deployment. See CONTRIBUTING.md for the public-facing
+# replacement covering design principles and conventions.
+the project notes
+
+# Local my own tooling tooling config (preview launch config, scheduler
+# lock file) -- machine-specific, not part of the application
+.claude/

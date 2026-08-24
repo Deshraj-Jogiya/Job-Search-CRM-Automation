@@ -29,6 +29,24 @@ class ProfileServiceError(Exception):
     rather than letting a 500 through."""
 
 
+def get_default_profile_content(db: Session) -> dict | None:
+    """The default variant's active profile content, or None if there
+    isn't one yet -- for callers outside an application context (e.g.
+    intake targeting) that need a graceful "nothing to work with yet"
+    rather than an exception."""
+    variant = db.query(ProfileVariant).filter(ProfileVariant.is_default == True).first()  # noqa: E712
+    if not variant:
+        return None
+    version = (
+        db.query(ProfileVersion)
+        .filter(ProfileVersion.variant_id == variant.id, ProfileVersion.is_active == True)  # noqa: E712
+        .first()
+    )
+    if not version:
+        return None
+    return json.loads(version.content_json)
+
+
 def _get_variant_or_raise(db: Session, variant_id: int) -> ProfileVariant:
     variant = db.query(ProfileVariant).filter(ProfileVariant.id == variant_id).first()
     if not variant:
@@ -112,6 +130,21 @@ def create_manual_version(db: Session, variant_id: int, content_json_text: str) 
     db.refresh(version)
     log_activity(db, f"Saved manual profile edit for variant '{variant.name}'.")
     return version
+
+
+def update_structured_fields(db: Session, variant_id: int, updates: dict) -> ProfileVersion:
+    """Merges top-level keys (e.g. {"eeo": {...}, "application_preferences":
+    {...}}) into the variant's current active content, preserving
+    everything else (experience, projects, etc.) untouched, and saves the
+    result as a new active version -- same versioning mechanism as
+    create_manual_version(), just merge-based so the Profile page's
+    structured preferences form doesn't need the user to paste the whole
+    profile JSON back in just to change a few fixed-fact fields."""
+    variant = _get_variant_or_raise(db, variant_id)
+    version = get_active_version(db, variant_id)
+    content = json.loads(version.content_json) if version else {}
+    content.update(updates)
+    return create_manual_version(db, variant.id, json.dumps(content, indent=2))
 
 
 def _summarize_diff(old_content: dict, new_content: dict) -> str:

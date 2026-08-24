@@ -27,11 +27,12 @@ via mark_sent_manually().
 
 import re
 import threading
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import dns.resolver
 from sqlalchemy.orm import Session
 
+from ..database import utcnow
 from ..models import JobApplication, OutreachMessage, get_or_create_settings
 from .activity_logger import log_activity
 from .email_utils import is_smtp_configured, send_email
@@ -174,7 +175,7 @@ def reject_outreach(db: Session, message_id: int) -> OutreachMessage:
 
 
 def sent_count_last_24h(db: Session) -> int:
-    cutoff = datetime.utcnow() - timedelta(hours=24)
+    cutoff = utcnow() - timedelta(hours=24)
     return (
         db.query(OutreachMessage)
         .filter(OutreachMessage.status == "Sent", OutreachMessage.sent_at >= cutoff)
@@ -212,7 +213,7 @@ def send_outreach(db: Session, message_id: int) -> OutreachMessage:
             raise OutreachServiceError(f"Send failed: {e}") from e
 
         message.status = "Sent"
-        message.sent_at = datetime.utcnow()
+        message.sent_at = utcnow()
         db.commit()
 
     log_activity(db, f"Sent outreach email to {message.recipient_address}.", "INFO")
@@ -232,7 +233,7 @@ def mark_sent_manually(db: Session, message_id: int) -> OutreachMessage:
         raise OutreachServiceError(f"Message is '{message.status}', not Approved.")
 
     message.status = "Sent"
-    message.sent_at = datetime.utcnow()
+    message.sent_at = utcnow()
     db.commit()
     log_activity(db, f"Marked {message.channel} outreach message {message_id} as sent (manual).", "INFO")
     return message

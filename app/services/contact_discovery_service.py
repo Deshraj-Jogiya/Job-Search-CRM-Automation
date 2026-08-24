@@ -30,13 +30,24 @@ enough for a live request, unlike the multi-pass LLM tailoring calls.
 """
 
 import os
+from datetime import timedelta
 from urllib.parse import urlparse
 
 import requests
 
+from ..database import utcnow
+from ..models import get_or_create_settings
+from .activity_logger import log_activity
+
 _RECRUITER_KEYWORDS = ("recruit", "talent", "people", "hr", "human resources", "hiring", "staffing", "sourc")
 
 _NON_COMPANY_DOMAINS = ("linkedin.com", "wikipedia.org", "glassdoor.com", "indeed.com", "crunchbase.com", "google.com")
+
+
+class BudgetExhaustedError(Exception):
+    """Raised instead of letting a call go out -- distinguishes "quota
+    exhausted" from "genuinely found nothing," which previously looked
+    identical in the logs (both just returned an empty list)."""
 
 
 def is_tavily_configured() -> bool:
@@ -47,10 +58,48 @@ def is_hunter_configured() -> bool:
     return bool(os.getenv("HUNTER_API_KEY"))
 
 
-def tavily_search(query: str, max_results: int = 5) -> list:
+def _reset_monthly_counter_if_needed(settings, now, used_attr: str, reset_attr: str) -> None:
+    if getattr(settings, reset_attr) is None or now >= getattr(settings, reset_attr):
+        setattr(settings, used_attr, 0)
+        setattr(settings, reset_attr, now + timedelta(days=30))
+
+
+def _consume_budget(db, provider: str) -> None:
+    """Raises BudgetExhaustedError without incrementing anything if this
+    month's cap is already hit; otherwise increments the counter. Called
+    right before the real HTTP request, not after -- a failed request
+    shouldn't count against the budget, but we also shouldn't let two
+    near-simultaneous calls both slip through a stale read (acceptable
+    given this is a single-operator, on-demand-click usage pattern, not
+    a high-concurrency system)."""
+    settings = get_or_create_settings(db)
+    now = utcnow()
+    used_attr, reset_attr, budget_attr = f"{provider}_calls_used_this_month", f"{provider}_month_reset_at", f"{provider}_monthly_call_budget"
+    _reset_monthly_counter_if_needed(settings, now, used_attr, reset_attr)
+
+    used = getattr(settings, used_attr)
+    budget = getattr(settings, budget_attr)
+    if used >= budget:
+        db.commit()  # persist the reset, if one just happened, even though this call itself is refused
+        log_activity(
+            db,
+            f"{provider.capitalize()} monthly call budget ({budget}) exhausted -- skipping this call rather "
+            "than risk a real API error. Resets in 30 days from first use this period, or raise the "
+            f"budget in Tunable Settings.",
+            "WARNING",
+        )
+        raise BudgetExhaustedError(provider)
+
+    setattr(settings, used_attr, used + 1)
+    db.commit()
+
+
+def tavily_search(db, query: str, max_results: int = 5) -> list:
     """Public/shared -- also used by interview_prep_service.py for light
-    company research. Raises on failure; callers decide how to degrade
-    (this module's own callers catch and fall back to an empty list)."""
+    company research. Raises on failure (including BudgetExhaustedError);
+    callers decide how to degrade (this module's own callers catch and
+    fall back to an empty list)."""
+    _consume_budget(db, "tavily")
     api_key = os.getenv("TAVILY_API_KEY")
     response = requests.post(
         "https://api.tavily.com/search",
@@ -62,9 +111,9 @@ def tavily_search(query: str, max_results: int = 5) -> list:
     return response.json().get("results", [])
 
 
-def _find_company_domain(company_name: str) -> str | None:
+def _find_company_domain(db, company_name: str) -> str | None:
     try:
-        results = tavily_search(f"{company_name} official company website", max_results=3)
+        results = tavily_search(db, f"{company_name} official company website", max_results=3)
     except Exception:
         return None
     for r in results:
@@ -74,9 +123,10 @@ def _find_company_domain(company_name: str) -> str | None:
     return None
 
 
-def _find_linkedin_candidates(company_name: str) -> list:
+def _find_linkedin_candidates(db, company_name: str) -> list:
     try:
         results = tavily_search(
+            db,
             f'"{company_name}" recruiter OR "talent acquisition" OR "people team" site:linkedin.com/in',
             max_results=5,
         )
@@ -100,7 +150,12 @@ def _find_linkedin_candidates(company_name: str) -> list:
     return candidates
 
 
-def _find_hunter_candidates(domain: str) -> list:
+def _find_hunter_candidates(db, domain: str) -> list:
+    try:
+        _consume_budget(db, "hunter")
+    except BudgetExhaustedError:
+        return []
+
     api_key = os.getenv("HUNTER_API_KEY")
     try:
         response = requests.get(
@@ -133,21 +188,21 @@ def _find_hunter_candidates(domain: str) -> list:
     return candidates
 
 
-def discover_contacts(company_name: str) -> list:
+def discover_contacts(db, company_name: str) -> list:
     """Best-effort, never raises -- an empty list (neither provider
-    configured, or both failed) just means the caller falls back to
-    manual entry. Every dict has: name, title, linkedin_url,
-    suggested_email, email_confidence, source."""
+    configured, budget exhausted, or both failed) just means the caller
+    falls back to manual entry. Every dict has: name, title,
+    linkedin_url, suggested_email, email_confidence, source."""
     candidates = []
 
     if not is_tavily_configured():
         return candidates
 
-    candidates.extend(_find_linkedin_candidates(company_name))
+    candidates.extend(_find_linkedin_candidates(db, company_name))
 
     if is_hunter_configured():
-        domain = _find_company_domain(company_name)
+        domain = _find_company_domain(db, company_name)
         if domain:
-            candidates.extend(_find_hunter_candidates(domain))
+            candidates.extend(_find_hunter_candidates(db, domain))
 
     return candidates

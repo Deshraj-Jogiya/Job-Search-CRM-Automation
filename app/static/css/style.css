@@ -63,6 +63,18 @@ html.light-theme {
 
 html {
     scroll-behavior: smooth;
+    /* Tells the browser this page supports dark UI, so native controls
+       it renders itself -- <select> dropdown popups, date/time pickers,
+       scrollbars -- use dark-appropriate styling instead of always
+       defaulting to a light native popup on top of this dark-themed
+       page. Page CSS can't override a native <select> popup's own
+       styling directly in most browsers; this is the actual mechanism
+       for it. Overridden to light below when html.light-theme is set. */
+    color-scheme: dark;
+}
+
+html.light-theme {
+    color-scheme: light;
 }
 
 body {
@@ -339,6 +351,47 @@ html.light-theme .pending-item {
     justify-self: start;
 }
 
+/* Same compact 2-column layout as .settings-panel form, for the
+   Profile page's Application Preferences form specifically -- not
+   applied to every .sub-panel form, since the LinkedIn-import/manual-
+   JSON forms are single full-width textareas that shouldn't be
+   squeezed into two columns. */
+.preferences-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px 20px;
+}
+
+.preferences-form h3 {
+    grid-column: 1 / -1;
+    margin: 12px 0 0;
+    font-size: 0.95rem;
+}
+
+.preferences-form h3:first-child {
+    margin-top: 0;
+}
+
+.preferences-form label {
+    display: flex;
+    flex-direction: column;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    gap: 5px;
+}
+
+.preferences-form > button {
+    grid-column: 1 / -1;
+    margin-top: 4px;
+    justify-self: start;
+}
+
+.preferences-form .checkbox-label {
+    align-self: end;
+    justify-self: start;
+    padding-bottom: 0.65rem;
+}
+
 input[type="text"],
 input[type="email"],
 input[type="number"],
@@ -359,6 +412,20 @@ textarea {
 input::placeholder,
 textarea::placeholder {
     color: var(--text-muted);
+}
+
+/* select's own closed box correctly uses the translucent --input-bg
+   above (it blends with the dark page behind it, same as every other
+   input) -- but a <select>'s dropdown POPUP isn't rendered inside the
+   page's own background stack in most browsers, so that same
+   translucent value doesn't composite against anything dark there and
+   can render close to invisible/washed-out (text unreadable until a
+   browser's own hover-highlight provides contrast). <option> elements
+   need an explicit SOLID background of their own, independent of the
+   translucent input styling, for this exact reason. */
+select option {
+    background-color: var(--bg-dark);
+    color: var(--text-primary);
 }
 
 input:focus,
@@ -608,7 +675,8 @@ html.light-theme .flag-warning {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px;
+    justify-content: space-between;
+    gap: 6px 12px;
 }
 
 .version-history li:last-child {
@@ -618,6 +686,110 @@ html.light-theme .flag-warning {
 .version-history form {
     display: inline;
     margin-left: 4px;
+}
+
+/* Rows with action buttons (Intake Sources, Search Keywords, exclusion
+   lists) split into an info group that wraps freely and an actions group
+   that stays together -- without this, a long info line (e.g. a source's
+   error text) pushes a single button onto its own line by itself instead
+   of wrapping as a clean group. */
+.version-history .row-info {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.version-history .row-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+.version-history .row-actions form {
+    display: inline-flex;
+    margin-left: 0;
+}
+
+/* Tag-chip lists: for short, potentially numerous items (search keywords,
+   seniority/location exclusions) where a full-width row with two big
+   gradient buttons per item doesn't scale -- a location-exclusion list
+   alone can run 30-40+ entries, and at that count the version-history row
+   pattern turns into an extremely long, visually loud scroll. Chips wrap
+   compactly like Gmail labels/GitHub topics: click the label to toggle
+   active/paused, click the small x to delete. */
+.tag-chip-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.tag-chip {
+    display: inline-flex;
+    align-items: stretch;
+    border-radius: 999px;
+    border: 1px solid var(--input-border);
+    background: var(--input-bg);
+    overflow: hidden;
+}
+
+.tag-chip.tag-chip-active {
+    border-color: rgba(99, 102, 241, 0.4);
+    background: rgba(99, 102, 241, 0.1);
+}
+
+.tag-chip.tag-chip-paused {
+    opacity: 0.55;
+}
+
+.tag-chip form {
+    display: inline-flex;
+    margin: 0;
+}
+
+.tag-chip button {
+    background: none;
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+    font-family: 'Outfit', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: var(--transition-smooth);
+}
+
+.tag-chip button:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+.tag-chip-label {
+    padding: 6px 4px 6px 14px;
+}
+
+.tag-chip.tag-chip-paused .tag-chip-label {
+    text-decoration: line-through;
+    color: var(--text-secondary);
+}
+
+.tag-chip-delete {
+    padding: 6px 12px 6px 6px;
+    color: var(--text-secondary);
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.tag-chip-delete:hover {
+    color: #f87171;
 }
 
 .variant-header,
@@ -713,7 +885,8 @@ html.light-theme .flag-warning {
         padding: 14px 16px;
     }
 
-    .settings-panel form {
+    .settings-panel form,
+    .preferences-form {
         grid-template-columns: 1fr;
     }
 
