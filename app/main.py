@@ -329,7 +329,7 @@ def restore_backup_confirm(
     )
     message = (
         f"Restore complete -- {result['total_rows']} rows restored. "
-        f"Your pre-restore data was saved to {result['safety_backup_path']} in case you need to undo this."
+        "A safety copy of your previous data was saved automatically in case you need to undo this."
     )
     return RedirectResponse(url=f"/?message={quote(message)}", status_code=303)
 
