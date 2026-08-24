@@ -29,6 +29,17 @@
     doesn't, check the <a href="/jobs">Jobs page</a> or set up your profile first.
 </div>
 {% endif %}
+{% if profile_completeness_warnings %}
+<div class="flash flash-error" role="alert">
+    <strong>Your profile may be incomplete:</strong>
+    <ul>
+        {% for w in profile_completeness_warnings %}
+        <li>{{ w }}</li>
+        {% endfor %}
+    </ul>
+    Review it on the <a href="/profile">Profile page</a>.
+</div>
+{% endif %}
 {% if message %}
 <div class="flash flash-ok" role="status">{{ message }}</div>
 {% endif %}

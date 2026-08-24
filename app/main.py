@@ -211,7 +211,16 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     total_applications = db.query(JobApplication).count()
     profile_variants = db.query(ProfileVariant).all()
     has_active_keywords = db.query(SearchKeyword).filter(SearchKeyword.is_active == True).first() is not None  # noqa: E712
-    has_profile_content = bool(profile_service.get_default_profile_content(db))
+    default_profile_content = profile_service.get_default_profile_content(db)
+    has_profile_content = bool(default_profile_content)
+    # Surfaced on the dashboard itself, not just the Profile page --
+    # a real profile once went 5 days and 8 saves with a missing degree
+    # and zero certifications with nothing anywhere flagging it. This is
+    # the first thing anyone sees on login, so it's the right place for
+    # a completeness check to actually get noticed.
+    profile_completeness_warnings = (
+        profile_service.profile_completeness_warnings(default_profile_content) if default_profile_content else []
+    )
 
     return render(
         request,
@@ -232,6 +241,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
             # automation is turned on; the small nav toggle covers
             # ongoing pause/resume from there.
             "ready_to_start": has_profile_content and has_active_keywords and not settings.automation_enabled,
+            "profile_completeness_warnings": profile_completeness_warnings,
             "message": request.query_params.get("message"),
             "error": request.query_params.get("error"),
         },

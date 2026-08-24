@@ -62,6 +62,17 @@
     <p class="muted-note">No active profile content yet -- paste your profile data below (JSON format) to fill in this variant.</p>
     {% endif %}
 
+    {% if entry.completeness_warnings %}
+    <div class="flash flash-error" role="alert">
+        <strong>Worth a look:</strong>
+        <ul>
+            {% for w in entry.completeness_warnings %}
+            <li>{{ w }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
     {% if entry.pending_versions %}
     <div class="pending-list">
         <h3>Pending approval</h3>
@@ -71,6 +82,12 @@
                 Proposed {{ pending.created_at.strftime("%Y-%m-%d %H:%M") }} UTC via LinkedIn paste-diff
             </p>
             <p>{{ pending.change_summary }}</p>
+            {% if pending.regression_warnings %}
+            <p class="flash-error-inline">
+                Shrinks compared to your active profile: {{ pending.regression_warnings|join(", ") }}.
+                Review closely before approving.
+            </p>
+            {% endif %}
             <details>
                 <summary>View proposed content</summary>
                 <pre class="json-preview">{{ pending.content_json }}</pre>
@@ -176,6 +193,62 @@
             ], entry.eeo.disability_status) }}
 
             <button type="submit">Save Preferences</button>
+        </form>
+    </details>
+
+    <details class="sub-panel" {{ "open" if entry.completeness_warnings }}>
+        <summary>Education</summary>
+        {% if entry.education %}
+        <ul class="version-history">
+            {% for edu in entry.education %}
+            <li>
+                <strong>{{ edu.degree }}</strong> &mdash; {{ edu.school }}{% if edu.date %} <span class="muted-note">({{ edu.date }})</span>{% endif %}
+                <form method="post" action="/profile/variants/{{ variant.id }}/education/{{ loop.index0 }}/delete" class="inline-form"
+                      onsubmit="return confirm('Remove this education entry?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="tag-chip-delete" aria-label="Remove '{{ edu.degree }}'" title="Remove">&times;</button>
+                </form>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted-note">No education listed yet.</p>
+        {% endif %}
+        <form method="post" action="/profile/variants/{{ variant.id }}/education" class="inline-form-row">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label class="visually-hidden" for="edu-degree-{{ variant.id }}">Degree</label>
+            <input type="text" id="edu-degree-{{ variant.id }}" name="degree" placeholder="e.g. B.S. in Computer Science" required>
+            <label class="visually-hidden" for="edu-school-{{ variant.id }}">School</label>
+            <input type="text" id="edu-school-{{ variant.id }}" name="school" placeholder="School name" required>
+            <label class="visually-hidden" for="edu-date-{{ variant.id }}">Date / GPA (optional)</label>
+            <input type="text" id="edu-date-{{ variant.id }}" name="date" placeholder="e.g. GPA: 3.8/4.0 (optional)">
+            <button type="submit">Add</button>
+        </form>
+    </details>
+
+    <details class="sub-panel" {{ "open" if entry.completeness_warnings }}>
+        <summary>Certifications</summary>
+        {% if entry.certifications %}
+        <ul class="version-history">
+            {% for cert in entry.certifications %}
+            <li>
+                {{ cert }}
+                <form method="post" action="/profile/variants/{{ variant.id }}/certifications/{{ loop.index0 }}/delete" class="inline-form"
+                      onsubmit="return confirm('Remove this certification?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="tag-chip-delete" aria-label="Remove '{{ cert }}'" title="Remove">&times;</button>
+                </form>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted-note">No certifications listed yet.</p>
+        {% endif %}
+        <form method="post" action="/profile/variants/{{ variant.id }}/certifications" class="inline-form-row">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label class="visually-hidden" for="cert-text-{{ variant.id }}">Certification</label>
+            <input type="text" id="cert-text-{{ variant.id }}" name="text" placeholder="e.g. AWS Certified Solutions Architect &ndash; Jan 2026" required>
+            <button type="submit">Add</button>
         </form>
     </details>
 
