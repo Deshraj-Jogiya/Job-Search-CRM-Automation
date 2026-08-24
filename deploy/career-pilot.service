@@ -1,0 +1,21 @@
+[Unit]
+Description=Career Pilot (FastAPI + uvicorn)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=career-pilot
+WorkingDirectory=/opt/career-pilot
+EnvironmentFile=/opt/career-pilot/.env
+ExecStart=/opt/career-pilot/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+# Standard hardening for a service that doesn't need broad filesystem access
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/career-pilot
+
+[Install]
+WantedBy=multi-user.target

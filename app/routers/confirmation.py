@@ -11,13 +11,15 @@ dashboard routes in app/routers/jobs.py, which serve the same actions
 for a user who's already logged into the dashboard in their browser.
 """
 
+from urllib.parse import quote
+
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import JobApplication
-from ..services import confirmation_tokens
+from ..services import autofill_service, confirmation_tokens
 from ..services.confirmation_service import ConfirmationServiceError, approve_application, reject_application
 from ..templating import templates
 
@@ -50,12 +52,22 @@ def confirm_page(application_id: int, token: str, request: Request, db: Session 
 
 @router.post("/{application_id}/approve")
 def confirm_approve(application_id: int, token: str = Form(...), db: Session = Depends(get_db)):
-    _require_valid_token(application_id, token, db)
+    application = _require_valid_token(application_id, token, db)
     try:
         approve_application(db, application_id)
     except ConfirmationServiceError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return RedirectResponse(url=f"/confirm/{application_id}?token={token}&message=Approved.", status_code=303)
+
+    # Same reasoning as jobs.py's approve_application_now: a single,
+    # deliberate approval (the human already saw the flag, if any, and
+    # chose to proceed) is enough to also launch autofill immediately,
+    # no separate manual step needed.
+    if autofill_service.is_supported(application.posting.source):
+        autofill_service.launch_autofill_in_background(application_id)
+        message = "Approved -- opening a real browser window on the server to pre-fill the application."
+    else:
+        message = "Approved."
+    return RedirectResponse(url=f"/confirm/{application_id}?token={token}&message={quote(message)}", status_code=303)
 
 
 @router.post("/{application_id}/reject")

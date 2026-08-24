@@ -23,6 +23,14 @@
     turning it on -- this is a live demo of the architecture, not a scraping/spam service.
 </div>
 {% endif %}
+{% if intake_unconfigured %}
+<div class="flash flash-error" role="alert">
+    No custom search keywords are configured -- intake is currently running on 5 generic default titles
+    rather than anything tailored to your real profile. This should auto-fill itself from your active
+    profile the next time intake runs; if it stays generic, check the <a href="/jobs">Jobs page</a> or seed
+    a profile first.
+</div>
+{% endif %}
 {% if message %}
 <div class="flash flash-ok" role="status">{{ message }}</div>
 {% endif %}
@@ -41,6 +49,23 @@
     </div>
 </section>
 
+{% if ready_to_start %}
+<section class="settings-panel">
+    <h2>Ready to start your job hunt?</h2>
+    <p class="muted-note">
+        Your profile is set up and search keywords have already been derived from it. One thing worth doing
+        first: <a href="/jobs">review your search keywords, seniority exclusions, and location exclusions
+        on the Jobs page</a> -- they were auto-suggested from your profile, and it's worth a quick look
+        before turning automation on. Once you're happy with them, start the hunt below -- intake will begin
+        picking up new postings on its normal schedule and run until you pause it.
+    </p>
+    <form method="post" action="/settings/automation/toggle" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn-on">Start Hunt</button>
+    </form>
+</section>
+{% endif %}
+
 <section class="empty-state">
     <p>Profile management (Phase 1), job intake (Phase 2), matching/tailoring (Phase 3), the confirmation queue (Phase 4), and outreach (Phase 5) are all live -- see <a href="/profile">Profile</a>, <a href="/jobs">Jobs</a>, and <a href="/jobs/review">Review Queue</a>.</p>
 </section>
@@ -50,6 +75,24 @@
     {% if backup_configured %}
     <p class="muted-note">Downloads an encrypted snapshot of your whole database (profile, applications, outreach). Keep this somewhere safe -- decrypting it requires your CREDENTIAL_ENCRYPTION_KEY.</p>
     <p><a href="/settings/backup/export">Download Encrypted Backup</a></p>
+
+    <h3>Restore from Backup</h3>
+    <p class="muted-note">
+        Emergency use only -- this replaces every row in the live database with an uploaded backup's
+        contents. Requires <code>ADMIN_PASSWORD</code> (set in <code>.env</code>) and a second typed
+        confirmation after previewing what the backup contains. A safety-net backup of your current data
+        is taken automatically right before the replacement happens.
+    </p>
+    <form method="post" action="/settings/backup/restore/preview" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label>Encrypted backup file (.enc)
+            <input type="file" name="backup_file" accept=".enc" required>
+        </label>
+        <label>Admin password
+            <input type="password" name="admin_password" required autocomplete="off">
+        </label>
+        <button type="submit" class="btn-secondary">Preview Restore</button>
+    </form>
     {% else %}
     <p class="muted-note">Set CREDENTIAL_ENCRYPTION_KEY in .env to enable encrypted backups.</p>
     {% endif %}
@@ -72,6 +115,14 @@
             <input type="number" name="stale_posting_threshold_days" value="{{ settings.stale_posting_threshold_days }}" min="1">
         </label>
 
+        <label>Base search location (Adzuna/LinkedIn)
+            <input type="text" name="location_query" value="{{ settings.location_query }}" placeholder="United States">
+        </label>
+
+        <label>JobRight company-discovery interval (hours)
+            <input type="number" name="jobright_poll_interval_hours" value="{{ settings.jobright_poll_interval_hours }}" min="1">
+        </label>
+
         <label>Confirmation window (hours)
             <input type="number" step="0.5" name="confirmation_window_hours" value="{{ settings.confirmation_window_hours }}" min="0.5">
         </label>
@@ -90,6 +141,18 @@
 
         <label>Rejected job retention (days)
             <input type="number" name="rejected_retention_days" value="{{ settings.rejected_retention_days }}" min="1">
+        </label>
+
+        <label>Minimum match score to auto-launch autofill (%)
+            <input type="number" name="min_score_for_auto_launch" value="{{ settings.min_score_for_auto_launch }}" min="0" max="100">
+        </label>
+
+        <label>Tavily monthly call budget
+            <input type="number" name="tavily_monthly_call_budget" value="{{ settings.tavily_monthly_call_budget }}" min="0">
+        </label>
+
+        <label>Hunter.io monthly call budget
+            <input type="number" name="hunter_monthly_call_budget" value="{{ settings.hunter_monthly_call_budget }}" min="0">
         </label>
 
         <label>Daily outreach cap

@@ -23,8 +23,8 @@ class AnthropicProvider(LLMProvider):
         )
         return "".join(block.text for block in response.content if block.type == "text").strip()
 
-    def complete_json(self, system: str, prompt: str, temperature: float = 0.3) -> str:
-        return self._call(system, prompt, temperature, max_tokens=2000)
+    def complete_json(self, system: str, prompt: str, temperature: float = 0.3, max_tokens: int = None) -> str:
+        return self._call(system, prompt, temperature, max_tokens=max_tokens or 2000)
 
     def complete_text(self, system: str, prompt: str, temperature: float = 0.4, max_tokens: int = None) -> str:
         return self._call(system, prompt, temperature, max_tokens=max_tokens or 1200)

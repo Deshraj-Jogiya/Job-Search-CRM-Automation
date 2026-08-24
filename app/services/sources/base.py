@@ -39,3 +39,4 @@ class RawPosting:
     external_id: str | None = None
     job_description: str | None = None
     posted_at: datetime | None = None
+    location: str | None = None

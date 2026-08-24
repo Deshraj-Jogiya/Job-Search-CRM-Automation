@@ -1,0 +1,32 @@
+{% extends "_base.html" %}
+
+{% block title %}Log In{% endblock %}
+
+{% block header_title %}Career Pilot{% endblock %}
+
+{% block nav %}{% endblock %}
+
+{% block content %}
+{% if error %}
+<div class="flash flash-error" role="alert">{{ error }}</div>
+{% endif %}
+
+<section class="settings-panel">
+    <h2>Log In</h2>
+    <form method="post" action="/login">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="next" value="{{ next }}">
+
+        <label>Username
+            <input type="text" name="username" required autocomplete="username">
+        </label>
+
+        <label>Password
+            <input type="password" name="password" required autocomplete="current-password">
+        </label>
+
+        <button type="submit">Log In</button>
+    </form>
+    <p class="muted-note"><a href="/forgot-password">Forgot password?</a></p>
+</section>
+{% endblock %}
