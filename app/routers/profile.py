@@ -46,6 +46,14 @@ def profile_page(request: Request, db: Session = Depends(get_db)):
         active_version = next((v for v in versions if v.is_active), None)
         pending_versions = [v for v in versions if not v.is_active and v.source == "linkedin_diff"]
         active_content = json.loads(active_version.content_json) if active_version else {}
+        # Pending LinkedIn-diff versions already require an explicit
+        # human approve/reject click -- this doesn't block that, it just
+        # makes sure the human reviewing actually sees a shrink risk
+        # right there instead of having to spot it inside a raw JSON diff.
+        for pending in pending_versions:
+            pending.regression_warnings = profile_service.detect_profile_regressions(
+                active_content, json.loads(pending.content_json)
+            )
         variant_data.append(
             {
                 "variant": variant,
@@ -54,6 +62,9 @@ def profile_page(request: Request, db: Session = Depends(get_db)):
                 "versions": versions,
                 "eeo": active_content.get("eeo") or {},
                 "application_preferences": active_content.get("application_preferences") or {},
+                "education": active_content.get("education") or [],
+                "certifications": active_content.get("certifications") or [],
+                "completeness_warnings": profile_service.profile_completeness_warnings(active_content),
             }
         )
 
@@ -102,8 +113,56 @@ def delete_variant(variant_id: int, db: Session = Depends(get_db)):
 @router.post("/variants/{variant_id}/manual-save")
 def manual_save(variant_id: int, content_json: str = Form(...), db: Session = Depends(get_db)):
     try:
-        profile_service.create_manual_version(db, variant_id, content_json)
+        _version, warnings = profile_service.create_manual_version(db, variant_id, content_json)
+        if warnings:
+            # Still saved (rejecting it would silently discard what was
+            # just typed/pasted) -- surfaced as an error-styled flash
+            # specifically so it's impossible to miss, unlike the real
+            # incident this exists to catch (5 days, 8 saves, no signal).
+            return _redirect(error="Saved, but this shrank: " + "; ".join(warnings) + ". If unintentional, fix it now.")
         return _redirect(message="Profile content saved.")
+    except ProfileServiceError as e:
+        return _redirect(error=str(e))
+
+
+@router.post("/variants/{variant_id}/education")
+def add_education(
+    variant_id: int,
+    degree: str = Form(...),
+    school: str = Form(...),
+    date: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    try:
+        profile_service.add_education_entry(db, variant_id, degree, school, date)
+        return _redirect(message=f"Added education entry: {degree}.")
+    except ProfileServiceError as e:
+        return _redirect(error=str(e))
+
+
+@router.post("/variants/{variant_id}/education/{index}/delete")
+def delete_education(variant_id: int, index: int, db: Session = Depends(get_db)):
+    try:
+        profile_service.remove_education_entry(db, variant_id, index)
+        return _redirect(message="Removed education entry.")
+    except ProfileServiceError as e:
+        return _redirect(error=str(e))
+
+
+@router.post("/variants/{variant_id}/certifications")
+def add_certification_route(variant_id: int, text: str = Form(...), db: Session = Depends(get_db)):
+    try:
+        profile_service.add_certification(db, variant_id, text)
+        return _redirect(message=f"Added certification: {text.strip()}.")
+    except ProfileServiceError as e:
+        return _redirect(error=str(e))
+
+
+@router.post("/variants/{variant_id}/certifications/{index}/delete")
+def delete_certification(variant_id: int, index: int, db: Session = Depends(get_db)):
+    try:
+        profile_service.remove_certification(db, variant_id, index)
+        return _redirect(message="Removed certification.")
     except ProfileServiceError as e:
         return _redirect(error=str(e))
 

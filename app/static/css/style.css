@@ -686,6 +686,24 @@ html.light-theme .flag-warning {
     margin-left: 4px;
 }
 
+.tag-chip-delete {
+    background: none;
+    border: none;
+    box-shadow: none;
+    color: var(--text-secondary);
+    font-size: 1rem;
+    line-height: 1;
+    padding: 4px 6px;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+}
+
+.tag-chip-delete:hover {
+    color: #f87171;
+    transform: none;
+    box-shadow: none;
+}
+
 /* Rows with action buttons (Intake Sources, Search Keywords, exclusion
    lists) split into an info group that wraps freely and an actions group
    that stays together -- without this, a long info line (e.g. a source's
