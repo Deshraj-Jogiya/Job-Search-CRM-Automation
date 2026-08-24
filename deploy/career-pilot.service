@@ -1,19 +1,30 @@
 [Unit]
 Description=Career Pilot (FastAPI + uvicorn)
-After=network-online.target
+After=network-online.target xvfb.service
 Wants=network-online.target
+Requires=xvfb.service
 
 [Service]
 Type=simple
 User=career-pilot
 WorkingDirectory=/opt/career-pilot
 EnvironmentFile=/opt/career-pilot/.env
+# DISPLAY: the interactive autofill browser (Playwright, headless=False
+# by design -- see autofill_service.py's docstring) needs a real X
+# display to open on. This VM has no physical display, so it opens on
+# the virtual one xvfb.service provides instead, viewable/clickable via
+# noVNC (see novnc.service + Caddy's /vnc/ route) -- a human still does
+# the actual review and submit click, just through a remote screen
+# instead of a local one.
+Environment=DISPLAY=:99
 ExecStart=/opt/career-pilot/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
 Restart=on-failure
 RestartSec=5
-# Standard hardening for a service that doesn't need broad filesystem access
+# Standard hardening for a service that doesn't need broad filesystem
+# access -- PrivateTmp deliberately NOT set here (unlike a typical
+# hardened unit) since it would isolate this service from the real
+# /tmp/.X11-unix socket Xvfb listens on, breaking the DISPLAY connection.
 NoNewPrivileges=true
-PrivateTmp=true
 ProtectSystem=strict
 ReadWritePaths=/opt/career-pilot
 
