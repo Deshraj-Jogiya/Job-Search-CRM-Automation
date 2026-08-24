@@ -28,6 +28,75 @@ class ProfileServiceError(Exception):
     rather than letting a 500 through."""
 
 
+# Real incident this exists to catch: a profile sat for 5 days across 8
+# separate manual saves with a completely missing second degree and
+# zero certifications -- never flagged, never noticed, because a raw
+# JSON textarea gives no signal that a section shrank or vanished.
+# These two checks are mechanical (no LLM), same posture as the
+# tailoring fabrication safeguard elsewhere in this app: never trust a
+# single unverified pass over structured data:
+#   - detect_profile_regressions: compares a NEW profile snapshot
+#     against the CURRENTLY ACTIVE one and flags anything that shrank.
+#     Applies to any path that replaces the whole profile wholesale
+#     (raw JSON paste, portfolio sync, LinkedIn AI-diff) -- the paths
+#     where an accidental omission is actually possible.
+#   - profile_completeness_warnings: flags sections that are just
+#     empty, full stop, independent of any prior version -- catches the
+#     case (like the real one) where something was NEVER there, so
+#     there was never a "shrink" to detect in the first place.
+_SECTION_LABELS = {
+    "experience": "work experience entries",
+    "projects": "projects",
+    "education": "education entries",
+    "certifications": "certifications",
+}
+
+
+def _section_counts(content: dict) -> dict[str, int]:
+    counts = {}
+    for key in _SECTION_LABELS:
+        value = content.get(key)
+        counts[key] = len(value) if isinstance(value, list) else 0
+    skills = content.get("skills")
+    if isinstance(skills, dict):
+        counts["skills"] = sum(len(v) for v in skills.values() if isinstance(v, list))
+    elif isinstance(skills, list):
+        counts["skills"] = len(skills)
+    else:
+        counts["skills"] = 0
+    return counts
+
+
+def detect_profile_regressions(old_content: dict, new_content: dict) -> list[str]:
+    """Plain-English warnings for any section that shrank going from
+    old_content to new_content. Empty list means nothing looks wrong."""
+    old_counts = _section_counts(old_content)
+    new_counts = _section_counts(new_content)
+    warnings = []
+    for key, label in {**_SECTION_LABELS, "skills": "skills"}.items():
+        old_n, new_n = old_counts.get(key, 0), new_counts.get(key, 0)
+        if new_n < old_n:
+            warnings.append(f"{label}: {old_n} -> {new_n}")
+    return warnings
+
+
+def profile_completeness_warnings(content: dict) -> list[str]:
+    """Flags sections that are just empty, independent of history --
+    catches a gap that was never there to begin with, which a
+    shrink-only check can't. Deliberately narrow (only the sections
+    genuinely worth flagging by default) to avoid nagging over things
+    that are legitimately fine to leave blank for many candidates."""
+    counts = _section_counts(content)
+    warnings = []
+    if counts["certifications"] == 0:
+        warnings.append("No certifications listed -- if you have any, add them on the Profile page.")
+    if counts["education"] == 0:
+        warnings.append("No education listed -- add at least one degree on the Profile page.")
+    if counts["experience"] == 0:
+        warnings.append("No work experience listed yet.")
+    return warnings
+
+
 def get_default_profile_content(db: Session) -> dict | None:
     """The default variant's active profile content, or None if there
     isn't one yet -- for callers outside an application context (e.g.
@@ -103,11 +172,23 @@ def _deactivate_siblings(db: Session, variant_id: int) -> None:
     ).update({ProfileVersion.is_active: False})
 
 
-def create_manual_version(db: Session, variant_id: int, content_json_text: str) -> ProfileVersion:
+def create_manual_version(
+    db: Session, variant_id: int, content_json_text: str, check_for_regressions: bool = True
+) -> tuple[ProfileVersion, list[str]]:
     """Bootstrap or hand-edit a variant's profile content by pasting raw
     JSON directly. This is the only way to get a first version into a
     variant before either sync source (portfolio, LinkedIn) has anything
-    to work from."""
+    to work from.
+
+    Returns (version, regression_warnings) -- check_for_regressions=False
+    for callers doing a narrow, deliberate merge (a single add/remove
+    through update_structured_fields) where a size change is exactly
+    what the user's own click asked for, not something to flag. Never
+    blocks on a regression -- a raw JSON paste that shrinks something is
+    still saved (rejecting it would silently discard whatever the user
+    just typed), but the warning is returned so the caller can surface
+    it loudly instead of the silence that let this go unnoticed for 5
+    days across 8 saves in the real incident this exists to catch."""
     variant = _get_variant_or_raise(db, variant_id)
     try:
         parsed = json.loads(content_json_text)
@@ -115,6 +196,12 @@ def create_manual_version(db: Session, variant_id: int, content_json_text: str) 
         raise ProfileServiceError(f"That isn't valid JSON: {e}") from e
     if not isinstance(parsed, dict):
         raise ProfileServiceError("Profile content must be a JSON object.")
+
+    warnings = []
+    if check_for_regressions:
+        previous = get_active_version(db, variant_id)
+        if previous:
+            warnings = detect_profile_regressions(json.loads(previous.content_json), parsed)
 
     _deactivate_siblings(db, variant_id)
     version = ProfileVersion(
@@ -127,8 +214,16 @@ def create_manual_version(db: Session, variant_id: int, content_json_text: str) 
     db.add(version)
     db.commit()
     db.refresh(version)
-    log_activity(db, f"Saved manual profile edit for variant '{variant.name}'.")
-    return version
+    if warnings:
+        log_activity(
+            db,
+            f"Manual profile edit for '{variant.name}' shrank: {'; '.join(warnings)}. "
+            "If unintentional, review and fix on the Profile page.",
+            "WARNING",
+        )
+    else:
+        log_activity(db, f"Saved manual profile edit for variant '{variant.name}'.")
+    return version, warnings
 
 
 def update_structured_fields(db: Session, variant_id: int, updates: dict) -> ProfileVersion:
@@ -137,13 +232,65 @@ def update_structured_fields(db: Session, variant_id: int, updates: dict) -> Pro
     everything else (experience, projects, etc.) untouched, and saves the
     result as a new active version -- same versioning mechanism as
     create_manual_version(), just merge-based so the Profile page's
-    structured preferences form doesn't need the user to paste the whole
-    profile JSON back in just to change a few fixed-fact fields."""
+    structured preferences/education/certifications forms don't need the
+    user to paste the whole profile JSON back in just to change a few
+    fields. Skips the regression check -- a narrow, deliberate merge
+    (e.g. removing one certification the user just clicked "Remove" on)
+    is exactly what was asked for, not a size change worth flagging."""
     variant = _get_variant_or_raise(db, variant_id)
     version = get_active_version(db, variant_id)
     content = json.loads(version.content_json) if version else {}
     content.update(updates)
-    return create_manual_version(db, variant.id, json.dumps(content, indent=2))
+    version, _warnings = create_manual_version(
+        db, variant.id, json.dumps(content, indent=2), check_for_regressions=False
+    )
+    return version
+
+
+def add_education_entry(db: Session, variant_id: int, degree: str, school: str, date: str) -> ProfileVersion:
+    """Structured alternative to raw JSON paste for the exact section a
+    real profile went 5 days and 8 saves with a missing degree in,
+    completely unnoticed. See document_render_service.render_resume_pdf
+    for the {degree, school, date} shape this must match."""
+    degree, school, date = degree.strip(), school.strip(), date.strip()
+    if not degree or not school:
+        raise ProfileServiceError("Degree and school are both required.")
+    version = get_active_version(db, variant_id)
+    content = json.loads(version.content_json) if version else {}
+    education = list(content.get("education") or [])
+    education.append({"degree": degree, "school": school, "date": date})
+    return update_structured_fields(db, variant_id, {"education": education})
+
+
+def remove_education_entry(db: Session, variant_id: int, index: int) -> ProfileVersion:
+    version = get_active_version(db, variant_id)
+    content = json.loads(version.content_json) if version else {}
+    education = list(content.get("education") or [])
+    if index < 0 or index >= len(education):
+        raise ProfileServiceError("That education entry no longer exists -- refresh and try again.")
+    education.pop(index)
+    return update_structured_fields(db, variant_id, {"education": education})
+
+
+def add_certification(db: Session, variant_id: int, text: str) -> ProfileVersion:
+    text = text.strip()
+    if not text:
+        raise ProfileServiceError("Certification text cannot be empty.")
+    version = get_active_version(db, variant_id)
+    content = json.loads(version.content_json) if version else {}
+    certifications = list(content.get("certifications") or [])
+    certifications.append(text)
+    return update_structured_fields(db, variant_id, {"certifications": certifications})
+
+
+def remove_certification(db: Session, variant_id: int, index: int) -> ProfileVersion:
+    version = get_active_version(db, variant_id)
+    content = json.loads(version.content_json) if version else {}
+    certifications = list(content.get("certifications") or [])
+    if index < 0 or index >= len(certifications):
+        raise ProfileServiceError("That certification no longer exists -- refresh and try again.")
+    certifications.pop(index)
+    return update_structured_fields(db, variant_id, {"certifications": certifications})
 
 
 def _summarize_diff(old_content: dict, new_content: dict) -> str:
@@ -202,6 +349,13 @@ def sync_from_portfolio(db: Session, variant_id: int) -> ProfileVersion:
     previous = get_active_version(db, variant_id)
     if previous:
         old_content = json.loads(previous.content_json)
+        regressions = detect_profile_regressions(old_content, new_content)
+        if regressions:
+            raise ProfileServiceError(
+                "Portfolio sync would shrink: " + "; ".join(regressions) + ". "
+                "This activates immediately with no review step, so it's blocked rather than silently "
+                "losing data -- update your portfolio's resume.json first, or use manual edit if this is intentional."
+            )
         change_summary = _summarize_diff(old_content, new_content)
     else:
         change_summary = "Initial profile import from portfolio sync."
