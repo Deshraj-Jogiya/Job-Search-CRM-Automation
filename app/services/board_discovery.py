@@ -71,13 +71,26 @@ def _probe_ashby(slug: str) -> bool:
         return False
 
 
-def _probe_recruitee(slug: str) -> bool:
+def _probe_recruitee(slug: str, company_name: str) -> bool:
+    # Recruitee slugs are short and common enough (e.g. "bbc") that an
+    # unrelated company can legitimately own the same one -- the API
+    # response includes the real employer's name, so cross-check it
+    # against the company we're actually looking for instead of
+    # trusting "a board exists at this slug" alone. Substring match on
+    # the normalized names, since Recruitee's company_name often carries
+    # a legal suffix ("BBC NV") the target name won't have.
     try:
         resp = requests.get(f"https://{slug}.recruitee.com/api/offers/", timeout=_TIMEOUT)
         if resp.status_code != 200:
             return False
         data = resp.json()
-        return isinstance(data.get("offers"), list)
+        if not isinstance(data.get("offers"), list):
+            return False
+        listed_name = normalize_company_name(data.get("company_name") or "")
+        target_name = normalize_company_name(company_name)
+        if not listed_name or not target_name:
+            return False
+        return listed_name in target_name or target_name in listed_name
     except Exception:
         return False
 
@@ -87,6 +100,14 @@ def _probe_personio(slug: str) -> bool:
     # which from the slug alone -- try both, same as personio_source.py
     # does at fetch time (only the bare slug is persisted, see
     # Company.personio_slug).
+    #
+    # Unlike Recruitee, Personio's public XML feed carries no
+    # company-identifying field at all, so a short/generic slug (e.g.
+    # "the-alliance") can silently match an unrelated tenant with no way
+    # to catch it mechanically here -- confirmed live (see board_discovery
+    # false-positive investigation, 2026-08-24). Users can correct a wrong
+    # slug manually from the Jobs page; treat any personio auto-match as
+    # lower-confidence than the other four ATS probes.
     for tld in ("com", "de"):
         try:
             resp = requests.get(f"https://{slug}.jobs.personio.{tld}/xml", timeout=_TIMEOUT)
@@ -101,11 +122,11 @@ def _probe_personio(slug: str) -> bool:
 
 
 _PROBES = {
-    "greenhouse": _probe_greenhouse,
-    "lever": _probe_lever,
-    "ashby": _probe_ashby,
+    "greenhouse": lambda slug, company_name: _probe_greenhouse(slug),
+    "lever": lambda slug, company_name: _probe_lever(slug),
+    "ashby": lambda slug, company_name: _probe_ashby(slug),
     "recruitee": _probe_recruitee,
-    "personio": _probe_personio,
+    "personio": lambda slug, company_name: _probe_personio(slug),
 }
 
 
@@ -114,8 +135,9 @@ def discover_slugs(company_name: str) -> dict:
     Returns {"greenhouse": slug_or_None, "lever": slug_or_None,
     "ashby": slug_or_None, "recruitee": slug_or_None, "personio":
     slug_or_None}. Stops at the first candidate that hits for each ATS
-    -- doesn't try to disambiguate multiple valid-looking hits, since
-    that would need a real search API this doesn't have.
+    -- doesn't try to disambiguate multiple valid-looking hits beyond
+    Recruitee's company-name cross-check, since a real search API would
+    be needed to do this properly for the rest.
 
     The 5 ATS probes for a given candidate slug are independent network
     calls, so they run concurrently (worst case ~1 timeout instead of
@@ -131,7 +153,7 @@ def discover_slugs(company_name: str) -> dict:
         if not pending:
             break
         with ThreadPoolExecutor(max_workers=len(pending)) as pool:
-            futures = {ats: pool.submit(probe, slug) for ats, probe in pending.items()}
+            futures = {ats: pool.submit(probe, slug, company_name) for ats, probe in pending.items()}
             for ats, future in futures.items():
                 if future.result():
                     result[ats] = slug
