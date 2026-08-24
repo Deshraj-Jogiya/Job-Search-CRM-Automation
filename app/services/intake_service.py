@@ -37,7 +37,16 @@ from .activity_logger import log_activity
 from .company_utils import normalize_company_name, normalize_title
 from .llm import get_llm_provider, parse_json_response
 from .profile_service import get_default_profile_content
-from .sources import adzuna_source, ashby_source, greenhouse_source, lever_source, linkedin_source
+from .sources import (
+    adzuna_source,
+    ashby_source,
+    greenhouse_source,
+    jobspipe_source,
+    lever_source,
+    linkedin_source,
+    personio_source,
+    recruitee_source,
+)
 
 SOURCE_MODULES = {
     linkedin_source.SOURCE_NAME: linkedin_source,
@@ -45,11 +54,17 @@ SOURCE_MODULES = {
     greenhouse_source.SOURCE_NAME: greenhouse_source,
     lever_source.SOURCE_NAME: lever_source,
     ashby_source.SOURCE_NAME: ashby_source,
+    recruitee_source.SOURCE_NAME: recruitee_source,
+    personio_source.SOURCE_NAME: personio_source,
+    jobspipe_source.SOURCE_NAME: jobspipe_source,
 }
 
 # Sources whose cheap_scan() makes one real external call per keyword
 # (a real search API), as opposed to Greenhouse/Lever/Ashby's one call
-# per company regardless of keyword count -- see _run_source.
+# per company regardless of keyword count -- see _run_source. JobsPipe
+# isn't in this set: its search API accepts every keyword as a single
+# `job_title_or` filter array in one call, so it gets the full keyword
+# list every cycle like the direct-ATS sources do.
 _PER_KEYWORD_CALL_SOURCES = {adzuna_source.SOURCE_NAME, linkedin_source.SOURCE_NAME}
 
 # How many pre-existing companies (created before board-slug auto-
@@ -88,6 +103,21 @@ _DEFAULT_LOCATION_EXCLUSIONS = [
 ]
 
 _ADZUNA_MONTHLY_CALL_BUDGET = int(os.getenv("ADZUNA_MONTHLY_CALL_BUDGET", "900"))
+
+# JobsPipe bills per job actually returned ("1 credit = 1 job"), not per
+# call like Adzuna -- see _quota_cost. Free tier is 1,000 jobs/month;
+# kept the same safety-margin convention as Adzuna's own budget default.
+_JOBSPIPE_MONTHLY_JOB_BUDGET = int(os.getenv("JOBSPIPE_MONTHLY_JOB_BUDGET", "900"))
+
+# Sources with a real external quota to pace against, and their monthly
+# budget. Both share the same reset/daily-pacing machinery
+# (_reset_call_period_if_needed, _adzuna_daily_budget) despite the name
+# -- it was written for Adzuna first but takes the budget as a plain
+# parameter, so it's generic.
+_QUOTA_BUDGETED_SOURCES = {
+    adzuna_source.SOURCE_NAME: _ADZUNA_MONTHLY_CALL_BUDGET,
+    jobspipe_source.SOURCE_NAME: _JOBSPIPE_MONTHLY_JOB_BUDGET,
+}
 
 # Hard cap on auto-derived keywords, independent of what the LLM
 # actually proposes -- see ensure_intake_targeting.
@@ -211,6 +241,8 @@ def _apply_discovered_slugs(db: Session, company: Company, slugs: dict) -> None:
     company.greenhouse_slug = slugs.get("greenhouse")
     company.lever_slug = slugs.get("lever")
     company.ashby_slug = slugs.get("ashby")
+    company.recruitee_slug = slugs.get("recruitee")
+    company.personio_slug = slugs.get("personio")
     company.board_slugs_checked_at = utcnow()
     found = [ats for ats, slug in slugs.items() if slug]
     if found:
@@ -249,7 +281,7 @@ def set_manual_board_slug(db: Session, company_name: str, ats_type: str, slug: s
     slug once, or it wouldn't have needed a manual entry). This does
     mean the other two ATS types won't get auto-probed for this company
     -- an acceptable gap; the user can set those manually too if needed."""
-    if ats_type not in ("greenhouse", "lever", "ashby"):
+    if ats_type not in ("greenhouse", "lever", "ashby", "recruitee", "personio"):
         raise ValueError(f"Unknown ATS type '{ats_type}'.")
     if not slug or not slug.strip():
         raise ValueError("Slug can't be empty.")
@@ -425,6 +457,17 @@ def _ingest_raw_posting(db: Session, module, raw) -> JobPosting | None:
     return posting
 
 
+def _quota_cost(module_name: str, keywords: list[str], raw_postings: list) -> int:
+    """How much of a source's monthly quota this cycle consumed. Adzuna
+    bills per search call (one per keyword); JobsPipe bills per job
+    actually returned ("1 credit = 1 job") regardless of how many
+    keywords were searched -- these need different accounting even
+    though both share the same budget/pacing machinery."""
+    if module_name == jobspipe_source.SOURCE_NAME:
+        return len(raw_postings)
+    return len(keywords)
+
+
 def _run_source(db: Session, module, source_row: JobSource, location_query: str) -> None:
     now = utcnow()
 
@@ -437,24 +480,24 @@ def _run_source(db: Session, module, source_row: JobSource, location_query: str)
         return
 
     _reset_call_period_if_needed(source_row, now)
-    if module.SOURCE_NAME == adzuna_source.SOURCE_NAME:
-        if source_row.calls_used_this_period >= _ADZUNA_MONTHLY_CALL_BUDGET:
-            log_activity(db, f"Skipping {module.SOURCE_NAME}: monthly call budget reached.", "WARNING")
+    monthly_budget = _QUOTA_BUDGETED_SOURCES.get(module.SOURCE_NAME)
+    if monthly_budget is not None:
+        if source_row.calls_used_this_period >= monthly_budget:
+            log_activity(db, f"Skipping {module.SOURCE_NAME}: monthly quota reached.", "WARNING")
             db.commit()
             return
         # Daily pacing: a normal polling cadence can burn the whole
         # monthly budget in the first day or two and then go dark for
         # the rest of the period (confirmed for real at this project's
         # own defaults -- see JobSource.calls_used_today's docstring).
-        # Spreading it evenly means Adzuna coverage stays available
-        # all month instead of front-loaded into the first couple of days.
+        # Spreading it evenly means coverage stays available all month
+        # instead of front-loaded into the first couple of days.
         _reset_daily_counter_if_needed(source_row, now)
-        daily_budget = _adzuna_daily_budget(source_row, now, _ADZUNA_MONTHLY_CALL_BUDGET)
+        daily_budget = _adzuna_daily_budget(source_row, now, monthly_budget)
         if source_row.calls_used_today >= daily_budget:
             log_activity(
                 db,
-                f"Skipping {module.SOURCE_NAME}: today's pacing budget ({daily_budget} call(s), spreading "
-                f"the remaining monthly quota across the rest of the period) already used.",
+                f"Skipping {module.SOURCE_NAME}: today's pacing budget ({daily_budget}) already used.",
                 "INFO",
             )
             db.commit()
@@ -484,9 +527,10 @@ def _run_source(db: Session, module, source_row: JobSource, location_query: str)
         log_activity(db, f"{module.SOURCE_NAME} intake failed: {e}", "ERROR")
         return
 
-    source_row.calls_used_this_period += len(keywords)
-    if module.SOURCE_NAME == adzuna_source.SOURCE_NAME:
-        source_row.calls_used_today += len(keywords)
+    quota_units = _quota_cost(module.SOURCE_NAME, keywords, raw_postings)
+    source_row.calls_used_this_period += quota_units
+    if module.SOURCE_NAME in _QUOTA_BUDGETED_SOURCES:
+        source_row.calls_used_today += quota_units
     source_row.last_polled_at = now
     source_row.last_error = None
     db.commit()
@@ -638,11 +682,12 @@ def ensure_location_exclusions_seeded(db: Session) -> None:
 def run_intake_cycle(db: Session, force: bool = False) -> None:
     """Entry point called by the scheduler, and by the manual 'run now'
     trigger with force=True. Polls whichever sources are due, respecting
-    the kill switch, each source's own cadence, and Adzuna's call
-    budget. force=True bypasses the cadence check (so a manual click
-    actually does something instead of silently no-op'ing if a source
-    was already polled recently) but still respects Adzuna's hard
-    monthly budget cap -- that's a real quota limit, not just politeness."""
+    the kill switch, each source's own cadence, and each quota-budgeted
+    source's own call/job budget (see _QUOTA_BUDGETED_SOURCES).
+    force=True bypasses the cadence check (so a manual click actually
+    does something instead of silently no-op'ing if a source was already
+    polled recently) but still respects those hard monthly budget caps
+    -- those are real quota limits, not just politeness."""
     settings = get_or_create_settings(db)
     if not settings.automation_enabled:
         return
@@ -665,12 +710,21 @@ def run_intake_cycle(db: Session, force: bool = False) -> None:
     # same low-indexing-lag rationale as LinkedIn -- poll at the fast
     # cadence. Each is a no-op (skipped with a clear log entry) until at
     # least one Company row has that ATS's slug set. location_query is
-    # unused by these three (no location search param on any of their
+    # unused by these five (no location search param on any of their
     # APIs) -- they filter locally via LocationExclusion instead.
-    for module in (greenhouse_source, lever_source, ashby_source):
+    for module in (greenhouse_source, lever_source, ashby_source, recruitee_source, personio_source):
         source_row = _get_or_create_job_source(db, module.SOURCE_NAME)
         if source_row.is_active and (force or _is_due(source_row, settings.fast_poll_interval_minutes, now)):
             _run_source(db, module, source_row, location_query)
+
+    # JobsPipe: a broad-net normalizing aggregator (Workday/iCIMS/
+    # SmartRecruiters/etc, already tenant-mapped on their end) -- same
+    # budget-capped shape as Adzuna (see _QUOTA_BUDGETED_SOURCES), not a
+    # per-company direct-ATS source, so it's polled on the slower
+    # full-ingest cadence like Adzuna rather than the fast cadence above.
+    jobspipe_row = _get_or_create_job_source(db, jobspipe_source.SOURCE_NAME)
+    if jobspipe_row.is_active and (force or _is_due(jobspipe_row, settings.full_ingest_interval_minutes, now)):
+        _run_source(db, jobspipe_source, jobspipe_row, location_query)
 
     _discover_companies_from_jobright(db, settings, force=force)
     _backfill_board_slugs(db)

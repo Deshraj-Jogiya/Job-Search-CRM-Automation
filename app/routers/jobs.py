@@ -160,7 +160,13 @@ def jobs_page(request: Request, db: Session = Depends(get_db)):
     location_exclusions = db.query(LocationExclusion).order_by(LocationExclusion.term).all()
     target_companies = (
         db.query(Company)
-        .filter(or_(Company.greenhouse_slug.isnot(None), Company.lever_slug.isnot(None), Company.ashby_slug.isnot(None)))
+        .filter(or_(
+            Company.greenhouse_slug.isnot(None),
+            Company.lever_slug.isnot(None),
+            Company.ashby_slug.isnot(None),
+            Company.recruitee_slug.isnot(None),
+            Company.personio_slug.isnot(None),
+        ))
         .order_by(Company.name)
         .all()
     )

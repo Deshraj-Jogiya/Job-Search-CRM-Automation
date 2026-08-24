@@ -97,7 +97,7 @@
 
 <section class="settings-panel">
     <h2>Seniority Exclusions</h2>
-    <p class="muted-note">Title-level terms to exclude from direct company job boards (Greenhouse/Lever/Ashby) --
+    <p class="muted-note">Title-level terms to exclude from direct company job boards (Greenhouse/Lever/Ashby/Recruitee/Personio) --
         a company's own board has no seniority filter, so this is what keeps a Staff/Director/VP-level posting
         from ever reaching you if that's not the level you're targeting.</p>
     <form method="post" action="/jobs/seniority-exclusions" class="inline-form-row">
@@ -140,9 +140,10 @@
 <section class="settings-panel">
     <h2>Location Exclusions</h2>
     <p class="muted-note">Location terms (countries/regions) to exclude everywhere, across every source -- a
-        company's own Greenhouse/Lever/Ashby board has no location filter at all, so without this, roles open
-        only in another country can reach scoring/tailoring even though you're not eligible for them. The base
-        search location for Adzuna/LinkedIn is set separately under Settings on the dashboard.</p>
+        company's own direct job board (Greenhouse/Lever/Ashby/Recruitee/Personio) has no location filter at all,
+        so without this, roles open only in another country can reach scoring/tailoring even though you're not
+        eligible for them. The base search location for Adzuna/LinkedIn is set separately under Settings on the
+        dashboard.</p>
     <form method="post" action="/jobs/location-exclusions" class="inline-form-row">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <label class="visually-hidden" for="location-exclusion-input">Location exclusion term</label>
@@ -183,11 +184,12 @@
 <section class="settings-panel">
     <h2>Target Companies (Direct ATS Boards)</h2>
     <p class="muted-note">
-        Greenhouse/Lever/Ashby board links are auto-detected from company names seen via LinkedIn/Adzuna
-        (a few each time a search runs). Add or correct one manually below if a company you care about wasn't
-        picked up -- it's the short id in that company's careers page URL, e.g.
+        Greenhouse/Lever/Ashby/Recruitee/Personio board links are auto-detected from company names seen via
+        LinkedIn/Adzuna (a few each time a search runs). Add or correct one manually below if a company you care
+        about wasn't picked up -- it's the short id in that company's careers page URL, e.g.
         boards.greenhouse.io/<strong>stripe</strong>, jobs.lever.co/<strong>netflix</strong>,
-        jobs.ashbyhq.com/<strong>notion</strong>.
+        jobs.ashbyhq.com/<strong>notion</strong>, <strong>notion</strong>.recruitee.com,
+        <strong>notion</strong>.jobs.personio.com.
     </p>
     <form method="post" action="/jobs/companies/slug" class="inline-form-row">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -198,6 +200,8 @@
             <option value="greenhouse">Greenhouse</option>
             <option value="lever">Lever</option>
             <option value="ashby">Ashby</option>
+            <option value="recruitee">Recruitee</option>
+            <option value="personio">Personio</option>
         </select>
         <label class="visually-hidden" for="slug-input">Careers page id</label>
         <input type="text" id="slug-input" name="slug" placeholder="careers page id" required>
@@ -211,6 +215,8 @@
             {% if c.greenhouse_slug %}<span class="badge badge-active">greenhouse: {{ c.greenhouse_slug }}</span>{% endif %}
             {% if c.lever_slug %}<span class="badge badge-active">lever: {{ c.lever_slug }}</span>{% endif %}
             {% if c.ashby_slug %}<span class="badge badge-active">ashby: {{ c.ashby_slug }}</span>{% endif %}
+            {% if c.recruitee_slug %}<span class="badge badge-active">recruitee: {{ c.recruitee_slug }}</span>{% endif %}
+            {% if c.personio_slug %}<span class="badge badge-active">personio: {{ c.personio_slug }}</span>{% endif %}
         </li>
         {% endfor %}
     </ul>
