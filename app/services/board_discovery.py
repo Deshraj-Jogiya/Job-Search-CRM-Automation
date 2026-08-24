@@ -1,7 +1,7 @@
 """
-Auto-detects a company's Greenhouse/Lever/Ashby board slug from its
-name, so direct-ATS search needs zero manual setup for companies
-already seen via LinkedIn/Adzuna.
+Auto-detects a company's Greenhouse/Lever/Ashby/Recruitee/Personio board
+slug from its name, so direct-ATS search needs zero manual setup for
+companies already seen via LinkedIn/Adzuna.
 
 Board slugs are the URL-friendly identifier each ATS uses for a company's
 public job board (e.g. boards.greenhouse.io/stripe -> "stripe"). There's
@@ -10,7 +10,7 @@ find out is to guess a couple of plausible slugs from the company name
 and probe the public listing endpoint directly. A 200 with a parseable
 job list means the guess was right; anything else (404, timeout, bad
 JSON) means "no board here," which is the overwhelmingly common case
-since most companies don't use any of these three ATS platforms, or use
+since most companies don't use any of these five ATS platforms, or use
 one under a slug that doesn't match this heuristic -- that's fine, this
 is a best-effort convenience, not a claim of completeness. Users can
 still set/correct a slug manually from the Jobs page.
@@ -20,6 +20,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
+from defusedxml import ElementTree
 
 from .company_utils import normalize_company_name
 
@@ -70,24 +71,60 @@ def _probe_ashby(slug: str) -> bool:
         return False
 
 
-_PROBES = {"greenhouse": _probe_greenhouse, "lever": _probe_lever, "ashby": _probe_ashby}
+def _probe_recruitee(slug: str) -> bool:
+    try:
+        resp = requests.get(f"https://{slug}.recruitee.com/api/offers/", timeout=_TIMEOUT)
+        if resp.status_code != 200:
+            return False
+        data = resp.json()
+        return isinstance(data.get("offers"), list)
+    except Exception:
+        return False
+
+
+def _probe_personio(slug: str) -> bool:
+    # Personio splits customers across .com and .de with no way to tell
+    # which from the slug alone -- try both, same as personio_source.py
+    # does at fetch time (only the bare slug is persisted, see
+    # Company.personio_slug).
+    for tld in ("com", "de"):
+        try:
+            resp = requests.get(f"https://{slug}.jobs.personio.{tld}/xml", timeout=_TIMEOUT)
+            if resp.status_code != 200:
+                continue
+            root = ElementTree.fromstring(resp.content)
+            if root.tag == "workzag-jobs":
+                return True
+        except Exception:
+            continue
+    return False
+
+
+_PROBES = {
+    "greenhouse": _probe_greenhouse,
+    "lever": _probe_lever,
+    "ashby": _probe_ashby,
+    "recruitee": _probe_recruitee,
+    "personio": _probe_personio,
+}
 
 
 def discover_slugs(company_name: str) -> dict:
     """Best-effort probe across a couple of slug candidates per ATS.
     Returns {"greenhouse": slug_or_None, "lever": slug_or_None,
-    "ashby": slug_or_None}. Stops at the first candidate that hits for
-    each ATS -- doesn't try to disambiguate multiple valid-looking hits,
-    since that would need a real search API this doesn't have.
+    "ashby": slug_or_None, "recruitee": slug_or_None, "personio":
+    slug_or_None}. Stops at the first candidate that hits for each ATS
+    -- doesn't try to disambiguate multiple valid-looking hits, since
+    that would need a real search API this doesn't have.
 
-    The 3 ATS probes for a given candidate slug are independent network
+    The 5 ATS probes for a given candidate slug are independent network
     calls, so they run concurrently (worst case ~1 timeout instead of
-    ~3 stacked) -- this function is called synchronously from a few
+    ~5 stacked) -- this function is called synchronously from a few
     call sites (manual entry, capped backfill batch), so keeping a
     single call fast matters more than keeping this module dependency-
     free."""
     candidates = _slug_candidates(company_name)
-    result = {"greenhouse": None, "lever": None, "ashby": None}
+    result = {"greenhouse": None, "lever": None, "ashby": None, "recruitee": None, "personio": None}
 
     for slug in candidates:
         pending = {ats: probe for ats, probe in _PROBES.items() if result[ats] is None}

@@ -12,7 +12,7 @@ from datetime import timedelta
 from types import SimpleNamespace
 
 from app.database import utcnow
-from app.services.intake_service import _adzuna_daily_budget, _detect_eligibility_flags, _rotating_keyword_subset
+from app.services.intake_service import _adzuna_daily_budget, _detect_eligibility_flags, _quota_cost, _rotating_keyword_subset
 
 
 def test_rotation_returns_full_list_unchanged_when_shorter_than_the_cap():
@@ -111,3 +111,26 @@ def test_daily_budget_never_goes_below_one_call_per_day_while_budget_remains():
     # a day rather than rounding down to zero and going fully dark.
     source, now = _fake_source(calls_used_this_period=899, days_left=20)
     assert _adzuna_daily_budget(source, now, monthly_budget=900) == 1
+
+
+def test_quota_cost_for_adzuna_is_per_keyword_regardless_of_results():
+    # Adzuna bills per search call, so cost tracks the keyword list even
+    # if the search happened to return nothing (or a lot).
+    assert _quota_cost("adzuna", keywords=["a", "b", "c"], raw_postings=[]) == 3
+    assert _quota_cost("adzuna", keywords=["a", "b", "c"], raw_postings=[1, 2, 3, 4, 5]) == 3
+
+
+def test_quota_cost_for_jobspipe_is_per_job_returned_regardless_of_keywords():
+    # JobsPipe bills "1 credit = 1 job returned" from a single call that
+    # can carry many keywords at once, so cost tracks the result count,
+    # not the keyword list -- the opposite of Adzuna's accounting.
+    assert _quota_cost("jobspipe", keywords=["a", "b", "c", "d", "e"], raw_postings=[1, 2]) == 2
+    assert _quota_cost("jobspipe", keywords=["a", "b", "c", "d", "e"], raw_postings=[]) == 0
+
+
+def test_quota_cost_defaults_to_per_keyword_for_unbudgeted_sources():
+    # Greenhouse/Lever/Ashby/etc aren't quota-budgeted at all, but
+    # _quota_cost is still called for them (see _run_source) -- should
+    # fall back to the same per-keyword accounting as Adzuna rather than
+    # erroring on an unrecognized source name.
+    assert _quota_cost("greenhouse", keywords=["a", "b"], raw_postings=[1, 2, 3]) == 2
