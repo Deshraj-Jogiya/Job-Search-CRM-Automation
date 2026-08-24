@@ -11,9 +11,9 @@ password, and unattended auto-apply/auto-email with no human checkpoint).
 None of that old code is carried forward.
 
 **Full details:** see [`ARCHITECTURE.md`](./ARCHITECTURE.md) for the current
-build status and phase roadmap, and [`CLAUDE.md`](./CLAUDE.md) for the full
-project context (useful if you're picking this up in Claude Code or handing
-it to another AI assistant).
+build status and phase roadmap, and [`CONTRIBUTING.md`](./CONTRIBUTING.md)
+for the design principles and conventions worth knowing before extending
+this codebase.
 
 ## Stack
 
@@ -69,8 +69,8 @@ default personal mode. Showcase mode:
 - This is a demonstration of the architecture, not a scraping or spam
   service. Respect the ToS of every source it touches (LinkedIn's
   guest search endpoint in particular is undocumented and ToS-
-  sensitive — see `CLAUDE.md`'s Origin note on why this project treats
-  it as one source among several, not a sole strategy).
+  sensitive — see `CONTRIBUTING.md`'s Origin note on why this project
+  treats it as one source among several, not a sole strategy).
 - Don't point it at real job sites while impersonating someone else, or
   use the outreach feature to email real people on a fictional
   candidate's behalf — outreach still requires an explicit human click

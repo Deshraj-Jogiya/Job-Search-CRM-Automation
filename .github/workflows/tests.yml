@@ -1,0 +1,32 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # requirements-lock.txt (not requirements.txt) so CI runs against
+      # the exact, already-tested working set -- not whatever a fresh
+      # resolve against requirements.txt's loose >= floors happens to
+      # pull that day. No `playwright install` step: the test suite
+      # mocks out every real browser launch (see tests/conftest.py and
+      # test_confirmation_routing.py's launch_autofill_in_background
+      # patch), so a real Chromium binary is never needed here.
+      - name: Install dependencies
+        run: pip install -r requirements-lock.txt
+
+      # No secrets needed -- tests/conftest.py points DATABASE_URL at a
+      # disposable SQLite file and sets a dummy SECRET_KEY before any
+      # app module is imported, entirely independent of the real
+      # deployment's .env/Supabase credentials.
+      - name: Run test suite
+        run: pytest -v

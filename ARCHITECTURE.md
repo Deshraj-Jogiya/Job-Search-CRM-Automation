@@ -2,60 +2,87 @@
 
 Fresh build, replacing the old `Job-Search-CRM-Automation` repo entirely.
 Designed against the full roadmap from the start so later phases extend
-this foundation instead of retrofitting it.
+this foundation instead of retrofitting it. This file is a concise
+current-state summary. See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for
+the design principles and conventions behind it.
 
 ## Stack
 
-- **Backend:** FastAPI + SQLAlchemy + SQLite ($0, single-user-first; Postgres-
-  compatible via `DATABASE_URL` if ever needed)
+- **Backend:** FastAPI + SQLAlchemy. SQLite is the $0, zero-setup default
+  for a fresh install or showcase fork; the real personal instance runs
+  on Supabase Postgres via `DATABASE_URL` (migrated 2026-08-19) — both
+  are first-class, not "SQLite with Postgres as an afterthought."
 - **LLM:** provider-agnostic (`app/services/llm/`) — Claude by default,
   swappable to OpenAI/Gemini/local-Ollama via `LLM_PROVIDER` in `.env`,
   no code changes required
-- **Frontend:** server-rendered Jinja2 templates (matches the original
-  project's approach; the "magic" visual layer is a dedicated later phase,
-  not skipped — just sequenced last so it's built on a stable product)
-- **Security baseline (built in from day one, not bolted on later):**
-  CSRF protection, fail-closed admin auth, encrypted credential storage
-  helper ready for when portal accounts are needed, no hardcoded secrets
+- **Frontend:** server-rendered Jinja2 templates, a shared `_base.html`
+  (title/header_title/nav/content/scripts blocks), design tokens matched
+  to the portfolio site's real source (Phase 11) — glassmorphism cards,
+  Inter/Outfit typography, working light/dark theme toggle. Short,
+  potentially-numerous lists (search keywords, seniority/location
+  exclusions) render as compact wrapped tag chips, not one full-width
+  row per item — the latter looked fine at a handful of entries but
+  turned into an extremely long, loud scroll at real-world list sizes.
+- **Schema migrations:** Alembic (`alembic/`), adopted 2026-08-23 after
+  five separate manual `ALTER TABLE` scripts against the live DB in one
+  session. `alembic/env.py` connects through the app's own `engine`
+  directly (not a second connection built from `alembic.ini`) and
+  permanently excludes four tables that belong to a separate application
+  (the portfolio site) sharing this same Supabase project — autogenerate's
+  first pass proposed dropping them since they aren't in this app's own
+  `models.py`; `env.py`'s `include_object` filter excludes them
+  permanently so that can't recur.
+  `Base.metadata.create_all()` still runs at startup unchanged, so a
+  fresh install/fork needs zero extra steps; Alembic is for evolving an
+  already-running deployment's schema from here on.
+- **Security baseline:** CSRF protection (signed double-submit cookie,
+  constant-time comparison), real signup/login/forgot-password
+  (bcrypt-hashed single `AdminAccount`, HMAC-signed session + reset
+  tokens -- see Phase 22) with fail-closed fallback to the legacy
+  `DASHBOARD_PASSWORD` env var for a deployment that hasn't signed up
+  yet, encrypted backup export (Fernet, `CREDENTIAL_ENCRYPTION_KEY`), a
+  global `Referrer-Policy: no-referrer` header, mechanical escaping of
+  all LLM/JD-derived content before it reaches reportlab's markup-aware
+  PDF renderer. A dedicated security review (2026-08-23) found and fixed
+  one real credential-leak bug (DB password interpolated into a
+  user-facing error message) and one real auth-bypass bug (loopback-trust
+  logic silently defeated by any reverse proxy) before either shipped to
+  the real deployment.
 
-## What's built (this drop)
+## What's built
 
-| Piece | File(s) | Status |
+| Phase | Piece | Status |
 |---|---|---|
-| DB engine/session | `app/database.py` | Done |
-| Full data model | `app/models.py` | Done — schema covers every phase (profile versioning, companies/repost tracking, confirmation queue, outreach, interview prep, tunable settings) up front |
-| Credential encryption helper | `app/services/crypto_utils.py` | Done, not yet wired to a model (no portal-account feature exists yet in this rebuild) |
-| LLM provider abstraction | `app/services/llm/` | Done — Anthropic, OpenAI-compatible, Ollama |
-| CSRF protection | `app/csrf.py` | Done |
-| Activity logging | `app/services/activity_logger.py` | Done |
-| App skeleton | `app/main.py` | Done — health check, dashboard shell, kill switch, live-editable settings, mounts `app/routers/` |
-| Base template/styling & design polish (Phase 11) | `app/templates/_base.html`, `app/static/css/style.css`, `app/static/js/theme.js` | Done — every page extends a shared base template (title/header_title/nav/content/scripts blocks) instead of duplicating head/header boilerplate 7 times. Design tokens pulled directly from the portfolio site's (`Deshraj-Jogiya.github.io`) actual source: glassmorphism cards, Inter/Outfit typography, the indigo/purple/emerald/amber palette, and the same working light/dark theme-toggle pattern (localStorage + `prefers-color-scheme`, applied to `<html>` via a synchronous inline script to avoid a flash of the wrong theme). Responsive breakpoints at 768px/480px; wide tables sit in a scrollable container instead of overflowing the page; every form input has a real accessible label; deliberate `:focus-visible` styling throughout. |
-| Living profile (Phase 1) | `app/services/profile_service.py`, `app/routers/profile.py`, `app/templates/profile.html` | Done — profile variants (named flavors), portfolio `resume.json` sync (activates immediately, zero-risk per CLAUDE.md), LinkedIn paste-diff via LLM (creates a **pending** version, requires explicit approve/reject — never auto-activates), manual JSON seed/edit as the bootstrap path since no starter profile data ships with the rebuild. Note: the portfolio site doesn't serve `resume.json` yet, so "Sync from Portfolio" currently fails gracefully with a clear error until that endpoint exists there — manual seed / LinkedIn import are the working paths meanwhile. |
-| Job intake (Phase 2, both slices) | `app/services/sources/` (linkedin, adzuna, greenhouse, lever, ashby), `app/services/board_discovery.py`, `app/services/intake_service.py`, `app/services/scheduler.py`, `app/routers/jobs.py`, `app/templates/jobs.html` | LinkedIn (no credentials needed), Adzuna (skips gracefully without `ADZUNA_APP_ID`/`ADZUNA_APP_KEY`, hard-capped against its free-tier monthly budget), and direct Greenhouse/Lever/Ashby board polling are all live: fuzzy dedup (exact by source+external_id/url, fuzzy by normalized company+title), repost detection, keyword-based scam-pattern flagging, staleness flagging (all warn-only, never filter, per CLAUDE.md), search keyword management UI, per-source status panel, manual "run now" trigger, all gated by the `automation_enabled` kill switch. The three direct-ATS sources are driven by `Company.greenhouse_slug`/`lever_slug`/`ashby_slug` (not keyword search, which these platforms don't offer across companies) -- auto-detected the first time a company is seen via any source, via a capped, concurrent backfill sweep (`board_discovery.py`) rather than inline at company-creation time, since probing scales with network calls, not intake volume; manual add/override is available from the Jobs page for companies auto-detection misses. |
-| Matching/tailoring/scoring (Phase 3) | `app/services/matching_service.py`, `app/services/tailoring_service.py`, `app/routers/jobs.py` (detail/score/tailor routes), `app/templates/application_detail.html` | On-demand (not automatic on ingest — real LLM cost) match scoring against the active profile, a genuine tailor→verify→refine loop for experience bullets (real recomputed final score from the last verify pass, never a placeholder — unlike the deleted prototype), tailored summary/skills/project-selection, independent cover-letter generation + scoring. **Includes a mechanical post-tailoring fabrication check**: verified during this build that the LLM (Gemini flash-lite, at least) will inject ATS keywords into experience bullets and the cover letter that have zero support anywhere in the candidate's real profile, despite explicit anti-fabrication instructions in the prompt. The check compares every keyword the refine loop claims to have "resolved" against the full original profile text; any with no match surfaces a clear `attention_reason` warning on the application (visible on both the jobs list and detail page) rather than silently shipping a fabricated resume. This is a real, demonstrated risk in this feature, not theoretical — worth keeping if this logic is ever touched. |
-| Confirmation-gated queue (Phase 4) | `app/services/confirmation_service.py`, `app/services/notification_service.py`, `app/services/confirmation_tokens.py`, `app/routers/confirmation.py`, `app/templates/confirm.html` | A tailored application routes to **Needs Review** (no timeout, ever) if Phase 2/3 flagged it (scam pattern or tailoring fabrication warning), otherwise to **Pending Confirmation** with a quiet-hours-aware deadline (fast-track window if high score + fresh, standard window otherwise). On explicit approval or an unattended timeout, status becomes **Approved** — tailored docs ready, but there is still no real portal-submission engine, so this is honestly "ready to submit," not "submitted." A separate explicit **Mark as Applied** action records that the human actually did it. Rejected applications are hard-deleted after `rejected_retention_days` (their `JobPosting` is kept for company memory/repost detection). All of it gated by the `automation_enabled` kill switch, including the scheduler sweeps. **Notification volume fix (2026-08-17, see CLAUDE.md)**: the initial build emailed one-click links per application with no batching — a bulk review page (`/jobs/review`, table + multi-select + bulk approve/reject, structurally separated Pending Confirmation vs. flagged Needs Review sections) is now the primary way to process volume; individual emails are reserved for fast-track only, everything else batches into a single periodic digest pointing at the review page. |
-| Outreach automation (Phase 5) | `app/services/outreach_service.py`, `app/services/contact_discovery_service.py`, `app/services/email_utils.py`, `app/routers/outreach.py`, outreach section in `app/templates/application_detail.html` | Draft → Approved → Sent, with **no timers or auto-send anywhere** (unlike Phase 4 — a real email to a real external person is immediately irreversible, so every state change is a live explicit click). Email channel sends via the same daily-cap-enforced, syntax+MX-verified path; LinkedIn channels are drafted but never auto-sent (LinkedIn automation was ruled out for account-risk reasons elsewhere in this project) — the user copies the note and confirms via a separate Mark as Sent. Optional contact discovery (Tavily web search + Hunter.io domain-search, both free-tier/no-card/graceful-degrade) surfaces candidate name/LinkedIn/email-with-confidence as labeled, unverified suggestions — never auto-filled, never algorithmically guessed — that still flow through the same manual draft/approve/send pipeline once picked. See CLAUDE.md's Phase 5 section for the mid-build design correction that added discovery. |
-| Encrypted backup/export (Phase 9) | `app/services/backup_service.py`, route in `app/main.py` | On-demand encrypted DB export from the dashboard -- consistent SQLite snapshot via `sqlite3`'s own online `.backup()` API (safe under concurrent writes from the scheduler thread), encrypted with the `CREDENTIAL_ENCRYPTION_KEY` Fernet key that's existed since Phase 0 but was unused until now. **Export only, on purpose** -- restore is a separate, deliberately unbuilt decision, since overwriting a live database is destructive and deserves its own careful design rather than a rushed side effect. Picked ahead of Phase 6/7 in the numbered order since real personal usage was about to start. |
-| Interview prep (Phase 6) | `app/services/interview_prep_service.py`, routes in `app/routers/jobs.py`, section in `app/templates/application_detail.html` | On-demand (real LLM cost, not automatic), two independent passes: general prep grounded only in the candidate's real profile (role-generic), and company-specific prep grounded in the JD plus optional live company research via Tavily (`contact_discovery_service.tavily_search`, promoted to shared) -- gracefully degrades to JD-only when Tavily isn't configured, same posture as every other optional integration here. Available for any application except Rejected. |
-| Outcome analytics (Phase 7) | `app/services/analytics_service.py`, `app/routers/analytics.py`, `app/templates/analytics.html` | Read-only `/analytics` page: status funnel, apply/interview/offer conversion rates, speed-to-apply, by-source and by-score-band apply rates, flagged-vs-clean apply rates, company memory (deprioritized/blocked, most "Not Selected"). Required first wiring up `Interviewing`/`Offer`/a new `Not Selected` status (manual self-report via `confirmation_service.mark_interviewing/mark_offer/mark_not_selected`, same trust model as `mark_applied`) -- those states existed only in a schema comment before this, so there was no real data past `Applied` to analyze. `Not Selected` is deliberately distinct from `Rejected` (which means declined-before-applying and gets swept/deleted) since it's real applied-and-declined history worth keeping. |
-
-| $0 deployment hardening (Phase 10) | `app/database.py`, `app/services/scheduler.py` | SQLite WAL mode + busy_timeout to close a known concurrent-writer "database is locked" risk; scheduler tick failure isolation (4 independent concerns, each own session/exception handling, failures logged visibly instead of printed to an unwatched console). See the Deployment section below for the local-first-vs-Oracle-fallback operational guidance (documentation, not new automation). |
-| Two-face packaging (Phase 8) | `app/app_mode.py`, `app/fixtures/demo_profile.json`, wiring in `app/models.py`/`app/main.py`, `app/templates/dashboard.html` | One `APP_MODE` env var (default `personal`) selects personal vs. public-showcase deployment from the same codebase, no fork needed. Showcase mode auto-seeds a fictional demo profile on first startup (via the same `profile_service` path a human uses, only when no profile exists yet) and defaults automation OFF for a brand-new deployment -- a real, toggleable default, not a hard lock, and one that never touches an existing deployment's already-created settings row. Dashboard shows an informational banner; README documents ethical-use expectations for anyone running a public instance. |
-
-## What's NOT built yet (by design — next phases)
-
-- Real portal-submission automation (Playwright-style auto-fill/submit) — explicitly out of Phase 4's scope; a separate, later, ToS-sensitive decision, not assumed by default
-- Backup restore (deliberately deferred, see Phase 9 above)
-- Final design/polish pass (Phase 11 — deliberately last, now that every backend phase is built)
+| 0 | Foundation — DB/session, full data model, LLM abstraction, CSRF, kill switch, live-editable settings | Done |
+| 1 | Living profile — variants, portfolio sync, LinkedIn paste-diff (approval-gated) | Done |
+| 2 | Multi-source intake — LinkedIn, Adzuna, direct Greenhouse/Lever/Ashby board polling, JobRight company-discovery seeding; dedup, repost/scam/staleness/location/hard-eligibility flagging (all warn-only except location, which is a hard filter — a wrong-country posting is a hard eligibility fact, not a risk signal to weigh); self-healing profile-derived keyword/seniority targeting; Adzuna daily budget pacing | Done |
+| 3 | Matching/tailoring/scoring — tailor→verify→refine loop over experience AND projects together (JD-relevance-driven project selection, not a fixed count), mechanical fabrication safeguard with tool-category equivalence (real Tableau experience honestly credits a Power BI requirement), required-vs-preferred qualification weighting so a strong required-skills match isn't capped by missing nice-to-haves | Done |
+| 4 | Confirmation-gated queue — Needs Review / Pending Confirmation / auto-launch-on-clean-autofill-supported, quiet-hours-aware deadlines, digest notifications | Done |
+| 5 | Outreach — draft/approve/send, no timers, optional Tavily/Hunter.io contact discovery (never auto-filled) | Done |
+| 6 | Interview prep — general + company-specific (Tavily-grounded when configured) | Done |
+| 7 | Outcome analytics — funnel, conversion rates, company memory | Done |
+| 8 | Two-face packaging — `APP_MODE` selects personal vs. showcase from one codebase | Done |
+| 9 | Encrypted backup/export — SQLite via `sqlite3.backup()`, Postgres via a dialect-agnostic row-level JSON export over this app's own `Base.metadata` (added 2026-08-23 — the original SQLite-only version had silently never worked against the real Supabase deployment). Restore added 2026-08-24 — admin-password-gated, preview-then-confirm, automatic safety-net backup taken first, all-or-nothing/same-dialect only. | Done |
+| 10 | $0 deployment hardening — SQLite WAL mode, scheduler tick failure isolation | Done |
+| 11 | Design/polish pass — shared base template, accessibility, responsive breakpoints | Done |
+| 12 | Real application-form autofill — Playwright pre-fills Greenhouse/Lever/Ashby forms, human's own submit click is the only thing that ever submits; auto-launches automatically for a clean, sufficiently-well-matched (`min_score_for_auto_launch`, default 65), autofill-supported tailored application; mechanical (non-LLM) answers for EEO self-identification and "how did you hear about us" | Done — real end-to-end success confirmed 2026-08-23 (see Phase 16) |
+| 13 | Code & comment quality pass | Done |
+| 14 | Automated test suite — 50 tests as of 2026-08-23 | Done |
+| 15 | Autofill generalization — verified across 10 real companies spanning all 3 ATS's | Done |
+| 16 | Real end-to-end auto-launch verification | **Done, 2026-08-23** — a real, root-cause scoring fix (required-vs-preferred qualification weighting) took a real application from the high-70s% to 91%, the first application to ever clear the 85% bar. Tailoring it live surfaced and fixed a real `max_tokens` truncation bug; the resulting tailored resume was correctly fabrication-flagged (Needs Review, no browser opened) for one real overreach. Approving it launched a real, visible browser that pre-filled the real application form — confirmed via activity log and an independent `Get-Process` check of the real Chrome window. First fully successful, unforced run of the entire feature. |
+| 17 | Submission auto-detection — the autofill browser's post-fill wait now polls for a real post-submit confirmation signal (URL/page-text pattern match against a captured pre-fill baseline) and auto-calls `mark_applied()` | **Built 2026-08-24** — not yet verified against a real submission |
+| 18 | Production resilience — background-thread failure isolation broadened to catch real-world failures (not just each service's own narrow exception type), real `/health` endpoint (public, checks DB + scheduler liveness), retained logging to a local size-rotated file (`logs/app.log`, full tracebacks) layered under the DB activity log | Partially done — process supervision/auto-restart is a deployment-config decision for whenever this moves to the Oracle VM, not app code |
+| 19 | API budget & rate-limit hardening — Adzuna's real monthly budget was being exhausted in under 2 days at this project's own default settings; now paced daily across the full period. Tavily/Hunter.io get a monthly counter + hard cap (called on-demand, not polled, so daily pacing doesn't fit) — a real quota exhaustion now logs as a distinct event instead of looking identical to "genuinely found nothing" | Done (LLM-provider rate-limit handling already covered by the Anthropic SDK's own retries — lower priority, not separately built) |
+| 20 | Outreach handoff / "connection reaching phase" | **Explicitly on hold** per the user's own request |
+| 21 | Release readiness — security review (done, findings above), dependency audit (`pip-audit` against the real vulnerability DB — found and removed two genuinely orphaned packages, `pypdf` and `python-docx`), `datetime.utcnow()` deprecation swept clean (39 call sites), Alembic adopted, `requirements-lock.txt` added (exact pinned versions of the real tested working set — see Setup below), CI (`.github/workflows/tests.yml` on every push/PR, `dependency-audit.yml` weekly + manual — added 2026-08-23, not yet committed), ARCHITECTURE.md sync (this edit) | Only the actual Oracle Cloud deployment remains open |
+| 22 | Real login/signup/forgot-password — bcrypt-hashed single `AdminAccount` per deployment (not multi-tenant; each fork runs its own instance with its own `.env`/secrets), HMAC-signed session + password-reset tokens, fail-open fallback to the legacy `DASHBOARD_PASSWORD`-or-open behavior until someone actually signs up. Found and fixed a real, pre-existing CSRF-middleware bug (a genuine token mismatch crashed with an unhandled 500 instead of a clean 403) while testing it. Profile page has a real structured, dropdown-based form (work authorization, visa sponsorship, relocation, salary, notice period, EEO) instead of raw-JSON-paste-only, merge-saved without touching the rest of the profile. Dashboard now has a "Ready to start your job hunt?" onboarding section (a real profile + configured search keywords + automation still off) linking to the Jobs page's existing filter-review UI, ending in a real "Start Hunt" button. | Done, verified live end-to-end 2026-08-23/24 |
 
 ## Every tunable is already live-editable
 
-Nothing from our planning conversation is hardcoded: poll intervals,
-confirmation window (+ fast-track override), retention days, outreach cap
-all live in `GlobalSettings` and are editable from the dashboard right now,
-even though the features that consume most of them don't exist yet. This
-was intentional — the settings surface and the features that read it can
-now be built independently, in any order.
+Nothing is hardcoded: poll intervals, confirmation window (+ fast-track
+override), retention days, outreach cap, location query, JobRight poll
+interval, and more all live in `GlobalSettings` and are editable from
+the dashboard.
 
 ## Setup
 
@@ -66,23 +93,37 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-Visit `http://localhost:8000/` — you should see the dashboard shell with
-the kill switch and settings panel live.
+For a reproducible install (the exact package versions actually tested,
+not whatever a fresh resolve against `requirements.txt`'s loose `>=`
+floors happens to pull that day), use `pip install -r
+requirements-lock.txt` instead.
 
-## Deployment (Phase 10)
+Visit `http://localhost:8000/` — you should see the dashboard shell with
+the kill switch and settings panel live. `Base.metadata.create_all()`
+builds the full schema on first run automatically.
+
+**Changing the schema on an already-running deployment** (not a fresh
+install): use Alembic, not a hand-written `ALTER TABLE`.
+
+```bash
+alembic revision --autogenerate -m "describe the change"
+# review the generated file before applying -- autogenerate proposes,
+# it doesn't always get it right (this project once had it propose
+# dropping tables belonging to a different application sharing the
+# same database -- see env.py's include_object filter)
+alembic upgrade head
+```
+
+## Deployment
 
 **The $0 constraint is about hosting, not total cost.** Render was tried
-and cost money, so it's ruled out — there is no paid hosting anywhere in
-this project's design. LLM API calls (Claude by default) are a separate,
-small, unavoidable per-call cost (a few cents per score/tailor/prep
-generation, since those are on-demand, not automatic) — switching
-`LLM_PROVIDER` to `ollama` in `.env` removes even that, at the cost of
-local model quality/speed.
+and cost money, so it's ruled out. LLM API calls are a separate, small,
+unavoidable per-call cost (on-demand, not automatic) — `LLM_PROVIDER=ollama`
+removes even that, at the cost of local model quality/speed.
 
 **Local-first is the default and the recommended mode.** Run
-`uvicorn app.main:app --port 8000` continuously on your own machine.
-For it to survive logging out or a reboot without you remembering to
-restart it by hand:
+`uvicorn app.main:app --port 8000` continuously on your own machine. For
+it to survive logging out or a reboot:
 - **Windows**: a Task Scheduler task triggered at log-on, "run whether
   user is logged on or not," with a restart-on-failure action.
 - **macOS**: a `launchd` user agent (`~/Library/LaunchAgents/`) with
@@ -90,30 +131,104 @@ restart it by hand:
 - **Linux**: a `systemd --user` service with `Restart=on-failure`.
 
 None of these are shipped as files in this repo (no Dockerfile, no
-service unit) — this is a documented decision point, not automated
-tooling, since it depends on which OS you're actually running on.
+service unit) — a documented decision point, not automated tooling,
+since it depends on which OS you're actually running.
 
-**Reliability hardening now in place** (this phase): SQLite runs in WAL
-mode with a 10s `busy_timeout` (`app/database.py`) so the scheduler
-thread and per-request background threads (intake/score/tailor, each
-opens its own connection) don't throw "database is locked" when they
-write at the same moment — a risk flagged since the original design
-discussion, now closed. The scheduler's 4 periodic concerns (intake,
-expired-confirmation sweep, rejected-retention sweep, notification
-digest) each now run in their own session with their own exception
-isolation, logged to the visible activity log on failure — previously
-one shared try/except meant an intake failure silently skipped the
-other three for that entire tick.
+**Reliability hardening in place**: SQLite runs in WAL mode with a 10s
+`busy_timeout`. The scheduler's periodic concerns each run in their own
+session with their own exception isolation, logged to the visible
+activity log on failure. Background threads for score/tailor/interview-
+prep/intake/autofill (Phase 18) now catch failures broadly rather than
+only each service's own narrow custom exception type, so a real
+Playwright error, LLM timeout, or network failure surfaces as a visible
+`attention_reason` instead of crashing the thread silently. Every
+ERROR-level activity log entry, plus every background-task failure
+(even ones that don't get their own activity-log row), is also mirrored
+with a full traceback to a local rotating log file at `logs/app.log`
+(5MB x 5 backups, gitignored) — this is what to check for the real root
+cause of a failure beyond the truncated one-line summary shown in the
+dashboard or an application's `attention_reason`.
 
 **If 24/7 uptime independent of your own machine is ever needed**:
-Oracle Cloud's Always Free tier includes a small ARM VM (Ampere A1, up
-to 4 OCPU / 24GB RAM) that is genuinely free indefinitely, not a trial
-— point `DATABASE_URL` at a file on that VM and run the same way as
-local-first. Not built or scripted here; this is the documented
-fallback path, not a default, since local-first covers the actual
-current need.
+Oracle Cloud's AMD Always Free micro instance (`VM.Standard.E2.1.Micro`,
+1/8 OCPU / 1GB RAM) — chosen 2026-08-22 specifically because it's
+untouched by Oracle's June 2026 halving of the Arm/Ampere A1 free tier
+(4 OCPU/24GB → 2 OCPU/12GB); the earlier assumption that Ampere A1's
+original 4-OCPU/24GB tier would be the fallback is now stale. Fallback
+if 1GB proves tight: Oracle's reduced-but-still-free 2 OCPU/12GB Ampere
+A1 tier. Watch Oracle's idle-reclamation policy (instances below ~20%
+CPU at the 95th percentile over a rolling 7-day window can be
+reclaimed) — this app's own periodic polling should generate enough
+real activity to avoid it, not yet confirmed live. Not built or
+scripted here; a documented fallback path, not a default, since
+local-first covers the current real need.
 
-**Backups**: since backup *restore* is deliberately not built (see
-Phase 9 above), periodically use `/settings/backup/export` if running
-this unattended for extended stretches, and keep the downloaded file
-somewhere outside the machine running the app.
+**A reverse proxy in front changes the auth story**: `DASHBOARD_PASSWORD`
+auth has a loopback-trust convenience for genuinely local-only use,
+gated behind an explicit `TRUST_LOOPBACK_AS_LOCAL=true` opt-in (unset by
+default) — a TLS-terminating proxy on the same box forwarding to
+`127.0.0.1` would otherwise make every external request look local and
+silently bypass the password. Only set that flag if there is genuinely
+no reverse proxy in front.
+
+**Backups**: `/settings/backup/export` produces a real encrypted
+snapshot against either database backend (SQLite or the real Postgres/
+Supabase deployment — both fully working as of 2026-08-23). Restore
+(`/settings/backup/restore/preview` → `/settings/backup/restore/
+confirm`, added 2026-08-24) is gated behind `ADMIN_PASSWORD`, previews
+row counts before touching anything, requires typing "RESTORE" to
+confirm, takes an automatic safety-net backup of the current database
+immediately before replacing it, and is all-or-nothing (same dialect
+only — a SQLite backup can't restore onto a Postgres deployment or vice
+versa). Still periodically export if running this unattended for
+extended stretches, and keep the downloaded file somewhere outside the
+machine running the app — restore existing doesn't replace having a
+recent export on hand.
+
+## Production readiness checklist
+
+Phase 21's own explicit deliverable — the bar to point to, not a vague
+"is this done yet." Reflects real, verified current state as of
+2026-08-23, not aspirational status.
+
+**Security**
+- [x] CSRF protection on every state-changing route
+- [x] No SQL injection surface (no raw string-built queries anywhere)
+- [x] No XSS surface (Jinja2 autoescaping intact, zero `|safe`/`Markup()` usage)
+- [x] Credentials never logged or leaked into a user-facing message (a real leak found and fixed 2026-08-23)
+- [x] Dashboard auth doesn't silently bypass behind a reverse proxy (fixed 2026-08-23, explicit opt-in required)
+- [x] LLM/JD-derived content escaped before reaching the PDF markup renderer
+- [x] `Referrer-Policy` set; magic-link confirmation tokens can't leak via an external link click
+- [x] Real login/signup/forgot-password (bcrypt-hashed password, signed session + reset tokens) — added 2026-08-23
+- [x] Dependency vulnerability scan as a recurring/CI step (`.github/workflows/dependency-audit.yml`, weekly + manual dispatch — added 2026-08-23)
+- [ ] HTTPS enforced — depends on the eventual real deployment's reverse-proxy config, not app-level
+
+**Data safety**
+- [x] Encrypted backup/export works for both SQLite and the real Postgres deployment
+- [x] Backup restore — preview-then-confirm, safety-net backup taken automatically first, admin-password-gated (added 2026-08-24)
+- [ ] Automated/scheduled backups (currently manual, on-demand only)
+
+**Operational resilience**
+- [x] Background-thread failure isolation (scheduler + every score/tailor/interview-prep/intake/autofill thread)
+- [x] Real `/health` endpoint (checks DB + scheduler liveness, not just "the process accepts HTTP")
+- [ ] Process supervision / auto-restart on crash — a deployment-config decision for whenever this actually moves to the Oracle VM, not app code
+- [x] Structured/retained logging beyond the DB activity log (local size-rotated file, `logs/app.log`, full tracebacks — added 2026-08-23)
+- [ ] External uptime monitoring actually pointed at `/health` (the endpoint exists; nothing polls it yet)
+
+**Schema & dependencies**
+- [x] Schema migration tool (Alembic) adopted, baselined against the live DB
+- [x] Reproducible dependency install (`requirements-lock.txt`)
+
+**Testing**
+- [x] Automated test suite (50 tests) covering routing logic, matchers, budget math, eligibility/location detection
+- [x] `tests/MANUAL_QA.md` documents what inherently needs a real browser or real LLM call and can't be automated
+- [x] CI running the suite automatically (`.github/workflows/tests.yml`, every push/PR — added 2026-08-23, not yet pushed/committed pending the user's go-ahead)
+
+**Deployment**
+- [ ] Actually deployed to the Oracle Cloud VM — still running locally on the developer's own machine as of this checklist
+
+**Explicitly deferred, not gaps** (each already made a deliberate call, not forgotten):
+Phase 20 (outreach handoff — explicitly on hold pending a separate
+discussion). Phase 16 (real end-to-end auto-launch verification) and
+Phase 17 (submission auto-detection) are now both done — see the table
+above.

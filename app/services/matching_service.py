@@ -62,22 +62,58 @@ def get_profile_content_for_application(db: Session, application: JobApplication
 def evaluate_match(profile_content: dict, jd_text: str) -> dict:
     """Ask the LLM to score a candidate profile against a job
     description. Returns the raw parsed dict -- callers decide what to
-    persist."""
-    profile_summary = (
-        f"Name: {profile_content.get('name')}\n"
-        f"Title: {profile_content.get('title')}\n"
-        f"Summary: {profile_content.get('summary')}\n"
-        f"Skills: {json.dumps(profile_content.get('skills', {}))}\n"
-        f"Experience: {[e.get('role', '') + ' at ' + e.get('company', '') for e in profile_content.get('experience', [])]}"
-    )
+    persist.
+
+    Scores against the candidate's real experience bullets and projects,
+    not just their job titles and skills list -- an earlier version
+    reduced each experience entry to a bare "role at company" string and
+    omitted projects/education/certifications entirely, which starved
+    the LLM of the actual evidence (quantified achievements, specific
+    technologies used) it needs to recognize a genuinely strong match.
+    Contact info is deliberately excluded -- not needed for a match
+    evaluation, no reason to send it to the LLM provider."""
+    scoring_profile = {
+        "name": profile_content.get("name"),
+        "title": profile_content.get("title"),
+        "summary": profile_content.get("summary"),
+        "skills": profile_content.get("skills", {}),
+        "experience": profile_content.get("experience", []),
+        "projects": profile_content.get("projects", []),
+        "education": profile_content.get("education", []),
+        "certifications": profile_content.get("certifications", []),
+    }
 
     llm = get_llm_provider()
     raw = llm.complete_json(
         system="You are an expert technical recruiter and ATS analyzer. You return only raw JSON.",
         prompt=(
             "Compare this candidate profile with the job description. Evaluate the match percentage, "
-            "key skill overlaps, missing key terms/keywords, candidate strengths, and gap analysis.\n\n"
-            f"Candidate Profile:\n{profile_summary}\n\n"
+            "key skill overlaps, missing key terms/keywords, candidate strengths, and gap analysis. Base "
+            "the score on the full evidence below -- a specific accomplishment or technology named in an "
+            "experience bullet or project counts as real evidence of that skill, not just whether it "
+            "appears in the standalone skills list. Skill and tool are not the same thing: if the JD names "
+            "a specific tool the candidate hasn't used, but their profile shows hands-on experience with a "
+            "directly comparable tool in the exact same category (e.g. Tableau vs. Power BI -- both BI/"
+            "data-visualization tools; Airflow vs. Prefect/Dagster -- both workflow orchestrators; GitHub "
+            "Actions vs. Jenkins/CircleCI -- all CI/CD tools), credit that as transferable evidence for the "
+            "underlying skill rather than listing the JD's specific tool as a missing/blocking gap -- note "
+            "it as a minor, easily-bridged difference instead. Only apply this to genuinely interchangeable "
+            "tools within the same narrow category, never to different technology classes or entire "
+            "platforms/ecosystems.\n\n"
+            "Critically, weight REQUIRED qualifications far more heavily than PREFERRED/nice-to-have ones "
+            "when computing match_score -- most JDs explicitly separate the two (e.g. a 'What You'll Bring' "
+            "or 'Requirements' section vs. a 'Nice to Have', 'Bonus Points', 'Preferred Qualifications' "
+            "section, or inline phrasing like 'is a plus', 'familiarity with', 'exposure to', 'awareness "
+            "of or interest in'). A candidate who strongly satisfies every REQUIRED qualification but lacks "
+            "several explicitly-optional/preferred ones should score 85%+, not be capped in the 60-70s just "
+            "because the gaps list has several items on it -- the JD's own language about whether something "
+            "is required vs. optional matters more than how many items are missing. Only let a missing "
+            "qualification meaningfully cap the score if the JD phrases it as required, a must-have, or a "
+            "hard qualification (e.g. required years of experience, a required degree/certification, a "
+            "required clearance) -- an unstated seniority/years bar should be read from the JD's own level "
+            "framing (e.g. 'Entry Level', '1-3 years', 'or equivalent demonstrated skills') and weighted "
+            "accordingly, not assumed to require more than what's actually written.\n\n"
+            f"Candidate Profile:\n{json.dumps(scoring_profile, indent=2)}\n\n"
             f"Job Description:\n{jd_text}\n\n"
             "Respond in EXACTLY this JSON shape:\n"
             "{\n"

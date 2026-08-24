@@ -10,8 +10,15 @@ cryptography>=42.0.0
 apscheduler>=3.10.0
 dnspython>=2.6.0
 psycopg2-binary>=2.9.0
+playwright>=1.45.0
+reportlab>=4.0.0
+alembic>=1.13.0
+bcrypt>=4.0.0
 
 # LLM providers -- only the one(s) matching your LLM_PROVIDER choice are
 # actually required at runtime, but listing all three keeps forking simple
 anthropic>=0.34.0
 openai>=1.0.0
+
+# Testing
+pytest>=8.0.0

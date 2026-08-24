@@ -3,11 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Belt-and-suspenders alongside style.css's `color-scheme` CSS
+         property (which some browsers pick up asynchronously with CSS
+         load) -- this meta tag is parsed as part of the initial HTML,
+         so it's the earliest possible signal to the browser about which
+         theme its own native controls (select dropdown popups,
+         scrollbars) should render in. Content is corrected to a single
+         value by the inline script below once the real resolved theme
+         is known; "dark light" here is just the pre-JS default. -->
+    <meta name="color-scheme" id="color-scheme-meta" content="dark light">
     <title>{% block title %}Career Pilot{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/style.css?v={{ static_version }}">
     <script>
         // Runs synchronously, before the page paints, so the correct
         // theme class is already on <html> by the time CSS applies --
@@ -18,7 +27,12 @@
             try {
                 var saved = localStorage.getItem("theme");
                 var wantsLight = saved ? saved === "light" : window.matchMedia("(prefers-color-scheme: light)").matches;
-                if (wantsLight) document.documentElement.classList.add("light-theme");
+                if (wantsLight) {
+                    document.documentElement.classList.add("light-theme");
+                    document.getElementById("color-scheme-meta").setAttribute("content", "light");
+                } else {
+                    document.getElementById("color-scheme-meta").setAttribute("content", "dark");
+                }
             } catch (e) { /* localStorage unavailable -- default dark theme stands */ }
         })();
     </script>
@@ -28,6 +42,12 @@
         <h1>{% block header_title %}<a href="/" class="plain-link">Career Pilot</a>{% endblock %}</h1>
         <nav class="topnav">
             {% block nav %}{% endblock %}
+            {% if is_authenticated %}
+            <form method="post" action="/logout" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn-secondary">Log Out</button>
+            </form>
+            {% endif %}
             <button id="theme-toggle" class="theme-toggle-btn" type="button" aria-label="Toggle light/dark theme">
                 <span class="theme-icon" aria-hidden="true">🌙</span>
             </button>
