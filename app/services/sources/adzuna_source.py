@@ -19,6 +19,7 @@ from datetime import datetime
 import requests
 
 from .base import RawPosting
+from .keyword_matching import get_active_location_exclusions, location_allowed
 
 SOURCE_NAME = "adzuna"
 
@@ -41,6 +42,7 @@ def cheap_scan(keywords: list[str], location: str, limit: int = 15) -> list[RawP
     app_key = os.getenv("ADZUNA_APP_KEY")
     country = os.getenv("ADZUNA_COUNTRY", "us")
 
+    location_exclusions = get_active_location_exclusions()
     postings: list[RawPosting] = []
     for keyword in keywords:
         url = f"https://api.adzuna.com/v1/api/jobs/{country}/search/1"
@@ -63,6 +65,13 @@ def cheap_scan(keywords: list[str], location: str, limit: int = 15) -> list[RawP
             job_url = result.get("redirect_url", "")
             if not job_url:
                 continue
+            # Adzuna's "where" param is a fuzzy search hint, not a
+            # guarantee -- re-check the result's own structured location
+            # the same way the direct-board sources do, since "where" can
+            # still surface results outside the requested area.
+            result_location = (result.get("location") or {}).get("display_name")
+            if not location_allowed(result_location, location_exclusions):
+                continue
             postings.append(
                 RawPosting(
                     source=SOURCE_NAME,
@@ -72,6 +81,7 @@ def cheap_scan(keywords: list[str], location: str, limit: int = 15) -> list[RawP
                     job_url=job_url,
                     job_description=result.get("description") or None,
                     posted_at=_parse_posted_at(result.get("created", "")),
+                    location=result_location,
                 )
             )
 

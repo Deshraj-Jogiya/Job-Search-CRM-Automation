@@ -15,6 +15,7 @@ import urllib.request
 from datetime import datetime, timedelta
 
 from .base import RawPosting
+from .keyword_matching import get_active_location_exclusions, location_allowed
 
 SOURCE_NAME = "linkedin"
 
@@ -45,6 +46,7 @@ def _parse_posted_at(datetime_text: str) -> datetime | None:
 
 
 def cheap_scan(keywords: list[str], location: str, limit: int = 15) -> list[RawPosting]:
+    location_exclusions = get_active_location_exclusions()
     postings: list[RawPosting] = []
     for keyword in keywords:
         url = (
@@ -67,8 +69,15 @@ def cheap_scan(keywords: list[str], location: str, limit: int = 15) -> list[RawP
                 r'<h4 class="base-search-card__subtitle">\s*<a[^>]*>\s*([^\n<]+)\s*</a>', block
             ) or re.search(r'<h4 class="base-search-card__subtitle">\s*([^\n<]+)\s*</h4>', block)
             datetime_match = re.search(r'<time[^>]*datetime="([^"]+)"', block)
+            location_match = re.search(
+                r'<span class="job-search-card__location">\s*([^\n<]+)\s*</span>', block
+            )
 
             if not (url_match and title_match):
+                continue
+
+            job_location = _clean_html(location_match.group(1)) if location_match else None
+            if not location_allowed(job_location, location_exclusions):
                 continue
 
             postings.append(
@@ -78,6 +87,7 @@ def cheap_scan(keywords: list[str], location: str, limit: int = 15) -> list[RawP
                     job_title=_clean_html(title_match.group(1)),
                     job_url=url_match.group(1).split("?")[0],
                     posted_at=_parse_posted_at(datetime_match.group(1)) if datetime_match else None,
+                    location=job_location,
                 )
             )
             count += 1

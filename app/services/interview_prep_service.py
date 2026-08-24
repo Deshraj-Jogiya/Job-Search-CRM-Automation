@@ -21,10 +21,10 @@ not a hard-stop pattern like the confirmation queue).
 """
 
 import json
-from datetime import datetime
 
 from sqlalchemy.orm import Session
 
+from ..database import utcnow
 from ..models import InterviewPrep, JobApplication
 from .activity_logger import log_activity
 from .contact_discovery_service import is_tavily_configured, tavily_search
@@ -36,14 +36,14 @@ class InterviewPrepServiceError(Exception):
     """User-facing failure -- callers show the message instead of a 500."""
 
 
-def _light_company_research(company_name: str) -> str:
+def _light_company_research(db: Session, company_name: str) -> str:
     """Best-effort, never raises -- an empty string means the
     company-specific prompt falls back to JD-only grounding, same
     graceful-degrade posture as every other optional integration here."""
     if not is_tavily_configured():
         return ""
     try:
-        results = tavily_search(f"{company_name} company news mission products", max_results=4)
+        results = tavily_search(db, f"{company_name} company news mission products", max_results=4)
     except Exception:
         return ""
     snippets = [r.get("content", "")[:400] for r in results if r.get("content")]
@@ -123,7 +123,7 @@ def generate_interview_prep(db: Session, application_id: int) -> JobApplication:
 
     try:
         general = _generate_general_prep(profile_content, jd_text)
-        research = _light_company_research(posting.company_name_raw)
+        research = _light_company_research(db, posting.company_name_raw)
         company = _generate_company_prep(posting.company_name_raw, posting.job_title, jd_text, research)
     except Exception as e:
         raise InterviewPrepServiceError(f"Interview prep generation failed: {e}") from e
@@ -135,7 +135,7 @@ def generate_interview_prep(db: Session, application_id: int) -> JobApplication:
 
     prep.general_prep_json = json.dumps(general)
     prep.company_prep_json = json.dumps(company)
-    prep.generated_at = datetime.utcnow()
+    prep.generated_at = utcnow()
     db.commit()
 
     log_activity(

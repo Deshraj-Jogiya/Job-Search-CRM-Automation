@@ -1,0 +1,20 @@
+# Caddy auto-provisions and renews a real Let's Encrypt TLS cert with zero
+# extra steps -- just point a domain's DNS A record at the VM's public IP
+# first, then fill in the domain below and copy this to /etc/caddy/Caddyfile.
+#
+# If you don't have a domain yet, skip Caddy for now and just open port
+# 8000 directly in the OCI Security List + OS firewall, then browse to
+# http://<VM_PUBLIC_IP>:8000 -- no TLS, fine for early testing, not for
+# regular use once real credentials/session cookies are involved.
+
+your-domain.example.com {
+    reverse_proxy 127.0.0.1:8000
+}
+
+# Install Caddy (Ubuntu):
+#   sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+#   curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+#   curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+#   sudo apt update && sudo apt install caddy
+#   sudo cp Caddyfile.example /etc/caddy/Caddyfile   # after filling in your real domain
+#   sudo systemctl reload caddy

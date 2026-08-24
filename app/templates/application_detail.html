@@ -26,13 +26,14 @@
             </div>
             <p class="muted-note">
                 First seen {{ posting.first_seen_at.strftime("%Y-%m-%d") }}
-                &middot; <a href="{{ posting.job_url }}" target="_blank" rel="noopener">view original posting &#8599;</a>
+                &middot; <a href="{{ posting.job_url }}" target="_blank" rel="noopener noreferrer">view original posting &#8599;</a>
             </p>
-            {% if posting.staleness_flag or posting.scam_flag_reason or posting.repost_count > 0 %}
+            {% if posting.staleness_flag or posting.scam_flag_reason or posting.eligibility_flag_reason or posting.repost_count > 0 %}
             <div class="flag-row">
                 {% if posting.staleness_flag %}<span class="flag-warning">stale listing</span>{% endif %}
                 {% if posting.repost_count > 0 %}<span class="flag-warning">repost x{{ posting.repost_count }}</span>{% endif %}
                 {% if posting.scam_flag_reason %}<span class="flag-warning">scam pattern: {{ posting.scam_flag_reason }}</span>{% endif %}
+                {% if posting.eligibility_flag_reason %}<span class="flag-warning">eligibility: {{ posting.eligibility_flag_reason }}</span>{% endif %}
             </div>
             {% endif %}
             <details class="sub-panel">
@@ -172,10 +173,25 @@
         {% elif application.status == "Approved" %}
         <section class="variant-block">
             <h2>Approved -- Ready to Submit</h2>
+            {% if autofill_supported %}
             <p class="muted-note">
-                Tailored documents above are ready. There's no automated submission yet -- go apply using them,
-                then come back and mark it once you have.
+                Opens a real, visible browser window on this machine with the real application form pre-filled
+                from your tailored documents and profile -- resume/cover letter attached, contact fields and
+                screening-question drafts filled in. Nothing is ever submitted automatically: review every
+                field yourself, including the fields left blank on purpose, and click Submit in that window
+                only when you're satisfied.
             </p>
+            <form method="post" action="/jobs/{{ application.id }}/autofill" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit">Open Application (Pre-fill for Review)</button>
+            </form>
+            {% else %}
+            <p class="muted-note">
+                Tailored documents above are ready. Autofill isn't built yet for this source ({{ posting.source }}
+                -- currently: {{ autofill_supported_sources | join(", ") }}) -- go apply using them yourself, then
+                come back and mark it once you have.
+            </p>
+            {% endif %}
             <form method="post" action="/jobs/{{ application.id }}/mark-applied" class="inline-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button type="submit">Mark as Applied</button>
@@ -317,7 +333,7 @@
                     </p>
                     <p class="muted-note">
                         Source: {{ c.source }}
-                        {% if c.linkedin_url %} &middot; <a href="{{ c.linkedin_url }}" target="_blank" rel="noopener">LinkedIn &#8599;</a>{% endif %}
+                        {% if c.linkedin_url %} &middot; <a href="{{ c.linkedin_url }}" target="_blank" rel="noopener noreferrer">LinkedIn &#8599;</a>{% endif %}
                         {% if c.suggested_email %} &middot; suggested email: {{ c.suggested_email }} ({{ c.email_confidence }}% confidence -- not a guarantee){% endif %}
                     </p>
                     <form method="post" action="/jobs/{{ application.id }}/outreach" class="inline-form">

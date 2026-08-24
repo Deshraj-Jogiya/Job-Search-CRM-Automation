@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from ...database import SessionLocal
 from ...models import Company
 from .base import RawPosting
+from .keyword_matching import get_active_location_exclusions, get_active_seniority_exclusions, location_allowed, posting_matches
 
 SOURCE_NAME = "ashby"
 
@@ -42,11 +43,6 @@ def _clean_html(raw_html: str) -> str:
     return html.unescape(text)
 
 
-def _matches_keywords(title: str, keywords: list[str]) -> bool:
-    lower_title = title.lower()
-    return any(kw.lower() in lower_title for kw in keywords)
-
-
 def cheap_scan(keywords: list[str], location: str, limit: int = 15) -> list[RawPosting]:
     db = SessionLocal()
     try:
@@ -54,6 +50,8 @@ def cheap_scan(keywords: list[str], location: str, limit: int = 15) -> list[RawP
     finally:
         db.close()
 
+    exclusions = get_active_seniority_exclusions()
+    location_exclusions = get_active_location_exclusions()
     postings: list[RawPosting] = []
     for company in companies:
         try:
@@ -68,7 +66,10 @@ def cheap_scan(keywords: list[str], location: str, limit: int = 15) -> list[RawP
 
         for job in jobs:
             title = job.get("title", "")
-            if not title or not _matches_keywords(title, keywords):
+            if not title or not posting_matches(title, keywords, exclusions):
+                continue
+            location = job.get("location")
+            if not location_allowed(location, location_exclusions):
                 continue
             postings.append(
                 RawPosting(
@@ -78,6 +79,7 @@ def cheap_scan(keywords: list[str], location: str, limit: int = 15) -> list[RawP
                     job_title=title,
                     job_url=job.get("jobUrl", ""),
                     job_description=_clean_html(job.get("descriptionHtml", "") or job.get("description", "")) or None,
+                    location=location,
                 )
             )
             if len(postings) >= limit * max(len(companies), 1):
