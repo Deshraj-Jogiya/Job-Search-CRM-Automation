@@ -24,12 +24,13 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from ..database import SessionLocal
 from ..models import get_or_create_settings
-from . import confirmation_service, intake_service, notification_service
+from . import backup_service, confirmation_service, intake_service, notification_service
 from .activity_logger import log_activity
 
 scheduler = BackgroundScheduler()
 
 _TICK_MINUTES = 5
+_BACKUP_INTERVAL_HOURS = 24
 
 
 def _run_isolated(name: str, fn) -> None:
@@ -61,11 +62,20 @@ def _tick() -> None:
     _run_if_automation_enabled("notification digest", notification_service.send_digest)
 
 
+def _backup_tick() -> None:
+    # Deliberately not gated by automation_enabled -- that's a job-hunting
+    # kill switch, not a "stop protecting my data" switch. Its own
+    # automated_backups_enabled setting is the only gate (checked inside
+    # run_scheduled_backup).
+    _run_isolated("scheduled backup", backup_service.run_scheduled_backup)
+
+
 def start_scheduler() -> None:
     if not scheduler.running:
         scheduler.add_job(_tick, trigger="interval", minutes=_TICK_MINUTES, name="job_intake_tick")
+        scheduler.add_job(_backup_tick, trigger="interval", hours=_BACKUP_INTERVAL_HOURS, name="scheduled_backup")
         scheduler.start()
-        print(f"Background scheduler started (tick every {_TICK_MINUTES}m).")
+        print(f"Background scheduler started (tick every {_TICK_MINUTES}m, backup every {_BACKUP_INTERVAL_HOURS}h).")
 
 
 def stop_scheduler() -> None:

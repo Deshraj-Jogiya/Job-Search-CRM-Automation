@@ -48,7 +48,8 @@ from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import DateTime, select, text
 
 from ..database import DATABASE_URL, engine, utcnow
-from ..models import Base
+from ..models import Base, get_or_create_settings
+from .activity_logger import log_activity
 
 # Local-only staging areas for the restore flow below -- never committed
 # (see .gitignore). RESTORE_STAGING_DIR holds an uploaded backup between
@@ -154,6 +155,33 @@ def create_encrypted_backup() -> tuple[bytes, str]:
     timestamp = utcnow().strftime("%Y%m%d_%H%M%S")
     filename = f"career_pilot_backup_{timestamp}.{extension}.enc"
     return encrypted, filename
+
+
+SCHEDULED_BACKUP_DIR = Path("backups") / "scheduled"
+
+
+def run_scheduled_backup(db) -> None:
+    """Daily unattended backup -- persists straight to disk instead of
+    streaming an HTTP download (create_encrypted_backup's other caller,
+    the on-demand export route, does that part). Skips quietly (no log
+    spam) if backups aren't configured or the user has turned this off;
+    logs on actually writing one so it's visible in the activity feed
+    that unattended recovery points are in fact being taken, not just
+    assumed to be."""
+    settings = get_or_create_settings(db)
+    if not settings.automated_backups_enabled or not is_configured():
+        return
+
+    encrypted_bytes, filename = create_encrypted_backup()
+    SCHEDULED_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    (SCHEDULED_BACKUP_DIR / filename).write_bytes(encrypted_bytes)
+
+    existing = sorted(SCHEDULED_BACKUP_DIR.glob("career_pilot_backup_*.enc"))
+    excess = len(existing) - max(settings.backup_retention_count, 1)
+    for stale in existing[:excess]:
+        stale.unlink()
+
+    log_activity(db, f"Scheduled backup saved ({filename}).", "INFO")
 
 
 def _decrypt(encrypted_bytes: bytes) -> bytes:
