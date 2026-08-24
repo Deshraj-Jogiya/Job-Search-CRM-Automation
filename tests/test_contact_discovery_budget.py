@@ -1,5 +1,5 @@
-"""Tavily/Hunter.io monthly call-budget tracking (Phase 19). Before this,
-a real quota exhaustion looked identical to "genuinely found nothing" in
+"""Tavily/Hunter.io monthly call-budget tracking. Without this, a real
+quota exhaustion looks identical to "genuinely found nothing" in
 the logs -- both silently returned an empty list. Covers only the pure
 budget bookkeeping (_consume_budget/_reset_monthly_counter_if_needed);
 the real HTTP calls themselves aren't exercised here, same as every

@@ -1,14 +1,15 @@
 """
-Phase 2: multi-source job intake. Polls each configured source at its
-own cadence (LinkedIn is free to hit often; Adzuna's free tier has a
-real monthly call budget, so it's polled less often and hard-capped),
+Multi-source job intake. Polls each configured source at its own
+cadence (LinkedIn is free to hit often; Adzuna's free tier has a real
+monthly call budget, so it's polled less often and hard-capped),
 dedupes against existing postings (exact by source+external_id/url,
 fuzzy by normalized company+title), flags scam-pattern JDs and stale
-listings as warnings (never filters them out -- see CLAUDE.md), and
-creates JobPosting + JobApplication rows for anything genuinely new.
+listings as warnings (never filters them out), and creates JobPosting
++ JobApplication rows for anything genuinely new.
 
 Every background job here checks GlobalSettings.automation_enabled
-fresh before doing real work, per CLAUDE.md's kill-switch convention.
+fresh before doing real work, so a mid-run toggle takes effect
+immediately rather than waiting for the current pass to finish.
 """
 
 import json
@@ -660,7 +661,7 @@ def run_intake_cycle(db: Session, force: bool = False) -> None:
     if adzuna_row.is_active and (force or _is_due(adzuna_row, settings.full_ingest_interval_minutes, now)):
         _run_source(db, adzuna_source, adzuna_row, location_query)
 
-    # Direct-ATS sources (Phase 2 slice 2): no search quota to respect,
+    # Direct-ATS sources: no search quota to respect,
     # same low-indexing-lag rationale as LinkedIn -- poll at the fast
     # cadence. Each is a no-op (skipped with a clear log entry) until at
     # least one Company row has that ATS's slug set. location_query is

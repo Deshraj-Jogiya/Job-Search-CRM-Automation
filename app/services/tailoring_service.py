@@ -1,8 +1,6 @@
 """
-Phase 3: resume/cover-letter tailoring. Unlike the deleted prototype
-(which called a single-shot LLM tailoring pass and then set the score
-to a hardcoded random.randint(95, 98) -- explicitly called out in
-CLAUDE.md as something not to carry forward), this runs a genuine
+Resume/cover-letter tailoring. Unlike a naive single-shot LLM tailoring
+pass with a hardcoded/faked confidence score, this runs a genuine
 tailor -> verify -> refine loop against experience AND projects
 together and reports whatever score the LAST verify pass actually
 produced, capped at max_refine_passes so a stubborn JD can't loop
@@ -470,8 +468,8 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
         "INFO",
     )
 
-    # Phase 4: hand off to the confirmation queue -- routes to Needs
-    # Review if the fabrication check above (or Phase 2's scam-pattern
+    # Hand off to the confirmation queue -- routes to Needs
+    # Review if the fabrication check above (or intake's scam-pattern
     # check) flagged anything, otherwise into a timed Pending
     # Confirmation with a notification. Import here, not at module
     # scope, to keep tailoring_service usable standalone / in tests

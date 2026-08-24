@@ -1,5 +1,5 @@
 """
-Phase 12 (auto-apply support): renders a TailoredDocument's structured
+Renders a TailoredDocument's structured
 content into an actual PDF file. Application forms (Greenhouse, Lever,
 Ashby) take a resume/cover-letter file upload, not pasted JSON text --
 this is the missing step between "tailored content exists in the

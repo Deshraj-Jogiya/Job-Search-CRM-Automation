@@ -10,7 +10,8 @@ set -euo pipefail
 
 APP_DIR="/opt/career-pilot"
 SERVICE_USER="career-pilot"
-REPO_URL="git@github.com:Deshraj-Jogiya/Job-Search-CRM-Automation.git"
+REPO_URL="git@github.com:<your-github-username>/Job-Search-CRM-Automation.git"
+# ^ update this to your own fork before running
 
 echo "== 1/6: system packages =="
 # Oracle Linux 9's default python3 is 3.9 -- too old to reliably match

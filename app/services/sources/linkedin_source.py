@@ -1,8 +1,8 @@
 """
 LinkedIn public guest job search -- no API key, no login, but a scrape
 against an undocumented endpoint (ToS-risky, brittle to markup changes;
-this is why CLAUDE.md wants it treated as one source among several, not
-the sole strategy). cheap_scan() hits the guest search listing (many
+this is why it's treated as one source among several, not the sole
+strategy). cheap_scan() hits the guest search listing (many
 postings per request, no per-posting cost); fetch_full_description()
 is the separate, more expensive per-posting page fetch, only called
 for postings that survive dedup.

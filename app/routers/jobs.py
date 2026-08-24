@@ -1,13 +1,12 @@
 """
-Phase 2 routes: job intake visibility and configuration -- the ingested
-postings list (with scam/staleness/repost flags surfaced as warnings,
-never filtered), a manual "run intake now" trigger, per-source status,
-and search keyword management (there was previously no UI for
-SearchKeyword at all in this rebuild).
+Job search visibility and configuration -- the postings list (with
+scam/staleness/repost flags surfaced as warnings, never filtered), a
+manual "search now" trigger, per-source status, and search keyword
+management.
 
-Phase 3 routes: the application detail view, plus manual "score" and
-"tailor" triggers. Both are on-demand, not automatic on ingest -- each
-is a real LLM call with real cost (see matching_service/tailoring_service
+Also the application detail view, plus manual "score" and "tailor"
+triggers. Both are on-demand, not automatic on intake -- each is a
+real LLM call with real cost (see matching_service/tailoring_service
 docstrings).
 """
 
@@ -73,12 +72,12 @@ def _run_intake_in_background():
     try:
         intake_service.run_intake_cycle(db, force=True)
     except Exception as e:
-        # Phase 18: this manual "Run Intake Now" path previously had no
-        # exception handling at all -- unlike the scheduler's own
-        # automatic intake calls (scheduler._run_isolated, Phase 10),
-        # anything that slipped past run_intake_cycle's internal
-        # per-source handling would crash this thread with zero visible
-        # trace anywhere, not even a log entry.
+        # This manual "search now" path previously had no exception
+        # handling at all -- unlike the scheduler's own automatic
+        # intake calls (scheduler._run_isolated), anything that slipped
+        # past run_intake_cycle's internal per-source handling would
+        # crash this thread with zero visible trace anywhere, not even
+        # a log entry.
         log_activity(db, f"Manual intake run failed: {e}", "ERROR")
     finally:
         db.close()
@@ -102,7 +101,7 @@ def _score_in_background(application_id: int):
     try:
         matching_service.score_application(db, application_id)
     except Exception as e:
-        # Broad on purpose (Phase 18): a real LLM-provider failure (rate
+        # Broad on purpose: a real LLM-provider failure (rate
         # limit, timeout, malformed response not already wrapped as
         # MatchingServiceError) previously propagated past this narrower
         # catch and crashed the thread silently -- the application just
@@ -117,7 +116,7 @@ def _tailor_in_background(application_id: int):
     try:
         tailoring_service.tailor_application(db, application_id)
     except Exception as e:
-        # Broad on purpose (Phase 18) -- same reasoning as
+        # Broad on purpose -- same reasoning as
         # _score_in_background, plus tailor_application hands off to
         # confirmation_service.evaluate_and_enqueue() at the end, which
         # can raise ConfirmationServiceError or trigger a real autofill

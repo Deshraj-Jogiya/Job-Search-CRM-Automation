@@ -1,5 +1,5 @@
 """
-Direct Ashby job board intake (Phase 2 slice 2) -- same shape as
+Direct Ashby job board intake -- same shape as
 greenhouse_source.py/lever_source.py, driven by Company rows with an
 ashby_slug set. Ashby's public job-board API (https://api.ashbyhq.com/
 posting-api/job-board/{slug}) returns the full description in the same

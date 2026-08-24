@@ -1,13 +1,13 @@
 """
-Phase 1: living profile. Manages ProfileVariant/ProfileVersion records --
+Living profile. Manages ProfileVariant/ProfileVersion records --
 creating variants, seeding/updating their content from a portfolio-hosted
 resume.json, or diffing in a pasted LinkedIn export via the LLM.
 
 Nothing here auto-activates an AI-proposed change: portfolio syncs replace
-the active version directly (it's the user's own site, zero-risk per
-CLAUDE.md), but LinkedIn paste-diffs are created as a pending
-(is_active=False) version that a human has to explicitly approve or
-reject -- see approve_version() / reject_version().
+the active version directly (it's the user's own site, zero-risk), but
+LinkedIn paste-diffs are created as a pending (is_active=False) version
+that a human has to explicitly approve or reject -- see approve_version()
+/ reject_version().
 """
 
 import os
@@ -20,7 +20,6 @@ from ..models import ProfileVariant, ProfileVersion
 from .llm import get_llm_provider, parse_json_response
 from .activity_logger import log_activity
 
-DEFAULT_PORTFOLIO_RESUME_URL = "https://deshraj-jogiya.github.io/resume.json"
 
 
 class ProfileServiceError(Exception):
@@ -173,11 +172,16 @@ def _summarize_diff(old_content: dict, new_content: dict) -> str:
 
 def sync_from_portfolio(db: Session, variant_id: int) -> ProfileVersion:
     """Fetch the portfolio-hosted resume.json and make it the active
-    version. This is the zero-risk sync source per CLAUDE.md -- it's the
-    user's own site -- so unlike LinkedIn paste-diff, it activates
-    immediately rather than sitting in a pending/approval state."""
+    version. This is the zero-risk sync source -- it's the user's own
+    site -- so unlike LinkedIn paste-diff, it activates immediately
+    rather than sitting in a pending/approval state."""
     variant = _get_variant_or_raise(db, variant_id)
-    url = os.getenv("PORTFOLIO_RESUME_URL", DEFAULT_PORTFOLIO_RESUME_URL)
+    url = os.getenv("PORTFOLIO_RESUME_URL")
+    if not url:
+        raise ProfileServiceError(
+            "Portfolio sync isn't set up yet -- add your resume.json URL to your environment "
+            "settings to enable this, or use the manual JSON paste or LinkedIn import options instead."
+        )
 
     try:
         response = requests.get(url, timeout=10)
@@ -221,8 +225,7 @@ def propose_linkedin_diff(db: Session, variant_id: int, pasted_text: str) -> Pro
     """Diff a pasted LinkedIn profile export against the variant's
     current active content via the LLM, and store the proposed result as
     a PENDING version (is_active=False). Never auto-activates -- the user
-    must call approve_version() first. See CLAUDE.md: 'gets AI-diffed
-    into the profile with user approval, versioned.'"""
+    must call approve_version() first."""
     variant = _get_variant_or_raise(db, variant_id)
     pasted_text = pasted_text.strip()
     if not pasted_text:

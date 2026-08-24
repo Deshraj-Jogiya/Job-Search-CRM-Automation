@@ -1,5 +1,5 @@
 """
-Phase 7 route: the outcome-analytics dashboard. Read-only -- no
+The outcome-analytics dashboard route. Read-only -- no
 mutating actions live here, just a single GET rendering everything
 analytics_service.py computes.
 """

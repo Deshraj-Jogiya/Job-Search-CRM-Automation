@@ -1,16 +1,16 @@
 """
-Background scheduler. Runs one tick that: polls whichever intake
-sources are due (Phase 2), auto-proceeds any Pending Confirmation
-application whose deadline has passed, sweeps Rejected applications
-past their retention window, and sends the notification digest if
-anything new is queued and the digest interval has elapsed (Phase 4).
-Each of those internally checks GlobalSettings.automation_enabled
-fresh before doing real work, per CLAUDE.md's kill-switch convention --
-this file just needs to fire often enough that the shortest configured
-interval/deadline isn't missed by much, it does not encode cadence itself.
+Background scheduler. Runs one tick that: polls whichever job sources
+are due, auto-proceeds any Pending Confirmation application whose
+deadline has passed, sweeps Rejected applications past their retention
+window, and sends the notification digest if anything new is queued
+and the digest interval has elapsed. Each of those internally checks
+GlobalSettings.automation_enabled fresh before doing real work, so a
+mid-run toggle takes effect immediately -- this file just needs to
+fire often enough that the shortest configured interval/deadline isn't
+missed by much, it does not encode cadence itself.
 
-Phase 10: each of the 4 concerns above runs in its own DB session with
-its own exception isolation. The original version shared one session
+Each of the 4 concerns above runs in its own DB session with its own
+exception isolation. An earlier version shared one session
 and one try/except across all of them -- an unhandled error in intake
 (e.g. a source's network call throwing past its own internal handling)
 silently skipped the confirmation sweeps and the digest for that whole

@@ -1,10 +1,9 @@
 /* ==========================================================================
    Career Pilot design system
    Dark (default) + light theme via html.light-theme, glassmorphism cards,
-   Inter/Outfit typography -- adapted from deshraj-jogiya.github.io's
-   portfolio design language (see CLAUDE.md's Phase 11 note) for a working
-   dashboard tool rather than a marketing page: no decorative animation,
-   denser layout, but the same color/type/glass system throughout.
+   Inter/Outfit typography -- built for a working dashboard tool rather
+   than a marketing page: no decorative animation, denser layout, but a
+   consistent color/type/glass system throughout.
    ========================================================================== */
 
 :root {
@@ -126,8 +125,7 @@ code {
 }
 
 /* Keyboard-focus indicator -- applied deliberately (not just relying on
-   browser defaults) across every interactive element, per the Phase 11
-   accessibility pass. */
+   browser defaults) across every interactive element for accessibility. */
 a:focus-visible,
 button:focus-visible,
 input:focus-visible,

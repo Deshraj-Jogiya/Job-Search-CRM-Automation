@@ -11,7 +11,7 @@ never interacts with a CAPTCHA. That split (automated fill, human-only
 submit) isn't just a safety preference: Greenhouse forms carry a real
 reCAPTCHA that only a present human can clear anyway.
 
-Phase 17: while the browser stays open, a background poll watches for a
+While the browser stays open, a background poll watches for a
 real post-submit confirmation signal (URL or page-text change matching a
 curated, conservative pattern list -- never an LLM judgment call for
 this) and auto-calls mark_applied() the moment one appears. This never
@@ -43,7 +43,7 @@ _AUTOFILL_FUNCTIONS = {
 }
 _SUPPORTED_SOURCES = set(_AUTOFILL_FUNCTIONS)
 
-# Phase 17: submission auto-detection. Deliberately mechanical (no LLM) and
+# Submission auto-detection. Deliberately mechanical (no LLM) and
 # deliberately conservative -- a false positive here would mark a real
 # application as "Applied" when it wasn't, which is worse than missing a
 # real one and falling back to the existing manual "Mark as Applied"
@@ -225,11 +225,11 @@ def run_autofill(db: Session, application_id: int) -> None:
 
         # Deliberately no browser.close() here -- the human needs the
         # window to stay open to review and submit it themselves. This
-        # blocks the background thread until they close it (same as
-        # before Phase 17), just now polling in between for a real
-        # post-submit confirmation signal so a genuine submission can be
-        # auto-marked as Applied without waiting for a separate manual
-        # click -- see _watch_for_submission_and_close.
+        # blocks the background thread until they close it, polling in
+        # between for a real post-submit confirmation signal so a
+        # genuine submission can be auto-marked as Applied without
+        # waiting for a separate manual click -- see
+        # _watch_for_submission_and_close.
         _watch_for_submission_and_close(db, application_id, page)
 
 
@@ -293,7 +293,7 @@ def _run_autofill_background(application_id: int) -> None:
     try:
         run_autofill(db, application_id)
     except Exception as e:
-        # Broad on purpose (Phase 18): run_autofill's real failure modes
+        # Broad on purpose: run_autofill's real failure modes
         # aren't limited to AutofillServiceError -- a real Playwright
         # error, a PDF-rendering failure, or a profile-loading error would
         # previously propagate past a narrower except clause and crash

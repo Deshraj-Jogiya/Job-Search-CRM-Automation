@@ -1,4 +1,4 @@
-"""Phase 9 restore: stage -> preview -> execute, plus the safety
+"""Restore: stage -> preview -> execute, plus the safety
 properties that make it survivable if something goes wrong (safety-net
 backup taken first, bad token/wrong key never touches the live DB)."""
 

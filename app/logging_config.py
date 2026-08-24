@@ -1,5 +1,5 @@
 """
-Structured, retained logging (Phase 18) -- stdlib `logging` writing to a
+Structured, retained logging -- stdlib `logging` writing to a
 size-rotated local file, layered underneath the existing DB-backed
 `ActivityLog` (which stays the dashboard's human-readable recent-activity
 view, unchanged).

@@ -1,13 +1,10 @@
 """
-Phase 4: the confirmation-gated queue. An application that finishes
-tailoring lands here -- into Needs Review if Phase 2/3 flagged something
+The confirmation-gated queue. An application that finishes tailoring
+lands here -- into Needs Review if intake or matching flagged something
 serious (no timeout, always waits for an explicit human decision), into
 a timed Pending Confirmation queue (clean but no real autofill support
 for its source), or -- for a clean, autofill-supported application --
-straight to Approved with a real browser auto-launched immediately (see
-the auto-launch design note in CLAUDE.md's Phase 4 section). See
-CLAUDE.md's "Phase 4" section for the full settled design this
-implements.
+straight to Approved with a real browser auto-launched immediately.
 
 Nothing here does real portal submission -- there is no such engine in
 this rebuild. "Approved" means tailored documents are ready and the
@@ -94,9 +91,8 @@ def has_hard_stop_flag(application: JobApplication) -> str | None:
 def evaluate_and_enqueue(db: Session, application_id: int) -> JobApplication:
     """Call once tailoring succeeds. Routes to Needs Review (flagged, no
     timeout), straight to Approved + an auto-launched real browser
-    (clean AND autofill-supported -- see the Phase 4 auto-launch design
-    note in CLAUDE.md), or Pending Confirmation (clean but not
-    autofill-supported, timed).
+    (clean AND autofill-supported), or Pending Confirmation (clean but
+    not autofill-supported, timed).
 
     Queueing many applications at once must not mean an email per
     application -- only fast-track (rare, speed-critical) gets an
@@ -225,10 +221,10 @@ def reject_application(db: Session, application_id: int) -> JobApplication:
 
 def mark_applied(db: Session, application_id: int) -> JobApplication:
     """Confirmation that the application was actually submitted --
-    either an explicit human click (the dashboard button), or, since
-    Phase 17, autofill_service's own submission-confirmation watcher
-    calling this after observing a real post-submit page signal. Either
-    way this is the single source of truth for "submitted," not a
+    either an explicit human click (the dashboard button), or
+    autofill_service's own submission-confirmation watcher calling
+    this after observing a real post-submit page signal. Either way
+    this is the single source of truth for "submitted," not a
     guess."""
     application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
     if not application:
@@ -244,7 +240,7 @@ def mark_applied(db: Session, application_id: int) -> JobApplication:
 
 
 def mark_interviewing(db: Session, application_id: int) -> JobApplication:
-    """Phase 7: explicit self-report that an interview is happening --
+    """Explicit self-report that an interview is happening --
     same trust model as mark_applied. Feeds the outcome-analytics
     funnel; nothing infers this automatically since there's no email-
     scanning integration in this build."""
@@ -327,10 +323,10 @@ def sweep_expired_confirmations(db: Session) -> int:
 
 def sweep_rejected_retention(db: Session) -> int:
     """Hard-deletes Rejected applications older than
-    rejected_retention_days, per CLAUDE.md -- cascades to
-    TailoredDocument/OutreachMessage/InterviewPrep via the ORM
-    relationship, but NOT the JobPosting (company memory / repost
-    detection still wants that posting to have existed)."""
+    rejected_retention_days -- cascades to TailoredDocument/
+    OutreachMessage/InterviewPrep via the ORM relationship, but NOT the
+    JobPosting (company memory / repost detection still wants that
+    posting to have existed)."""
     settings = get_or_create_settings(db)
     cutoff = utcnow() - timedelta(days=settings.rejected_retention_days)
     old_rejected = (

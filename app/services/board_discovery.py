@@ -1,8 +1,7 @@
 """
-Phase 2 slice 2: auto-detects a company's Greenhouse/Lever/Ashby board
-slug from its name, so direct-ATS intake needs zero manual setup for
-companies already seen via LinkedIn/Adzuna (see CLAUDE.md/ARCHITECTURE.md
--- "most naturally: auto-detect board slugs for companies already seen").
+Auto-detects a company's Greenhouse/Lever/Ashby board slug from its
+name, so direct-ATS search needs zero manual setup for companies
+already seen via LinkedIn/Adzuna.
 
 Board slugs are the URL-friendly identifier each ATS uses for a company's
 public job board (e.g. boards.greenhouse.io/stripe -> "stripe"). There's

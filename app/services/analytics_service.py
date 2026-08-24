@@ -1,5 +1,5 @@
 """
-Phase 7: outcome analytics. Every number here is computed directly
+Outcome analytics. Every number here is computed directly
 from data this app already collects -- no estimates, no synthetic
 "expected" values. Two honesty limits worth knowing before trusting
 these numbers:
@@ -75,8 +75,8 @@ def conversion_rates(db: Session) -> dict:
 
 
 def speed_to_apply(db: Session) -> dict:
-    """Directly validates (or doesn't) the core 'early applicant' value
-    prop from CLAUDE.md -- how many hours/days typically pass between a
+    """Directly validates (or doesn't) the core 'early applicant' goal
+    of this project -- how many hours/days typically pass between a
     posting first appearing and this app actually applying to it."""
     rows = (
         db.query(JobPosting.first_seen_at, JobApplication.applied_at)
@@ -167,8 +167,8 @@ def by_score_band(db: Session) -> list[dict]:
 def flag_correlation(db: Session) -> dict:
     """Do scam/repost/stale-flagged postings convert worse than clean
     ones? Flags are informational-only elsewhere in this app (never
-    auto-filtered, per CLAUDE.md) -- this just shows whether that
-    caution has actually been earning its keep."""
+    auto-filtered) -- this just shows whether that caution has
+    actually been earning its keep."""
 
     def _counts(flagged: bool):
         query = db.query(func.count(JobApplication.id)).join(JobPosting, JobApplication.posting_id == JobPosting.id)
