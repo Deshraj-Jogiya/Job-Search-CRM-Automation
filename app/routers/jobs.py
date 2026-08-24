@@ -8,6 +8,15 @@ Also the application detail view, plus manual "score" and "tailor"
 triggers. Both are on-demand, not automatic on intake -- each is a
 real LLM call with real cost (see matching_service/tailoring_service
 docstrings).
+
+Keywords/seniority-exclusions/location-exclusions share one removal
+model: there is no hard-delete reachable from the UI. The only way to
+remove one from active use is pause (toggle), which keeps the row --
+a paused term is still visible, still selectable from the "paused"
+dropdown to re-add with one click, and its exact text is never lost to
+a typo'd memory. This replaced an earlier design with a real delete
+button and no confirmation, which made an accidental permanent loss
+one misclick away.
 """
 
 import json
@@ -230,13 +239,20 @@ def toggle_keyword(keyword_id: int, db: Session = Depends(get_db)):
     return _redirect(message=f"'{kw.keyword}' is now {'active' if kw.is_active else 'paused'}.")
 
 
-@router.post("/keywords/{keyword_id}/delete")
-def delete_keyword(keyword_id: int, db: Session = Depends(get_db)):
+@router.post("/keywords/reactivate")
+def reactivate_keyword(keyword_id: int = Form(...), db: Session = Depends(get_db)):
+    """Backs the "paused keywords" dropdown -- picking one from the list
+    and re-adding it this way means never having to retype (or remember)
+    a term that was paused earlier. There is deliberately no hard-delete
+    for keywords/exclusions anymore (see the Jobs page docstring note) --
+    pausing via toggle is the only removal path, so nothing a user
+    accidentally clicks away is ever actually unrecoverable."""
     kw = db.query(SearchKeyword).filter(SearchKeyword.id == keyword_id).first()
-    if kw:
-        db.delete(kw)
-        db.commit()
-    return _redirect(message="Keyword deleted.")
+    if not kw:
+        return _redirect(error=f"Keyword {keyword_id} not found.")
+    kw.is_active = True
+    db.commit()
+    return _redirect(message=f"Re-added keyword '{kw.keyword}'.")
 
 
 @router.post("/seniority-exclusions")
@@ -262,13 +278,14 @@ def toggle_seniority_exclusion(exclusion_id: int, db: Session = Depends(get_db))
     return _redirect(message=f"'{ex.term}' is now {'active' if ex.is_active else 'paused'}.")
 
 
-@router.post("/seniority-exclusions/{exclusion_id}/delete")
-def delete_seniority_exclusion(exclusion_id: int, db: Session = Depends(get_db)):
+@router.post("/seniority-exclusions/reactivate")
+def reactivate_seniority_exclusion(exclusion_id: int = Form(...), db: Session = Depends(get_db)):
     ex = db.query(SeniorityExclusion).filter(SeniorityExclusion.id == exclusion_id).first()
-    if ex:
-        db.delete(ex)
-        db.commit()
-    return _redirect(message="Seniority exclusion deleted.")
+    if not ex:
+        return _redirect(error=f"Seniority exclusion {exclusion_id} not found.")
+    ex.is_active = True
+    db.commit()
+    return _redirect(message=f"Re-added seniority exclusion '{ex.term}'.")
 
 
 @router.post("/location-exclusions")
@@ -294,13 +311,14 @@ def toggle_location_exclusion(exclusion_id: int, db: Session = Depends(get_db)):
     return _redirect(message=f"'{ex.term}' is now {'active' if ex.is_active else 'paused'}.")
 
 
-@router.post("/location-exclusions/{exclusion_id}/delete")
-def delete_location_exclusion(exclusion_id: int, db: Session = Depends(get_db)):
+@router.post("/location-exclusions/reactivate")
+def reactivate_location_exclusion(exclusion_id: int = Form(...), db: Session = Depends(get_db)):
     ex = db.query(LocationExclusion).filter(LocationExclusion.id == exclusion_id).first()
-    if ex:
-        db.delete(ex)
-        db.commit()
-    return _redirect(message="Location exclusion deleted.")
+    if not ex:
+        return _redirect(error=f"Location exclusion {exclusion_id} not found.")
+    ex.is_active = True
+    db.commit()
+    return _redirect(message=f"Re-added location exclusion '{ex.term}'.")
 
 
 @router.get("/review", response_class=HTMLResponse)
