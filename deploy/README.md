@@ -176,3 +176,60 @@ that IP automatically, with zero DNS setup -- e.g. `129-146-36-193
 hostname, so Caddy can get a real Let's Encrypt certificate for it with
 no extra configuration. Swap in a real owned domain later just by
 changing the Caddyfile's site address and pointing its DNS at the VM.
+sslip.io also resolves an arbitrary subdomain prefixed onto the same
+pattern (`demo.<ip-with-dashes>.sslip.io`), which is how the public
+showcase below gets its own hostname without a second IP.
+
+## 9. Public showcase demo (second instance, same VM)
+
+`APP_MODE=showcase` (see `app/app_mode.py` and the README's Public
+Showcase Mode section) is a real second deployment, not a route/flag on
+the personal one -- it needs its own process, database, and (critically)
+its own **separate working directory with its own `.env`**. `load_dotenv()`
+doesn't override variables already set by systemd's `EnvironmentFile=`,
+but it still falls back to any `.env` file sitting in the process's
+working directory for whatever wasn't set -- sharing a directory with
+the real instance would mean an incomplete demo `.env` silently
+inherits real secrets (SMTP password, real LLM/Adzuna keys, the real
+`DATABASE_URL`) for anything it forgot to set. Full isolation, not a
+shared directory with two env files, is the only way to make that
+mistake impossible rather than just unlikely.
+
+```
+sudo useradd --system --create-home --home-dir /opt/career-pilot-demo --shell /usr/sbin/nologin career-pilot-demo
+# clone into /opt/career-pilot-demo as that user (own deploy key -- see
+# step 5, this is a second, separate read-only key registered on the
+# same repo, not a reuse of the personal instance's key)
+sudo -u career-pilot-demo python3.11 -m venv /opt/career-pilot-demo/venv
+sudo -u career-pilot-demo /opt/career-pilot-demo/venv/bin/pip install -r /opt/career-pilot-demo/requirements-lock.txt
+```
+
+`.env` for the demo -- deliberately minimal. No `DASHBOARD_PASSWORD`
+(the whole point is that it's openly browsable), no LLM/Adzuna/
+JobsPipe/Tavily/Hunter/SMTP keys (so even if a visitor flips the
+automation toggle in the UI, there's no paid API to spend against and
+no outreach credential to misuse -- `run_intake_cycle` still respects
+`GlobalSettings.automation_enabled` either way, off by default in
+showcase mode), and its own freshly generated `SECRET_KEY` /
+`CREDENTIAL_ENCRYPTION_KEY` (never reused from the real instance):
+```
+APP_MODE=showcase
+SECRET_KEY=<fresh, generated separately from the real instance's>
+CREDENTIAL_ENCRYPTION_KEY=<fresh, generated separately>
+DATABASE_URL=sqlite:///./demo.db
+APP_BASE_URL=https://demo.<ip-with-dashes>.sslip.io
+```
+
+`deploy/career-pilot-demo.service` is the same shape as
+`career-pilot.service` but on port 8001, without the Xvfb dependency
+(showcase mode never has a real application to autofill -- see the
+unit file's own comment) and without `DISPLAY` set. Install it the same
+way as step 5's main service, then add a second Caddy site block:
+```
+demo.<ip-with-dashes>.sslip.io {
+    reverse_proxy 127.0.0.1:8001
+}
+```
+`sudo caddy validate --config /etc/caddy/Caddyfile` before `sudo
+systemctl reload caddy` -- Caddy requests a separate Let's Encrypt cert
+for the new hostname automatically on first request to it.
