@@ -6,15 +6,15 @@
 <section class="settings-panel">
     <h2>Confirm Database Restore</h2>
     <div class="flash flash-error" role="alert">
-        This will <strong>replace every row in the live database</strong> with the contents of the uploaded
-        backup. A safety-net backup of your <em>current</em> data will be saved to the server's local
-        <code>backups/pre_restore/</code> folder automatically, immediately before anything else changes --
-        keep that file if you need to undo this. This action cannot be undone from within the app itself.
+        This will <strong>replace all of your current data</strong> with the contents of the uploaded
+        backup. A safety copy of your <em>current</em> data will be saved automatically, immediately
+        before anything else changes -- ask whoever manages this deployment if you need to recover it.
+        This action cannot be undone from within the app itself.
     </div>
 
     <p><strong>Backup contents:</strong></p>
     <ul>
-        <li>Format: {{ "SQLite snapshot" if preview.format == "sqlite" else "Postgres row export" }}</li>
+        <li>Format: {{ "Full database file" if preview.format == "sqlite" else "Structured data export" }}</li>
         {% if preview.exported_at %}
         <li>Taken at: {{ preview.exported_at }}</li>
         {% endif %}

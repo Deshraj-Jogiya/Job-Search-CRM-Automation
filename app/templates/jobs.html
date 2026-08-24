@@ -19,14 +19,14 @@
 
 <section class="settings-panel">
     <div class="variant-header">
-        <h2>Intake Sources</h2>
+        <h2>Job Sources</h2>
         <form method="post" action="/jobs/intake/run" class="inline-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button type="submit">Run Intake Now</button>
+            <button type="submit">Search Now</button>
         </form>
     </div>
     {% if not automation_enabled %}
-    <p class="muted-note">Automation is currently OFF -- the scheduled tick and "Run Intake Now" are both paused. Toggle it on the <a href="/">dashboard</a>.</p>
+    <p class="muted-note">Automation is currently OFF -- scheduled and manual searches are both paused. Toggle it on the <a href="/">dashboard</a>.</p>
     {% endif %}
     <ul class="version-history">
         {% for source in sources %}
@@ -50,7 +50,7 @@
             </div>
         </li>
         {% else %}
-        <li class="muted-note">No sources polled yet -- run intake once to initialize them.</li>
+        <li class="muted-note">No sources polled yet -- run a search once to get started.</li>
         {% endfor %}
     </ul>
 </section>
@@ -79,16 +79,16 @@
         {% endfor %}
     </ul>
     {% else %}
-    <p class="muted-note" role="alert">No custom keywords configured -- intake falls back to 5 generic default
-        titles rather than anything tailored to you. This should auto-fill itself from your active profile the
-        next time intake runs; if it stays generic, seed a profile on the Profile page first.</p>
+    <p class="muted-note" role="alert">No custom keywords configured -- search falls back to 5 generic default
+        titles rather than anything tailored to you. This should fill in automatically from your active profile
+        the next time a search runs; if it stays generic, set up a profile on the Profile page first.</p>
     {% endif %}
 </section>
 
 <section class="settings-panel">
     <h2>Seniority Exclusions</h2>
-    <p class="muted-note">Title-level terms to exclude from direct-board intake (Greenhouse/Lever/Ashby) -- a
-        company's own board has no seniority filter, so this is what keeps a Staff/Director/VP-level posting
+    <p class="muted-note">Title-level terms to exclude from direct company job boards (Greenhouse/Lever/Ashby) --
+        a company's own board has no seniority filter, so this is what keeps a Staff/Director/VP-level posting
         from ever reaching you if that's not the level you're targeting.</p>
     <form method="post" action="/jobs/seniority-exclusions" class="inline-form-row">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -112,17 +112,17 @@
         {% endfor %}
     </ul>
     {% else %}
-    <p class="muted-note">No seniority exclusions configured -- direct-board intake will not filter by level.
-        This should auto-fill itself from your active profile the next time intake runs.</p>
+    <p class="muted-note">No seniority exclusions configured -- these boards won't filter by level.
+        This should fill in automatically from your active profile the next time a search runs.</p>
     {% endif %}
 </section>
 
 <section class="settings-panel">
     <h2>Location Exclusions</h2>
-    <p class="muted-note">Location-text terms (countries/regions) to hard-exclude at intake, across every source --
-        a company's own Greenhouse/Lever/Ashby board has no location filter at all, so without this, roles open
+    <p class="muted-note">Location terms (countries/regions) to exclude everywhere, across every source -- a
+        company's own Greenhouse/Lever/Ashby board has no location filter at all, so without this, roles open
         only in another country can reach scoring/tailoring even though you're not eligible for them. The base
-        search location for Adzuna/LinkedIn is set separately under Tunable Settings on the dashboard.</p>
+        search location for Adzuna/LinkedIn is set separately under Settings on the dashboard.</p>
     <form method="post" action="/jobs/location-exclusions" class="inline-form-row">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <label class="visually-hidden" for="location-exclusion-input">Location exclusion term</label>
@@ -145,17 +145,17 @@
         {% endfor %}
     </ul>
     {% else %}
-    <p class="muted-note">No location exclusions configured -- intake will not filter by country. This should
-        auto-fill itself with a default non-US list the next time intake runs.</p>
+    <p class="muted-note">No location exclusions configured -- search will not filter by country. This should
+        fill in with a default non-US list the next time a search runs.</p>
     {% endif %}
 </section>
 
 <section class="settings-panel">
     <h2>Target Companies (Direct ATS Boards)</h2>
     <p class="muted-note">
-        Greenhouse/Lever/Ashby board slugs are auto-detected from company names seen via LinkedIn/Adzuna
-        (a few per intake cycle). Add or correct one manually below if a company you care about wasn't
-        picked up -- the slug is the URL-friendly id in that company's careers page, e.g.
+        Greenhouse/Lever/Ashby board links are auto-detected from company names seen via LinkedIn/Adzuna
+        (a few each time a search runs). Add or correct one manually below if a company you care about wasn't
+        picked up -- it's the short id in that company's careers page URL, e.g.
         boards.greenhouse.io/<strong>stripe</strong>, jobs.lever.co/<strong>netflix</strong>,
         jobs.ashbyhq.com/<strong>notion</strong>.
     </p>
@@ -163,15 +163,15 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <label class="visually-hidden" for="company-name-input">Company name</label>
         <input type="text" id="company-name-input" name="company_name" placeholder="Company name" required>
-        <label class="visually-hidden" for="ats-type-select">ATS type</label>
+        <label class="visually-hidden" for="ats-type-select">Platform</label>
         <select id="ats-type-select" name="ats_type">
             <option value="greenhouse">Greenhouse</option>
             <option value="lever">Lever</option>
             <option value="ashby">Ashby</option>
         </select>
-        <label class="visually-hidden" for="slug-input">Board slug</label>
-        <input type="text" id="slug-input" name="slug" placeholder="board slug" required>
-        <button type="submit">Set Slug</button>
+        <label class="visually-hidden" for="slug-input">Careers page id</label>
+        <input type="text" id="slug-input" name="slug" placeholder="careers page id" required>
+        <button type="submit">Save</button>
     </form>
     {% if target_companies %}
     <ul class="version-history">
@@ -185,12 +185,12 @@
         {% endfor %}
     </ul>
     {% else %}
-    <p class="muted-note">No boards detected yet -- run intake a few times to let auto-detection work through your company list, or add one manually above.</p>
+    <p class="muted-note">No boards detected yet -- run a few searches to let auto-detection work through your company list, or add one manually above.</p>
     {% endif %}
 </section>
 
 <section class="variant-block">
-    <h2>Ingested Postings ({{ applications|length }})</h2>
+    <h2>Job Postings ({{ applications|length }})</h2>
     {% if applications %}
     <ul class="job-list">
         {% for app in applications %}
@@ -224,7 +224,7 @@
         {% endfor %}
     </ul>
     {% else %}
-    <p class="muted-note">No postings ingested yet -- click "Run Intake Now" above to start, or wait for the scheduled tick.</p>
+    <p class="muted-note">No postings found yet -- click "Search Now" above to start, or wait for the next scheduled search.</p>
     {% endif %}
 </section>
 {% endblock %}
