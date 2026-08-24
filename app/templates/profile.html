@@ -59,7 +59,7 @@
         &middot; {{ entry.active_version.change_summary }}
     </p>
     {% else %}
-    <p class="muted-note">No active profile content yet -- paste JSON below to seed this variant.</p>
+    <p class="muted-note">No active profile content yet -- paste your profile data below (JSON format) to fill in this variant.</p>
     {% endif %}
 
     {% if entry.pending_versions %}
@@ -180,7 +180,7 @@
     </details>
 
     <details class="sub-panel">
-        <summary>Manual edit / seed profile JSON</summary>
+        <summary>Manual edit / paste profile JSON</summary>
         <form method="post" action="/profile/variants/{{ variant.id }}/manual-save">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <label class="visually-hidden" for="profile-json-{{ variant.id }}">Profile JSON content</label>
