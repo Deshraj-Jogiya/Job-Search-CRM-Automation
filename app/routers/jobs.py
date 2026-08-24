@@ -26,7 +26,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from ..database import SessionLocal, get_db
 from ..models import (
@@ -150,6 +150,7 @@ def jobs_page(request: Request, db: Session = Depends(get_db)):
     applications = (
         db.query(JobApplication)
         .join(JobPosting)
+        .options(joinedload(JobApplication.interview_prep))
         .order_by(JobApplication.created_at.desc())
         .limit(100)
         .all()

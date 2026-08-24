@@ -92,15 +92,21 @@
             {% endif %}
         </section>
 
-        {% if application.status not in ("Rejected", "Not Selected") %}
+        {% set is_closed = application.status in ("Rejected", "Not Selected") %}
+        {% if not is_closed or general_prep or company_prep %}
         <section class="variant-block">
             <div class="variant-header">
                 <h2>Interview Prep</h2>
+                {% if not is_closed %}
                 <form method="post" action="/jobs/{{ application.id }}/interview-prep" class="inline-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <button type="submit">{{ "Regenerate" if interview_prep else "Generate Interview Prep" }}</button>
                 </form>
+                {% endif %}
             </div>
+            {% if is_closed and (general_prep or company_prep) %}
+            <p class="muted-note">This application is closed -- kept below for reference, not editable.</p>
+            {% endif %}
             {% if general_prep or company_prep %}
             <p class="muted-note">Generated {{ interview_prep.generated_at.strftime("%Y-%m-%d %H:%M") }} UTC.</p>
 
