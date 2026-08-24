@@ -169,14 +169,19 @@ silently bypass the password. Only set that flag if there is genuinely
 no reverse proxy in front.
 
 **Backups.** `/settings/backup/export` produces an encrypted snapshot
-against either database backend. Restore is gated behind
+against either database backend on demand. A daily automated backup
+also runs on its own from the scheduler, straight to
+`backups/scheduled/` (gitignored, retention count live-editable from
+the dashboard, default 14) -- live-editable and on by default whenever
+`CREDENTIAL_ENCRYPTION_KEY` is set, independent of the
+`automation_enabled` kill switch. Restore is gated behind
 `ADMIN_PASSWORD`, previews what it will change before touching
 anything, requires typing a confirmation phrase, and takes an
 automatic safety-net backup of the current database first. It's
 all-or-nothing and same-dialect-only (a SQLite backup can't restore
-onto a Postgres deployment or vice versa). Still export periodically
-if running this unattended for extended stretches, and keep the file
-somewhere outside the machine running the app.
+onto a Postgres deployment or vice versa). The automated copies still
+only live on the same machine running the app -- periodically move a
+downloaded export somewhere outside it too.
 
 ## Security
 
@@ -204,7 +209,6 @@ push and PR; `dependency-audit.yml` runs a vulnerability scan weekly.
 
 ## Known gaps
 
-- No automated/scheduled backups — export is manual, on-demand
 - No process supervision/auto-restart baked into the deploy scripts beyond systemd's own `Restart=on-failure`
 - No external uptime monitoring configured against `/api/health` by default
 - Outreach handoff (the "we're now emailing back and forth" phase) is intentionally out of scope for now
