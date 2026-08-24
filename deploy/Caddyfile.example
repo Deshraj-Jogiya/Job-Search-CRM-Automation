@@ -1,20 +1,38 @@
 # Caddy auto-provisions and renews a real Let's Encrypt TLS cert with zero
-# extra steps -- just point a domain's DNS A record at the VM's public IP
-# first, then fill in the domain below and copy this to /etc/caddy/Caddyfile.
+# extra steps. Two ways to get a real, publicly-resolvable hostname for it:
 #
-# If you don't have a domain yet, skip Caddy for now and just open port
-# 8000 directly in the OCI Security List + OS firewall, then browse to
-# http://<VM_PUBLIC_IP>:8000 -- no TLS, fine for early testing, not for
-# regular use once real credentials/session cookies are involved.
+# 1. Own a domain: point its DNS A record at the VM's public IP, then use
+#    that domain below.
+# 2. No domain yet: sslip.io resolves <ip-with-dashes>.sslip.io to that IP
+#    automatically, e.g. 129-146-36-193.sslip.io for 129.146.36.193 -- a
+#    real, public hostname with zero DNS setup, which Caddy can get a real
+#    cert for just as well. Swap in a real domain later by just changing
+#    the site address below and pointing its DNS at the VM.
 
-your-domain.example.com {
+your-domain-or-sslip-io-address {
+    # Interactive autofill needs a real, visible browser (see
+    # autofill_service.py's docstring -- deliberate, not headless by
+    # accident) -- on a VM with no real display, that browser opens on a
+    # virtual one instead (Xvfb + openbox), viewable through noVNC. This
+    # route gets its own Basic Auth layer on top of the VNC password
+    # itself, since the screen it shows can contain real personal/
+    # application data. See deploy/README.md section 6 for the full
+    # Xvfb/openbox/x11vnc/novnc setup this route proxies to.
+    handle_path /vnc/* {
+        basicauth {
+            <username> <bcrypt-hash-from-caddy-hash-password>
+        }
+        reverse_proxy 127.0.0.1:6080
+    }
     reverse_proxy 127.0.0.1:8000
 }
 
-# Install Caddy (Ubuntu):
-#   sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
-#   curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-#   curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
-#   sudo apt update && sudo apt install caddy
-#   sudo cp Caddyfile.example /etc/caddy/Caddyfile   # after filling in your real domain
-#   sudo systemctl reload caddy
+# Install Caddy (Oracle Linux 9, via the project's own official COPR repo):
+#   sudo dnf install -y "dnf-command(copr)"
+#   sudo dnf copr enable -y @caddy/caddy
+#   sudo dnf install -y caddy
+#   sudo cp Caddyfile.example /etc/caddy/Caddyfile   # after filling in the real address/hash above
+#   sudo restorecon -Rv /etc/caddy                   # SELinux -- see deploy/README.md section 2
+#   sudo systemctl enable --now caddy
+#
+# Generate the basicauth hash: caddy hash-password --plaintext '<a-real-password>'

@@ -37,6 +37,14 @@ sudo -u "$SERVICE_USER" python3.11 -m venv "$APP_DIR/venv"
 sudo -u "$SERVICE_USER" "$APP_DIR/venv/bin/pip" install --upgrade pip
 sudo -u "$SERVICE_USER" "$APP_DIR/venv/bin/pip" install -r "$APP_DIR/requirements-lock.txt"
 
+# Oracle Linux 9 runs SELinux Enforcing -- anything that passed through
+# /tmp (git clone's own temp objects, pip's build/cache dirs) keeps
+# /tmp's user_tmp_t label, which breaks execution later with confusing,
+# SELinux-less-looking errors (systemd reports plain "Permission
+# denied" or "status=203/EXEC", never mentioning SELinux). Fixing the
+# label now, once, is simpler than debugging it after the fact.
+sudo restorecon -R "$APP_DIR"
+
 echo "== 5/6: .env =="
 if [ ! -f "$APP_DIR/.env" ]; then
     echo "No .env found at $APP_DIR/.env yet."
@@ -48,6 +56,7 @@ fi
 
 echo "== 6/6: systemd service =="
 sudo cp "$APP_DIR/deploy/career-pilot.service" /etc/systemd/system/career-pilot.service
+sudo restorecon -v /etc/systemd/system/career-pilot.service
 sudo systemctl daemon-reload
 sudo systemctl enable career-pilot
 if [ -f "$APP_DIR/.env" ]; then
@@ -59,7 +68,10 @@ else
 fi
 
 echo ""
-echo "Done. Next: point a reverse proxy (Caddy/nginx) at 127.0.0.1:8000 for TLS,"
-echo "and open port 443 (and/or 8000 if testing without a proxy first) in both"
-echo "the OCI Security List AND the OS firewall (iptables/ufw) -- see the"
-echo "walkthrough notes for both of those, they're separate layers on Oracle."
+echo "Done -- but this only starts the app itself. See deploy/README.md for"
+echo "everything else a real deployment needs: opening the firewall (two"
+echo "separate layers on Oracle -- the OCI Security List AND firewalld),"
+echo "Caddy for real HTTPS (works even without an owned domain, via"
+echo "sslip.io), the Supabase IPv4-pooler gotcha if DATABASE_URL points at"
+echo "Postgres, and the Xvfb/noVNC setup interactive autofill needs since"
+echo "this VM has no real display."

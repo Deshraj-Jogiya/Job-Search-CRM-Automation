@@ -1,0 +1,15 @@
+[Unit]
+Description=Lightweight window manager for the virtual display
+After=xvfb.service
+Requires=xvfb.service
+
+[Service]
+Type=simple
+User=career-pilot
+Environment=DISPLAY=:99
+ExecStart=/usr/bin/openbox
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
