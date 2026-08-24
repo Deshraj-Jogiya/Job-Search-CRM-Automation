@@ -52,6 +52,22 @@ _SECTION_LABELS = {
 }
 
 
+def _bullet_total(entries) -> int:
+    """Sum of bullets across every experience/project entry. Entry-count
+    alone can't catch the failure mode that actually matters for
+    matching/tailoring quality (see match_score's own history of only
+    seeing titles+skills, not bullets) -- an entry can survive a paste
+    with its role/company intact but its bullets wiped, which a plain
+    len(experience) comparison would never notice."""
+    if not isinstance(entries, list):
+        return 0
+    total = 0
+    for entry in entries:
+        if isinstance(entry, dict) and isinstance(entry.get("bullets"), list):
+            total += len(entry["bullets"])
+    return total
+
+
 def _section_counts(content: dict) -> dict[str, int]:
     counts = {}
     for key in _SECTION_LABELS:
@@ -64,7 +80,17 @@ def _section_counts(content: dict) -> dict[str, int]:
         counts["skills"] = len(skills)
     else:
         counts["skills"] = 0
+    counts["experience_bullets"] = _bullet_total(content.get("experience"))
+    counts["projects_bullets"] = _bullet_total(content.get("projects"))
     return counts
+
+
+_ALL_COUNT_LABELS = {
+    **_SECTION_LABELS,
+    "skills": "skills",
+    "experience_bullets": "total experience bullets",
+    "projects_bullets": "total project bullets",
+}
 
 
 def detect_profile_regressions(old_content: dict, new_content: dict) -> list[str]:
@@ -73,7 +99,7 @@ def detect_profile_regressions(old_content: dict, new_content: dict) -> list[str
     old_counts = _section_counts(old_content)
     new_counts = _section_counts(new_content)
     warnings = []
-    for key, label in {**_SECTION_LABELS, "skills": "skills"}.items():
+    for key, label in _ALL_COUNT_LABELS.items():
         old_n, new_n = old_counts.get(key, 0), new_counts.get(key, 0)
         if new_n < old_n:
             warnings.append(f"{label}: {old_n} -> {new_n}")
@@ -85,7 +111,13 @@ def profile_completeness_warnings(content: dict) -> list[str]:
     catches a gap that was never there to begin with, which a
     shrink-only check can't. Deliberately narrow (only the sections
     genuinely worth flagging by default) to avoid nagging over things
-    that are legitimately fine to leave blank for many candidates."""
+    that are legitimately fine to leave blank for many candidates --
+    certifications/projects can be genuinely absent for a real
+    candidate, but a listed experience/project entry with zero bullets
+    is never intentional, it's a paste that lost its content mid-entry,
+    and match_score/tailoring only ever look at bullets, never bare
+    role/company/project names -- an entry stripped down to just a
+    title is invisible to scoring even though it looks present here."""
     counts = _section_counts(content)
     warnings = []
     if counts["certifications"] == 0:
@@ -94,6 +126,37 @@ def profile_completeness_warnings(content: dict) -> list[str]:
         warnings.append("No education listed -- add at least one degree on the Profile page.")
     if counts["experience"] == 0:
         warnings.append("No work experience listed yet.")
+    if counts["skills"] == 0:
+        warnings.append("No skills listed -- scoring and tailoring both rely on this being filled in.")
+
+    experience = content.get("experience")
+    if isinstance(experience, list):
+        empty_roles = [
+            e.get("role") or e.get("company") or "an experience entry"
+            for e in experience
+            if isinstance(e, dict) and not e.get("bullets")
+        ]
+        if empty_roles:
+            warnings.append(
+                f"{len(empty_roles)} experience entry has no bullets listed ({', '.join(empty_roles)})"
+                if len(empty_roles) == 1
+                else f"{len(empty_roles)} experience entries have no bullets listed ({', '.join(empty_roles)})"
+            )
+
+    projects = content.get("projects")
+    if isinstance(projects, list):
+        empty_projects = [
+            p.get("name") or "a project"
+            for p in projects
+            if isinstance(p, dict) and not p.get("bullets")
+        ]
+        if empty_projects:
+            warnings.append(
+                f"{len(empty_projects)} project has no bullets listed ({', '.join(empty_projects)})"
+                if len(empty_projects) == 1
+                else f"{len(empty_projects)} projects have no bullets listed ({', '.join(empty_projects)})"
+            )
+
     return warnings
 
 

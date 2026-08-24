@@ -96,9 +96,76 @@ def test_no_warnings_when_everything_present():
     content = {
         "certifications": ["A"],
         "education": [{"degree": "MS"}],
-        "experience": [{"role": "Engineer"}],
+        "experience": [{"role": "Engineer", "bullets": ["Did a thing."]}],
+        "skills": {"languages": ["Python"]},
     }
     assert profile_completeness_warnings(content) == []
+
+
+def test_flags_empty_skills():
+    content = {
+        "certifications": ["A"],
+        "education": [{"degree": "MS"}],
+        "experience": [{"role": "Engineer", "bullets": ["Did a thing."]}],
+        "skills": {},
+    }
+    warnings = profile_completeness_warnings(content)
+    assert any("skills" in w.lower() for w in warnings)
+
+
+def test_flags_experience_entry_with_no_bullets_even_though_role_is_present():
+    """The real failure mode this catches: an entry survives a paste
+    with its role/company intact but its bullets wiped -- invisible to
+    scoring (which only ever reads bullets), and invisible to a plain
+    experience-count check (the entry is still there)."""
+    content = {
+        "certifications": ["A"],
+        "education": [{"degree": "MS"}],
+        "skills": {"languages": ["Python"]},
+        "experience": [{"role": "Data Engineer", "company": "Acme", "bullets": []}],
+    }
+    warnings = profile_completeness_warnings(content)
+    assert any("Data Engineer" in w and "no bullets" in w for w in warnings)
+
+
+def test_flags_project_entry_with_no_bullets():
+    content = {
+        "certifications": ["A"],
+        "education": [{"degree": "MS"}],
+        "skills": {"languages": ["Python"]},
+        "experience": [{"role": "Engineer", "bullets": ["Did a thing."]}],
+        "projects": [{"name": "Side Project", "bullets": []}],
+    }
+    warnings = profile_completeness_warnings(content)
+    assert any("Side Project" in w and "no bullets" in w for w in warnings)
+
+
+def test_does_not_flag_experience_entry_that_has_bullets():
+    content = {
+        "certifications": ["A"],
+        "education": [{"degree": "MS"}],
+        "skills": {"languages": ["Python"]},
+        "experience": [{"role": "Engineer", "bullets": ["Shipped a thing.", "Fixed a thing."]}],
+    }
+    assert profile_completeness_warnings(content) == []
+
+
+def test_detects_experience_bullets_thinning_even_when_entry_count_is_unchanged():
+    """Same real failure mode as above, but for detect_profile_regressions:
+    a paste that keeps every role/company row but drops bullets from one
+    of them looks identical to the old top-level count check (same
+    number of experience entries), so it needs its own comparison."""
+    old = {"experience": [{"role": "Engineer", "bullets": ["A", "B", "C"]}]}
+    new = {"experience": [{"role": "Engineer", "bullets": ["A"]}]}
+    warnings = detect_profile_regressions(old, new)
+    assert any("experience bullets: 3 -> 1" in w for w in warnings)
+
+
+def test_detects_project_bullets_thinning():
+    old = {"projects": [{"name": "X", "bullets": ["A", "B"]}]}
+    new = {"projects": [{"name": "X", "bullets": []}]}
+    warnings = detect_profile_regressions(old, new)
+    assert any("project bullets: 2 -> 0" in w for w in warnings)
 
 
 # -- structured education/certification management ----------------------
