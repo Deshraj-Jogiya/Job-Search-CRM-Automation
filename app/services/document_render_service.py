@@ -19,9 +19,16 @@ description. Unescaped, a JD containing prompt-injection markup that the
 LLM reproduces near-verbatim could make PDF generation itself issue a
 real outbound fetch server-side, or simply crash the render on any
 literal '&' or '<' in ordinary content (e.g. "C&A frameworks"). The
-handful of tags this module inserts itself (<b>, <i>, &mdash;, &bull;,
-&nbsp;, <br/>) are written directly into the f-strings below, never
-through _esc(), so they still render as real markup.
+handful of tags this module inserts itself (<b>, <i>, &mdash;, &nbsp;,
+<br/>) are written directly into the f-strings below, never through
+_esc(), so they still render as real markup.
+
+Bullets are a plain ASCII "- " prefix, not a Unicode bullet character --
+confirmed via pdfplumber that reportlab's base-14 Helvetica font has no
+usable ToUnicode mapping for &bull;, so every bullet point extracted as
+a garbled (cid:N) glyph reference instead of real text. Renders
+identically either way; a hyphen extracts cleanly on every ATS parser
+instead of gambling on font-encoding support none of them need to have.
 """
 
 import io
@@ -140,7 +147,7 @@ def render_resume_pdf(resume_content: dict) -> bytes:
             flow.append(_two_col_row(job.get("role"), job.get("date"), _role_italic_style, _meta_right_style))
             flow.append(Spacer(1, 2))
             for bullet in job.get("bullets", []):
-                flow.append(Paragraph(f"&bull; {_esc(bullet)}", _bullet_style))
+                flow.append(Paragraph(f"- {_esc(bullet)}", _bullet_style))
             flow.append(Spacer(1, 4))
 
     projects = resume_content.get("projects") or []
@@ -151,7 +158,7 @@ def render_resume_pdf(resume_content: dict) -> bytes:
             flow.append(_two_col_row(proj.get("name"), tech, _role_style, _meta_right_style))
             flow.append(Spacer(1, 2))
             for bullet in proj.get("bullets", []):
-                flow.append(Paragraph(f"&bull; {_esc(bullet)}", _bullet_style))
+                flow.append(Paragraph(f"- {_esc(bullet)}", _bullet_style))
             flow.append(Spacer(1, 4))
 
     education = resume_content.get("education") or []
@@ -166,7 +173,7 @@ def render_resume_pdf(resume_content: dict) -> bytes:
     if certifications:
         flow += _section_header("Certifications")
         for cert in certifications:
-            flow.append(Paragraph(f"&bull; {_esc(cert)}", _bullet_style))
+            flow.append(Paragraph(f"- {_esc(cert)}", _bullet_style))
 
     doc.build(flow)
     return buf.getvalue()
