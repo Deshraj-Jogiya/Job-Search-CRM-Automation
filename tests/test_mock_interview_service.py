@@ -127,6 +127,46 @@ def test_submit_answer_records_both_turns_and_persists_level_up(db):
     assert interviewer_turn.content == "Great, tell me more about that project."
 
 
+def test_submit_answer_stores_voice_metrics_on_candidate_turn(db):
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application = make_application(db, posting)
+    _make_prep(db, application)
+    session = mock_interview_service.start_session(db, application.id, "Recruiter Screen", "warm_up")
+
+    fake_response = json.dumps({"next_line": "ok", "is_followup": False, "suggest_level_up": False, "level_up_note": ""})
+    with patch("app.services.mock_interview_service.get_llm_provider") as mock_llm:
+        mock_llm.return_value.complete_json.return_value = fake_response
+        mock_interview_service.submit_answer(
+            db, session.id, "spoken answer",
+            voice_metrics={"duration_seconds": 12.5, "pause_count": 1, "longest_pause_seconds": 3.0},
+        )
+
+    db.refresh(session)
+    candidate_turn = [t for t in session.turns if t.speaker == "candidate"][0]
+    assert candidate_turn.recording_duration_seconds == 12.5
+    assert candidate_turn.pause_count == 1
+    assert candidate_turn.longest_pause_seconds == 3.0
+
+
+def test_submit_answer_without_voice_metrics_leaves_fields_null(db):
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application = make_application(db, posting)
+    _make_prep(db, application)
+    session = mock_interview_service.start_session(db, application.id, "Recruiter Screen", "warm_up")
+
+    fake_response = json.dumps({"next_line": "ok", "is_followup": False, "suggest_level_up": False, "level_up_note": ""})
+    with patch("app.services.mock_interview_service.get_llm_provider") as mock_llm:
+        mock_llm.return_value.complete_json.return_value = fake_response
+        mock_interview_service.submit_answer(db, session.id, "typed answer")
+
+    db.refresh(session)
+    candidate_turn = [t for t in session.turns if t.speaker == "candidate"][0]
+    assert candidate_turn.recording_duration_seconds is None
+    assert candidate_turn.pause_count is None
+
+
 def test_submit_answer_raises_for_completed_session(db):
     company = make_company(db)
     posting = make_posting(db, company)
@@ -215,10 +255,13 @@ def test_delivery_stats_counts_filler_words_and_timing():
     from app.services.mock_interview_service import _delivery_stats
 
     class FakeTurn:
-        def __init__(self, speaker, content, created_at):
+        def __init__(self, speaker, content, created_at, recording_duration_seconds=None, pause_count=None, longest_pause_seconds=None):
             self.speaker = speaker
             self.content = content
             self.created_at = created_at
+            self.recording_duration_seconds = recording_duration_seconds
+            self.pause_count = pause_count
+            self.longest_pause_seconds = longest_pause_seconds
 
     from datetime import datetime, timedelta
     t0 = datetime(2026, 1, 1, 12, 0, 0)
@@ -229,17 +272,20 @@ def test_delivery_stats_counts_filler_words_and_timing():
 
     stats = _delivery_stats(turns)
     assert "2 filler word(s)" in stats or "3 filler word(s)" in stats  # um, like, you know
-    assert "~20s to respond" in stats
+    assert "~20s from question shown to answer submitted" in stats
 
 
 def test_delivery_stats_ignores_stale_elapsed_time():
     from app.services.mock_interview_service import _delivery_stats
 
     class FakeTurn:
-        def __init__(self, speaker, content, created_at):
+        def __init__(self, speaker, content, created_at, recording_duration_seconds=None, pause_count=None, longest_pause_seconds=None):
             self.speaker = speaker
             self.content = content
             self.created_at = created_at
+            self.recording_duration_seconds = recording_duration_seconds
+            self.pause_count = pause_count
+            self.longest_pause_seconds = longest_pause_seconds
 
     from datetime import datetime, timedelta
     t0 = datetime(2026, 1, 1, 12, 0, 0)
@@ -250,6 +296,66 @@ def test_delivery_stats_ignores_stale_elapsed_time():
 
     stats = _delivery_stats(turns)
     assert "to respond" not in stats
+
+
+def test_delivery_stats_uses_real_recording_duration_for_voice_answers():
+    from app.services.mock_interview_service import _delivery_stats
+
+    class FakeTurn:
+        def __init__(self, speaker, content, created_at, recording_duration_seconds=None, pause_count=None, longest_pause_seconds=None):
+            self.speaker = speaker
+            self.content = content
+            self.created_at = created_at
+            self.recording_duration_seconds = recording_duration_seconds
+            self.pause_count = pause_count
+            self.longest_pause_seconds = longest_pause_seconds
+
+    from datetime import datetime, timedelta
+    t0 = datetime(2026, 1, 1, 12, 0, 0)
+    # 20 real words spoken over 10 actual recorded seconds -> 120 wpm,
+    # even though the wall-clock gap between turns (which would include
+    # think-time) is much longer -- the point of tracking real speech
+    # duration instead of turn-to-turn elapsed time.
+    turns = [
+        FakeTurn("interviewer", "Question.", t0),
+        FakeTurn(
+            "candidate", "one two three four five six seven eight nine ten "
+            "eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty",
+            t0 + timedelta(seconds=90), recording_duration_seconds=10.0,
+        ),
+    ]
+
+    stats = _delivery_stats(turns)
+    assert "10s of actual recorded speech" in stats
+    assert "120 words/min" in stats
+    assert "from question shown to answer submitted" not in stats  # real duration takes priority over wall-clock
+
+
+def test_delivery_stats_reports_pause_data_when_present():
+    from app.services.mock_interview_service import _delivery_stats
+
+    class FakeTurn:
+        def __init__(self, speaker, content, created_at, recording_duration_seconds=None, pause_count=None, longest_pause_seconds=None):
+            self.speaker = speaker
+            self.content = content
+            self.created_at = created_at
+            self.recording_duration_seconds = recording_duration_seconds
+            self.pause_count = pause_count
+            self.longest_pause_seconds = longest_pause_seconds
+
+    from datetime import datetime, timedelta
+    t0 = datetime(2026, 1, 1, 12, 0, 0)
+    turns = [
+        FakeTurn("interviewer", "Question.", t0),
+        FakeTurn(
+            "candidate", "There was a long silence here.", t0 + timedelta(seconds=15),
+            recording_duration_seconds=15.0, pause_count=2, longest_pause_seconds=4.2,
+        ),
+    ]
+
+    stats = _delivery_stats(turns)
+    assert "2 mid-answer pause(s)" in stats
+    assert "longest ~4s" in stats
 
 
 def test_find_previous_session_matches_same_round_only(db):

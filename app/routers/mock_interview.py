@@ -101,9 +101,28 @@ def mock_interview_session_detail(application_id: int, session_id: int, request:
 
 
 @router.post("/{application_id}/mock-interview/{session_id}/respond")
-def respond_mock_interview(application_id: int, session_id: int, answer: str = Form(...), db: Session = Depends(get_db)):
+def respond_mock_interview(
+    application_id: int,
+    session_id: int,
+    answer: str = Form(...),
+    recording_duration_seconds: float = Form(0),
+    pause_count: int = Form(0),
+    longest_pause_seconds: float = Form(0),
+    db: Session = Depends(get_db),
+):
+    # Only ever present for a voice-answered turn (see the
+    # SpeechRecognition instrumentation in mock_interview_session.html)
+    # -- absent/zero for a typed answer, where neither concept applies.
+    voice_metrics = (
+        {
+            "duration_seconds": recording_duration_seconds,
+            "pause_count": pause_count,
+            "longest_pause_seconds": longest_pause_seconds,
+        }
+        if recording_duration_seconds else None
+    )
     try:
-        mock_interview_service.submit_answer(db, session_id, answer)
+        mock_interview_service.submit_answer(db, session_id, answer, voice_metrics=voice_metrics)
     except MockInterviewServiceError as e:
         return RedirectResponse(
             url=f"/jobs/{application_id}/mock-interview/{session_id}?error={quote(str(e))}", status_code=303
