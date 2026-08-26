@@ -43,6 +43,7 @@ from ..models import (
 )
 from ..services import (
     autofill_service,
+    behavioral_story_service,
     confirmation_service,
     contact_discovery_service,
     intake_service,
@@ -427,6 +428,20 @@ def _build_detail_context(application_id: int, request: Request, db: Session, di
     company_prep = json.loads(application.interview_prep.company_prep_json) if (
         application.interview_prep and application.interview_prep.company_prep_json
     ) else None
+    process_research = json.loads(application.interview_prep.process_research_json) if (
+        application.interview_prep and application.interview_prep.process_research_json
+    ) else None
+    predicted_rounds = json.loads(application.interview_prep.predicted_rounds_json) if (
+        application.interview_prep and application.interview_prep.predicted_rounds_json
+    ) else None
+
+    try:
+        _, variant_id = matching_service.get_profile_content_for_application(db, application)
+        confirmed_stories = behavioral_story_service.list_stories(db, variant_id, confirmed_only=True)
+        for s in confirmed_stories:
+            s.traits = json.loads(s.traits_json) if s.traits_json else []
+    except matching_service.MatchingServiceError:
+        confirmed_stories = []
 
     return {
         "application": application,
@@ -436,6 +451,9 @@ def _build_detail_context(application_id: int, request: Request, db: Session, di
         "cl_doc": cl_doc,
         "general_prep": general_prep,
         "company_prep": company_prep,
+        "process_research": process_research,
+        "predicted_rounds": predicted_rounds,
+        "confirmed_stories": confirmed_stories,
         "interview_prep": application.interview_prep,
         "outreach_messages": outreach_messages,
         "daily_outreach_cap": settings.daily_outreach_cap,

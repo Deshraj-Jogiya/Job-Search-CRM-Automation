@@ -69,3 +69,22 @@ def make_application(db, posting, **overrides):
     db.commit()
     db.refresh(application)
     return application
+
+
+def make_variant(db, name="Data Engineering", is_default=True, content=None):
+    import json
+
+    variant = models.ProfileVariant(name=name, is_default=is_default)
+    db.add(variant)
+    db.commit()
+    db.refresh(variant)
+
+    version = models.ProfileVersion(
+        variant_id=variant.id,
+        content_json=json.dumps(content if content is not None else {"name": "Test Candidate", "experience": []}),
+        source="manual",
+        is_active=True,
+    )
+    db.add(version)
+    db.commit()
+    return variant

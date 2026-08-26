@@ -1,5 +1,5 @@
 """
-Interview prep generation. Two independent pieces:
+Interview prep generation. Independent pieces:
 
 - General prep: likely questions and talking points grounded in the
   candidate's real profile -- the kind of prep that applies to this
@@ -9,6 +9,17 @@ Interview prep generation. Two independent pieces:
   the company -- not the LLM's own (possibly stale or invented)
   knowledge of it. Same "discover real info, don't guess" posture as
   contact_discovery_service.py, which is where tavily_search() lives.
+- Process research: same posture applied to the interview PROCESS
+  itself, not just company facts -- real candidates' reported rounds
+  and format (Glassdoor/Blind/etc-style sources, via Tavily), because
+  a company like a consulting firm running case interviews + a
+  Personal-Experience-Interview needs very different prep than a
+  startup running a take-home + one call. Falls back to a clearly-
+  labeled generic structure when nothing real is found, same as every
+  other optional integration here.
+- Predicted rounds: restructures the above into an ordered, round-by-
+  round plan instead of one flat list, so prep reads as "here's what
+  round 2 actually tests" rather than an undifferentiated question dump.
 
 On-demand (a button on the application detail page), not automatic --
 same real-LLM-cost reasoning as scoring/tailoring elsewhere in this
@@ -46,6 +57,64 @@ def _light_company_research(db: Session, company_name: str) -> str:
         return ""
     snippets = [r.get("content", "")[:400] for r in results if r.get("content")]
     return "\n\n".join(snippets)
+
+
+def _research_interview_process(db: Session, company_name: str, job_title: str) -> dict:
+    """Best-effort, never raises. Searches for real, reported interview
+    rounds/format for this company+role -- distinct from
+    _light_company_research, which looks for company facts, not process.
+    Returns {"summary": str, "sources": [url, ...]}; an empty summary
+    means the round-prediction prompt below falls back to a generic,
+    clearly-labeled structure instead of guessing at this company's
+    actual process."""
+    if not is_tavily_configured():
+        return {"summary": "", "sources": []}
+    try:
+        results = tavily_search(
+            db,
+            f"{company_name} {job_title} interview process rounds format questions candidate experience",
+            max_results=5,
+        )
+    except Exception:
+        return {"summary": "", "sources": []}
+    snippets = [r.get("content", "")[:500] for r in results if r.get("content")]
+    sources = [r.get("url") for r in results if r.get("url")]
+    return {"summary": "\n\n".join(snippets), "sources": sources}
+
+
+def _generate_predicted_rounds(job_title: str, company_name: str, jd_text: str, process_research: dict) -> dict:
+    llm = get_llm_provider()
+    if process_research.get("summary"):
+        research_block = (
+            "Real, reported information found about this company's actual interview process:\n"
+            f"{process_research['summary']}\n\n"
+        )
+    else:
+        research_block = (
+            "No real information about this company's actual interview process was found -- use a "
+            "reasonable generic structure (e.g. screen, technical, behavioral) and set "
+            "grounded_in_real_research to false. Do not invent specific claims about this company's "
+            "real process.\n\n"
+        )
+    raw = llm.complete_json(
+        system="You are an expert interview coach. You return only raw JSON.",
+        prompt=(
+            f"Predict the realistic round-by-round interview structure a candidate should prepare for, "
+            f"for {job_title} at {company_name}.\n\n{research_block}"
+            f"Job Description:\n{jd_text}\n\n"
+            "Respond with EXACTLY this JSON shape:\n"
+            "{\n"
+            '  "rounds": [\n'
+            '    {"round_name": "...", "what_it_tests": "...", "prep_focus": ["...", "..."]}\n'
+            "  ],\n"
+            '  "grounded_in_real_research": true or false\n'
+            "}\n"
+            "3-6 rounds, ordered as they would realistically occur. 2-4 items per prep_focus list. "
+            "Do not wrap the output in markdown code fences."
+        ),
+        temperature=0.4,
+    )
+    return parse_json_response(raw)
 
 
 def _generate_general_prep(profile_content: dict, jd_text: str) -> dict:
@@ -123,6 +192,10 @@ def generate_interview_prep(db: Session, application_id: int) -> JobApplication:
         general = _generate_general_prep(profile_content, jd_text)
         research = _light_company_research(db, posting.company_name_raw)
         company = _generate_company_prep(posting.company_name_raw, posting.job_title, jd_text, research)
+        process_research = _research_interview_process(db, posting.company_name_raw, posting.job_title)
+        predicted_rounds = _generate_predicted_rounds(
+            posting.job_title, posting.company_name_raw, jd_text, process_research
+        )
     except Exception as e:
         raise InterviewPrepServiceError(f"Interview prep generation failed: {e}") from e
 
@@ -133,13 +206,16 @@ def generate_interview_prep(db: Session, application_id: int) -> JobApplication:
 
     prep.general_prep_json = json.dumps(general)
     prep.company_prep_json = json.dumps(company)
+    prep.process_research_json = json.dumps(process_research)
+    prep.predicted_rounds_json = json.dumps(predicted_rounds)
     prep.generated_at = utcnow()
     db.commit()
 
     log_activity(
         db,
         f"Generated interview prep for '{posting.job_title}' at {posting.company_name_raw}"
-        + (" (with live company research)." if research else " (JD-only -- no company research configured)."),
+        + (" (with live company + process research)." if research or process_research.get("summary")
+           else " (JD-only -- no research configured)."),
         "INFO",
     )
 

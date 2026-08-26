@@ -253,6 +253,66 @@
     </details>
 
     <details class="sub-panel">
+        <summary>Behavioral Story Bank ({{ entry.behavioral_stories|length }})</summary>
+        <p class="muted-note">
+            Reusable STAR-format stories drawn from your real profile -- confirm each one before it's
+            included in interview prep. Draft stories are AI-generated and cite which real experience or
+            project they come from; review them before trusting the wording.
+        </p>
+        <form method="post" action="/profile/variants/{{ variant.id }}/behavioral-stories/generate" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit">{{ "Draft More Stories" if entry.behavioral_stories else "Draft Stories From Profile" }}</button>
+        </form>
+        {% if entry.behavioral_stories %}
+        {% for story in entry.behavioral_stories %}
+        <details class="sub-panel">
+            <summary>
+                {{ story.title }}
+                <span class="badge {% if story.status == 'confirmed' %}badge-active{% endif %}">{{ story.status }}</span>
+                {% if story.traits %} &middot; {{ story.traits|join(", ") }}{% endif %}
+            </summary>
+            {% if story.source_reference %}
+            <p class="muted-note">Source: {{ story.source_reference }}</p>
+            {% endif %}
+            <form method="post" action="/profile/behavioral-stories/{{ story.id }}/update">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <label class="visually-hidden" for="story-title-{{ story.id }}">Title</label>
+                <input type="text" id="story-title-{{ story.id }}" name="title" value="{{ story.title }}" required>
+                <label class="visually-hidden" for="story-situation-{{ story.id }}">Situation</label>
+                <textarea id="story-situation-{{ story.id }}" name="situation" rows="2" placeholder="Situation" required>{{ story.situation }}</textarea>
+                <label class="visually-hidden" for="story-task-{{ story.id }}">Task</label>
+                <textarea id="story-task-{{ story.id }}" name="task" rows="2" placeholder="Task" required>{{ story.task }}</textarea>
+                <label class="visually-hidden" for="story-action-{{ story.id }}">Action</label>
+                <textarea id="story-action-{{ story.id }}" name="action" rows="3" placeholder="Action" required>{{ story.action }}</textarea>
+                <label class="visually-hidden" for="story-result-{{ story.id }}">Result</label>
+                <textarea id="story-result-{{ story.id }}" name="result" rows="2" placeholder="Result" required>{{ story.result }}</textarea>
+                <label class="visually-hidden" for="story-traits-{{ story.id }}">Traits (comma-separated)</label>
+                <input type="text" id="story-traits-{{ story.id }}" name="traits" value="{{ story.traits|join(', ') }}" placeholder="leadership, ownership">
+                <label class="visually-hidden" for="story-source-{{ story.id }}">Source reference</label>
+                <input type="text" id="story-source-{{ story.id }}" name="source_reference" value="{{ story.source_reference or '' }}" placeholder="Source reference">
+                <button type="submit" class="btn-secondary">Save Changes</button>
+            </form>
+            <div class="variant-actions">
+                {% if story.status != "confirmed" %}
+                <form method="post" action="/profile/behavioral-stories/{{ story.id }}/confirm" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit">Confirm</button>
+                </form>
+                {% endif %}
+                <form method="post" action="/profile/behavioral-stories/{{ story.id }}/delete" class="inline-form"
+                      onsubmit="return confirm('Delete this story?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn-danger">Delete</button>
+                </form>
+            </div>
+        </details>
+        {% endfor %}
+        {% else %}
+        <p class="muted-note">No stories drafted yet.</p>
+        {% endif %}
+    </details>
+
+    <details class="sub-panel">
         <summary>Manual edit / paste profile JSON</summary>
         <form method="post" action="/profile/variants/{{ variant.id }}/manual-save">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
