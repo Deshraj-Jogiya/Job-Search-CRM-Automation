@@ -144,10 +144,18 @@ def _format_publications(publications: list) -> str:
     return "\n".join(lines)
 
 
-def _generate_predicted_rounds(
+def _generate_round_structure(
     job_title: str, company_name: str, jd_text: str, process_research: dict,
-    profile_content: dict, confirmed_stories: list, publications: list,
 ) -> dict:
+    """Phase 1 of predicted-rounds generation: just the shape of the
+    process (round names, what each tests, who likely runs it) -- no
+    drafted answers yet. Kept as its own small call so its output stays
+    naturally bounded regardless of how many rounds a rich JD implies;
+    see _generate_round_qa for why the answers themselves are generated
+    per-round instead of all at once (a single call trying to hold full
+    drafted answers for an uncapped number of rounds kept truncating
+    mid-JSON at both 8000 and 16000 max_tokens in real testing -- this
+    isn't a bigger-number problem, it's a decomposition problem)."""
     llm = get_llm_provider()
     if process_research.get("summary"):
         research_block = (
@@ -165,48 +173,12 @@ def _generate_predicted_rounds(
             "predicted -- the goal is broad readiness, not narrowly matching whatever was or wasn't "
             "found.\n\n"
         )
-
-    stories_block = ""
-    if confirmed_stories:
-        stories_block = (
-            "\nThe candidate has these real, human-confirmed behavioral stories on file. For any round "
-            "that is behavioral/fit-focused, prefer drafting answers that surface one of these real "
-            "stories (referenced naturally, not verbatim-copied) over inventing a new anecdote:\n"
-            f"{_format_confirmed_stories(confirmed_stories)}\n"
-        )
-
-    publications_block = ""
-    if publications:
-        publications_block = (
-            "\nThe company's own real, recently published work (articles/insights/case studies) -- for "
-            "rounds run by someone actually close to the technical work (engineers, hiring managers), it's "
-            "realistic they'd expect a candidate to have read something like this; weave a genuine, "
-            "specific connection into questions_to_ask or a draft_answer where it fits naturally, citing "
-            "the real title. Do NOT force a citation into a recruiter/HR round -- that person is often not "
-            "the one who wrote or would recognize these:\n"
-            f"{_format_publications(publications)}\n"
-        )
-
     raw = llm.complete_json(
         system="You are an expert interview coach. You return only raw JSON.",
         prompt=(
-            f"Build a realistic, thorough round-by-round interview prep plan for a candidate interviewing "
-            f"for {job_title} at {company_name}.\n\n{research_block}"
+            f"Lay out a realistic, thorough round-by-round interview process structure for a candidate "
+            f"interviewing for {job_title} at {company_name}.\n\n{research_block}"
             f"Job Description:\n{jd_text}\n\n"
-            f"Candidate's Real Profile:\n{json.dumps(profile_content, indent=2)}\n"
-            f"{stories_block}{publications_block}\n"
-            "For EACH round, draft actual ready-to-say answers, not just topics to mention -- a candidate "
-            "should be able to read a draft_answer aloud as a real response, then adapt it in their own "
-            "words. Every draft_answer must be grounded in something that genuinely appears in the "
-            "candidate's real profile above -- never invent achievements, numbers, or tools they don't "
-            "have. Match each round's question style to who is realistically running it: a recruiter/HR "
-            "screen is run by someone who is often NOT deeply technical and not necessarily familiar with "
-            "this specific project or team -- keep those questions accessible (background, motivation, "
-            "logistics, high-level project summaries), not deep technical internals. Save genuinely deep "
-            "technical/system-design questions for rounds an engineer or hiring manager would actually run. "
-            "Also include, per round, a few questions_to_ask_them appropriate to who's running THAT round "
-            "(don't ask a recruiter a deep architecture question, don't waste a technical round on a "
-            "logistics question).\n\n"
             "Respond with EXACTLY this JSON shape:\n"
             "{\n"
             '  "rounds": [\n'
@@ -214,25 +186,106 @@ def _generate_predicted_rounds(
             '      "round_name": "...",\n'
             '      "what_it_tests": "...",\n'
             '      "likely_interviewer": "e.g. \'recruiter/HR generalist, not deeply technical\' or \'senior data engineer\'",\n'
-            '      "prep_focus": ["pointer", "..."],\n'
-            '      "qa_pairs": [\n'
-            '        {"question": "...", "category": "background|motivation|logistics|technical|behavioral", "draft_answer": "full ready-to-say answer", "quick_reference": "one short line -- the cue to glance at during the actual call, not the full answer"}\n'
-            "      ],\n"
-            '      "questions_to_ask_them": ["...", "..."]\n'
+            '      "prep_focus": ["pointer", "..."]\n'
             "    }\n"
             "  ],\n"
             '  "grounded_in_real_research": true or false\n'
             "}\n"
-            "Do not artificially limit yourself to a fixed number of rounds, qa_pairs, or questions -- "
-            "include as many as are realistically distinct and useful for this specific role and company, "
-            "not a padded-out quota and not an arbitrarily trimmed-down list. Cover realistic curveballs "
-            "too (a gap, a tradeoff that didn't pan out, a disagreement with a teammate), not just the "
-            "flattering questions. Do not wrap the output in markdown code fences."
+            "Do not artificially limit yourself to a fixed number of rounds -- include as many as are "
+            "realistically distinct for this specific role and company, not a padded-out quota and not an "
+            "arbitrarily trimmed-down list. Do not wrap the output in markdown code fences."
         ),
         temperature=0.4,
-        max_tokens=8000,
+        max_tokens=3000,
     )
     return parse_json_response(raw)
+
+
+def _generate_round_qa(
+    round_info: dict, job_title: str, company_name: str, jd_text: str,
+    profile_content: dict, confirmed_stories: list, publications: list,
+) -> dict:
+    """Phase 2: full drafted answers + questions_to_ask_them for ONE
+    round. Called once per round from generate_interview_prep so each
+    call's output size is bounded by one round's worth of content, not
+    the whole process's."""
+    llm = get_llm_provider()
+    is_technical_round = round_info.get("likely_interviewer", "").lower().find("recruiter") == -1 and \
+        round_info.get("likely_interviewer", "").lower().find("hr") == -1
+
+    stories_block = ""
+    if confirmed_stories:
+        stories_block = (
+            "\nThe candidate has these real, human-confirmed behavioral stories on file. If this round is "
+            "behavioral/fit-focused, prefer drafting answers that surface one of these real stories "
+            "(referenced naturally, not verbatim-copied) over inventing a new anecdote:\n"
+            f"{_format_confirmed_stories(confirmed_stories)}\n"
+        )
+
+    publications_block = ""
+    if publications and is_technical_round:
+        publications_block = (
+            "\nThe company's own real, recently published work -- this round is realistically run by "
+            "someone close to the technical work, so it's fair to expect they might recognize a genuine, "
+            "specific connection to one of these (cite the real title, never invent one):\n"
+            f"{_format_publications(publications)}\n"
+        )
+    elif publications:
+        publications_block = (
+            "\nThis round is realistically run by a recruiter/HR generalist, not someone who wrote or "
+            "would recognize the company's technical publications -- do NOT cite specific articles here.\n"
+        )
+
+    raw = llm.complete_json(
+        system="You are an expert interview coach. You return only raw JSON.",
+        prompt=(
+            f"Draft full interview prep for ONE specific round of a {job_title} interview at {company_name}: "
+            f"\"{round_info.get('round_name')}\" -- {round_info.get('what_it_tests')} "
+            f"(likely run by: {round_info.get('likely_interviewer', 'unknown')}).\n\n"
+            f"Job Description:\n{jd_text}\n\n"
+            f"Candidate's Real Profile:\n{json.dumps(profile_content, indent=2)}\n"
+            f"{stories_block}{publications_block}\n"
+            "Draft actual ready-to-say answers, not just topics to mention -- a candidate should be able "
+            "to read a draft_answer aloud as a real response, then adapt it in their own words. Keep each "
+            "draft_answer realistic spoken length -- what a person would actually say in 60-90 seconds "
+            "(roughly 3-5 sentences), not a multi-paragraph essay; a real answer that goes long does so by "
+            "the candidate elaborating live, not by the prep material being an essay to memorize. Every "
+            "draft_answer must be grounded in something that genuinely appears in the candidate's real "
+            "profile above -- never invent achievements, numbers, or tools they don't have. Match question "
+            "style to who is realistically running THIS round: if it's a recruiter/HR screen, keep "
+            "questions accessible (background, motivation, logistics, high-level project summaries), not "
+            "deep technical internals; if it's a technical/hiring-manager round, go genuinely deep. Cover "
+            "realistic curveballs too (a gap, a tradeoff that didn't pan out, a disagreement with a "
+            "teammate), not just the flattering questions. Also draft a few questions_to_ask_them "
+            "appropriate to who's running this specific round.\n\n"
+            "Respond with EXACTLY this JSON shape:\n"
+            "{\n"
+            '  "qa_pairs": [\n'
+            '    {"question": "...", "category": "background|motivation|logistics|technical|behavioral", "draft_answer": "full ready-to-say answer", "quick_reference": "one short line -- the cue to glance at during the actual call, not the full answer"}\n'
+            "  ],\n"
+            '  "questions_to_ask_them": ["...", "..."]\n'
+            "}\n"
+            "Include as many qa_pairs as are realistically distinct and useful for this round -- not a "
+            "padded quota, not an arbitrarily trimmed list. Do not wrap the output in markdown code fences."
+        ),
+        temperature=0.4,
+        max_tokens=12000,
+    )
+    return parse_json_response(raw)
+
+
+def _generate_predicted_rounds(
+    job_title: str, company_name: str, jd_text: str, process_research: dict,
+    profile_content: dict, confirmed_stories: list, publications: list,
+) -> dict:
+    structure = _generate_round_structure(job_title, company_name, jd_text, process_research)
+    for round_info in structure.get("rounds", []):
+        qa = _generate_round_qa(
+            round_info, job_title, company_name, jd_text, profile_content, confirmed_stories, publications
+        )
+        round_info["qa_pairs"] = qa.get("qa_pairs", [])
+        round_info["questions_to_ask_them"] = qa.get("questions_to_ask_them", [])
+    return structure
 
 
 def _generate_general_prep(profile_content: dict, jd_text: str) -> dict:
