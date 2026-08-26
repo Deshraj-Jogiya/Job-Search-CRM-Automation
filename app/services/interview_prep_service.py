@@ -44,11 +44,13 @@ not a hard-stop pattern like the confirmation queue).
 """
 
 import json
+import re
+from concurrent.futures import ThreadPoolExecutor
 
 from sqlalchemy.orm import Session
 
 from ..database import utcnow
-from ..models import InterviewPrep, JobApplication
+from ..models import InterviewPrep, JobApplication, TailoredDocument, get_or_create_settings
 from . import behavioral_story_service
 from .activity_logger import log_activity
 from .contact_discovery_service import is_tavily_configured, tavily_search
@@ -58,6 +60,36 @@ from .matching_service import MatchingServiceError, get_profile_content_for_appl
 
 class InterviewPrepServiceError(Exception):
     """User-facing failure -- callers show the message instead of a 500."""
+
+
+_METRIC_PATTERN = re.compile(r"\d+(?:\.\d+)?%|\$\d+(?:\.\d+)?[kKmMbB]?|\d+(?:,\d{3})*\+|\d+x\b", re.IGNORECASE)
+
+
+def check_answer_grounding(profile_content: dict, predicted_rounds: dict) -> list[str]:
+    """Mechanical (non-LLM), best-effort fabrication check on drafted
+    answers -- same posture as profile_service.detect_profile_regressions:
+    catches the clearest case (a specific metric cited in a drafted
+    answer that appears nowhere in the real profile grounding it) without
+    claiming to catch everything. A drafted answer is something the
+    candidate might say out loud in a real interview, so this deserves
+    the same scrutiny tailored resume content already gets. Surfaced as
+    warnings for human review, never blocks generation -- a real number
+    the model paraphrased differently (e.g. "nearly a third" vs "30%")
+    can trigger a false positive, so treat this as a prompt to
+    double-check, not a verdict."""
+    profile_text = json.dumps(profile_content).lower()
+    warnings = []
+    for round_ in predicted_rounds.get("rounds", []):
+        for qa in round_.get("qa_pairs", []):
+            answer = qa.get("draft_answer", "")
+            for metric in sorted(set(_METRIC_PATTERN.findall(answer))):
+                if metric.lower() not in profile_text:
+                    warnings.append(
+                        f"{round_.get('round_name', 'Round')} -> "
+                        f"\"{qa.get('question', '')[:60]}\": draft answer cites '{metric}', "
+                        "not found anywhere in your real profile -- verify before using."
+                    )
+    return warnings
 
 
 def _light_company_research(db: Session, company_name: str) -> str:
@@ -203,12 +235,26 @@ def _generate_round_structure(
 
 def _generate_round_qa(
     round_info: dict, job_title: str, company_name: str, jd_text: str,
-    profile_content: dict, confirmed_stories: list, publications: list,
+    profile_content: dict, confirmed_stories: list, publications: list, answer_target: int,
 ) -> dict:
     """Phase 2: full drafted answers + questions_to_ask_them for ONE
-    round. Called once per round from generate_interview_prep so each
-    call's output size is bounded by one round's worth of content, not
-    the whole process's."""
+    round. Called once per round (in parallel -- see _generate_predicted_
+    rounds) so each call's output size is bounded by one round's worth
+    of content, not the whole process's.
+
+    The number of QUESTIONS surfaced is still uncapped -- a real
+    interview isn't bounded by a quota -- but drafting a full, ready-to-
+    say answer for every single one is what actually drives real LLM
+    cost/latency (confirmed the hard way: JSON truncation at 8000, then
+    16000, then per-round at 6000 and 12000 max_tokens, before this
+    existed). answer_target caps how many get a full drafted answer;
+    anything beyond that still surfaces in other_possible_questions
+    (question text only) instead of vanishing -- many of those are
+    answerable by adapting a nearby drafted answer anyway. Defaults low
+    (see GlobalSettings.interview_prep_answer_target's docstring) since
+    this is a public platform other forkers may run on a free-tier key,
+    not just this deployment -- live-editable per instance for anyone
+    who wants deeper prep and is fine paying more for it."""
     llm = get_llm_provider()
     is_technical_round = round_info.get("likely_interviewer", "").lower().find("recruiter") == -1 and \
         round_info.get("likely_interviewer", "").lower().find("hr") == -1
@@ -258,32 +304,53 @@ def _generate_round_qa(
             "realistic curveballs too (a gap, a tradeoff that didn't pan out, a disagreement with a "
             "teammate), not just the flattering questions. Also draft a few questions_to_ask_them "
             "appropriate to who's running this specific round.\n\n"
+            f"First, think about every realistically distinct question this round could cover -- don't cap "
+            f"that list. Then draft a full, ready-to-say answer (qa_pairs) for up to {answer_target} of the "
+            f"most important/likely ones (fewer is fine if the round genuinely has less ground to cover). "
+            f"Put every remaining realistic question -- ones a candidate could reasonably answer by adapting "
+            f"a nearby drafted answer, or that are lower-priority -- in other_possible_questions as plain "
+            f"question text, no answer. Nothing gets silently dropped, it just doesn't all get a full "
+            f"pre-written answer.\n\n"
             "Respond with EXACTLY this JSON shape:\n"
             "{\n"
             '  "qa_pairs": [\n'
             '    {"question": "...", "category": "background|motivation|logistics|technical|behavioral", "draft_answer": "full ready-to-say answer", "quick_reference": "one short line -- the cue to glance at during the actual call, not the full answer"}\n'
             "  ],\n"
+            '  "other_possible_questions": ["...", "..."],\n'
             '  "questions_to_ask_them": ["...", "..."]\n'
             "}\n"
-            "Include as many qa_pairs as are realistically distinct and useful for this round -- not a "
-            "padded quota, not an arbitrarily trimmed list. Do not wrap the output in markdown code fences."
+            "Do not wrap the output in markdown code fences."
         ),
         temperature=0.4,
-        max_tokens=12000,
+        max_tokens=8000,
     )
     return parse_json_response(raw)
 
 
 def _generate_predicted_rounds(
     job_title: str, company_name: str, jd_text: str, process_research: dict,
-    profile_content: dict, confirmed_stories: list, publications: list,
+    profile_content: dict, confirmed_stories: list, publications: list, answer_target: int,
 ) -> dict:
     structure = _generate_round_structure(job_title, company_name, jd_text, process_research)
-    for round_info in structure.get("rounds", []):
-        qa = _generate_round_qa(
-            round_info, job_title, company_name, jd_text, profile_content, confirmed_stories, publications
-        )
+    rounds = structure.get("rounds", [])
+
+    # Each round's Q&A call is independent of the others (same shared
+    # inputs, no cross-round dependency), so they run concurrently
+    # instead of one-after-another -- a real QuantumBlack-scale process
+    # (7 rounds) took ~17 minutes sequentially before this; running them
+    # in parallel is the difference between that and a few minutes.
+    with ThreadPoolExecutor(max_workers=min(len(rounds), 6) or 1) as pool:
+        qa_results = list(pool.map(
+            lambda r: _generate_round_qa(
+                r, job_title, company_name, jd_text, profile_content, confirmed_stories, publications,
+                answer_target,
+            ),
+            rounds,
+        ))
+
+    for round_info, qa in zip(rounds, qa_results):
         round_info["qa_pairs"] = qa.get("qa_pairs", [])
+        round_info["other_possible_questions"] = qa.get("other_possible_questions", [])
         round_info["questions_to_ask_them"] = qa.get("questions_to_ask_them", [])
     return structure
 
@@ -378,13 +445,27 @@ def generate_interview_prep(db: Session, application_id: int) -> JobApplication:
         raise InterviewPrepServiceError("Can't generate interview prep for a Rejected application.")
 
     try:
-        profile_content, variant_id = get_profile_content_for_application(db, application)
+        base_profile_content, variant_id = get_profile_content_for_application(db, application)
     except MatchingServiceError as e:
         raise InterviewPrepServiceError(str(e)) from e
+
+    # Prefer the resume actually tailored/submitted for THIS application
+    # over the raw base profile -- a tailored resume can emphasize
+    # different projects/bullets for this specific JD, and prep should
+    # match what the interviewer is actually holding, not a generic
+    # baseline. Falls back to the base profile when nothing's been
+    # tailored yet (e.g. prepping before running Tailor Resume).
+    tailored_resume = (
+        db.query(TailoredDocument)
+        .filter(TailoredDocument.application_id == application.id, TailoredDocument.document_type == "resume")
+        .first()
+    )
+    profile_content = json.loads(tailored_resume.content) if tailored_resume else base_profile_content
 
     posting = application.posting
     jd_text = posting.job_description
     confirmed_stories = behavioral_story_service.list_stories(db, variant_id, confirmed_only=True)
+    answer_target = get_or_create_settings(db).interview_prep_answer_target or 8
 
     try:
         general = _generate_general_prep(profile_content, jd_text)
@@ -396,10 +477,12 @@ def generate_interview_prep(db: Session, application_id: int) -> JobApplication:
         process_research = _research_interview_process(db, posting.company_name_raw, posting.job_title)
         predicted_rounds = _generate_predicted_rounds(
             posting.job_title, posting.company_name_raw, jd_text, process_research,
-            profile_content, confirmed_stories, publications,
+            profile_content, confirmed_stories, publications, answer_target,
         )
     except Exception as e:
         raise InterviewPrepServiceError(f"Interview prep generation failed: {e}") from e
+
+    predicted_rounds["grounding_warnings"] = check_answer_grounding(profile_content, predicted_rounds)
 
     prep = db.query(InterviewPrep).filter(InterviewPrep.application_id == application.id).first()
     if not prep:
@@ -416,8 +499,11 @@ def generate_interview_prep(db: Session, application_id: int) -> JobApplication:
     log_activity(
         db,
         f"Generated interview prep for '{posting.job_title}' at {posting.company_name_raw}"
-        + (" (with live company + process research)." if research or process_research.get("summary")
-           else " (JD-only -- no research configured)."),
+        + (" grounded in the tailored resume" if tailored_resume else " grounded in the base profile")
+        + (", with live company + process research" if research or process_research.get("summary")
+           else ", JD-only -- no research configured")
+        + (f". {len(predicted_rounds['grounding_warnings'])} grounding warning(s)."
+           if predicted_rounds["grounding_warnings"] else "."),
         "INFO",
     )
 
