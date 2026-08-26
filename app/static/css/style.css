@@ -667,6 +667,16 @@ html.light-theme .flag-warning {
     color: var(--text-secondary);
 }
 
+.interviewer-turn {
+    border-left: 3px solid var(--accent-indigo);
+    padding-left: 10px;
+}
+
+.candidate-turn {
+    border-left: 3px solid var(--accent-emerald);
+    padding-left: 10px;
+}
+
 .version-history li {
     padding: 8px 0;
     border-bottom: 1px solid var(--card-border);

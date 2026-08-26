@@ -437,6 +437,31 @@ def _generate_company_prep(
     return parse_json_response(raw)
 
 
+def resolve_grounding_profile(db: Session, application: JobApplication) -> tuple[dict, int, bool]:
+    """Prefer the resume actually tailored/submitted for THIS application
+    over the raw base profile -- a tailored resume can emphasize
+    different projects/bullets for this specific JD, and anything
+    grounded in it (prep, mock-interview feedback) should match what
+    the interviewer is actually holding, not a generic baseline. Falls
+    back to the base profile when nothing's been tailored yet. Returns
+    (profile_content, variant_id, used_tailored_resume) -- variant_id
+    is still needed by callers for variant-level lookups like the
+    behavioral story bank, which stays tied to the base profile variant
+    regardless of which document grounds this particular generation."""
+    try:
+        base_profile_content, variant_id = get_profile_content_for_application(db, application)
+    except MatchingServiceError as e:
+        raise InterviewPrepServiceError(str(e)) from e
+
+    tailored_resume = (
+        db.query(TailoredDocument)
+        .filter(TailoredDocument.application_id == application.id, TailoredDocument.document_type == "resume")
+        .first()
+    )
+    profile_content = json.loads(tailored_resume.content) if tailored_resume else base_profile_content
+    return profile_content, variant_id, bool(tailored_resume)
+
+
 def generate_interview_prep(db: Session, application_id: int) -> JobApplication:
     application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
     if not application:
@@ -444,23 +469,7 @@ def generate_interview_prep(db: Session, application_id: int) -> JobApplication:
     if application.status == "Rejected":
         raise InterviewPrepServiceError("Can't generate interview prep for a Rejected application.")
 
-    try:
-        base_profile_content, variant_id = get_profile_content_for_application(db, application)
-    except MatchingServiceError as e:
-        raise InterviewPrepServiceError(str(e)) from e
-
-    # Prefer the resume actually tailored/submitted for THIS application
-    # over the raw base profile -- a tailored resume can emphasize
-    # different projects/bullets for this specific JD, and prep should
-    # match what the interviewer is actually holding, not a generic
-    # baseline. Falls back to the base profile when nothing's been
-    # tailored yet (e.g. prepping before running Tailor Resume).
-    tailored_resume = (
-        db.query(TailoredDocument)
-        .filter(TailoredDocument.application_id == application.id, TailoredDocument.document_type == "resume")
-        .first()
-    )
-    profile_content = json.loads(tailored_resume.content) if tailored_resume else base_profile_content
+    profile_content, variant_id, used_tailored_resume = resolve_grounding_profile(db, application)
 
     posting = application.posting
     jd_text = posting.job_description
@@ -499,7 +508,7 @@ def generate_interview_prep(db: Session, application_id: int) -> JobApplication:
     log_activity(
         db,
         f"Generated interview prep for '{posting.job_title}' at {posting.company_name_raw}"
-        + (" grounded in the tailored resume" if tailored_resume else " grounded in the base profile")
+        + (" grounded in the tailored resume" if used_tailored_resume else " grounded in the base profile")
         + (", with live company + process research" if research or process_research.get("summary")
            else ", JD-only -- no research configured")
         + (f". {len(predicted_rounds['grounding_warnings'])} grounding warning(s)."

@@ -24,6 +24,7 @@ from .templating import render
 from .routers import auth as auth_router
 from .routers import profile as profile_router
 from .routers import jobs as jobs_router
+from .routers import mock_interview as mock_interview_router
 from .routers import confirmation as confirmation_router
 from .routers import outreach as outreach_router
 from .routers import analytics as analytics_router
@@ -119,6 +120,7 @@ os.makedirs("app/static/css", exist_ok=True)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(profile_router.router, dependencies=app_dependencies)
 app.include_router(jobs_router.router, dependencies=app_dependencies)
+app.include_router(mock_interview_router.router, dependencies=app_dependencies)
 # NOT behind HTTPBasic: these routes are reached from a one-click email
 # link opened on whatever device the user has in hand (see confirmation.py's
 # docstring and confirmation_tokens.py) -- they carry their own signed
