@@ -38,6 +38,58 @@ def test_mock_interview_home_renders_rounds_and_tiers(db):
     assert "Start Practice Session" in html
 
 
+def test_mock_interview_home_shows_camera_toggle_with_explanation(db):
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application = make_application(db, posting)
+
+    html = env.get_template("mock_interview_home.html").render(**_base_context(
+        application=application, posting=posting,
+        rounds=[{"round_name": "Live Coding", "what_it_tests": "coding"}],
+        sessions=[], tiers=TIER_DESCRIPTIONS,
+    ))
+
+    assert "Enable camera feedback" in html
+    assert "Nothing is recorded, uploaded" in html
+    assert "phone screen" in html.lower()
+
+
+class FakeSessionRow:
+    def __init__(self, trend=None, status="completed"):
+        self.id = 1
+        self.round_name = "Recruiter Screen"
+        self.tier = "warm_up"
+        self.status = status
+        self.started_at = __import__("datetime").datetime(2026, 1, 1, 12, 0, 0)
+        self.trend = trend
+
+
+def test_mock_interview_home_shows_improved_trend_badge(db):
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application = make_application(db, posting)
+
+    html = env.get_template("mock_interview_home.html").render(**_base_context(
+        application=application, posting=posting, rounds=[],
+        sessions=[FakeSessionRow(trend="improved")], tiers=TIER_DESCRIPTIONS,
+    ))
+
+    assert "improved" in html
+
+
+def test_mock_interview_home_shows_declined_trend_badge(db):
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application = make_application(db, posting)
+
+    html = env.get_template("mock_interview_home.html").render(**_base_context(
+        application=application, posting=posting, rounds=[],
+        sessions=[FakeSessionRow(trend="declined")], tiers=TIER_DESCRIPTIONS,
+    ))
+
+    assert "declined" in html
+
+
 def test_mock_interview_home_handles_no_rounds(db):
     company = make_company(db)
     posting = make_posting(db, company)
@@ -65,6 +117,8 @@ class FakeSession:
         self.round_name = "Recruiter Screen"
         self.tier = "warm_up"
         self.status = status
+        self.camera_enabled = False
+        self.visual_metrics_json = None
 
 
 def test_mock_interview_session_renders_transcript_in_progress(db):
@@ -111,17 +165,58 @@ def test_mock_interview_session_shows_debrief_when_completed(db):
     debrief = {
         "overall_summary": "Solid session overall.",
         "strengths": ["Clear communication"],
-        "areas_to_improve": ["Add more metrics"],
-        "structure_feedback": "Good use of structure.",
+        "areas_to_improve": [
+            {
+                "issue": "Missing metrics",
+                "what_you_said": "I built a pipeline.",
+                "why_it_matters": "Interviewers want quantified impact.",
+                "example_better_answer": "I built a pipeline that cut latency by 40%.",
+            }
+        ],
+        "delivery_feedback": "Good pace, no filler words.",
+        "scorecard": {"communication_clarity": 4, "content_accuracy": 5},
+        "comparison": {"has_previous": False, "trend": "n/a", "note": "", "warning": ""},
         "accuracy_notes": [],
     }
 
     html = env.get_template("mock_interview_session.html").render(**_base_context(
         application=application, posting=posting, session=FakeSession(status="completed"), turns=turns,
-        debrief=debrief, tier_label="Warm-Up", tier_description="No time pressure.",
+        debrief=debrief, visual_metrics={}, tier_label="Warm-Up", tier_description="No time pressure.",
     ))
 
     assert "Solid session overall." in html
     assert "Clear communication" in html
-    assert "Add more metrics" in html
+    assert "Missing metrics" in html
+    assert "I built a pipeline that cut latency by 40%." in html
+    assert "Good pace, no filler words." in html
+    assert "Communication clarity: 4/5" in html
     assert "Submit Answer" not in html
+
+
+def test_mock_interview_session_shows_decline_warning(db):
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application = make_application(db, posting)
+    turns = [FakeTurn("interviewer", "Q"), FakeTurn("candidate", "A")]
+    debrief = {
+        "overall_summary": "Rougher than last time.",
+        "strengths": [],
+        "areas_to_improve": [],
+        "delivery_feedback": "",
+        "scorecard": {"communication_clarity": 2},
+        "comparison": {
+            "has_previous": True, "trend": "declined",
+            "note": "Clarity dropped versus your last attempt.",
+            "warning": "Your directness score fell -- you dodged a direct question again.",
+        },
+        "accuracy_notes": [],
+    }
+
+    html = env.get_template("mock_interview_session.html").render(**_base_context(
+        application=application, posting=posting, session=FakeSession(status="completed"), turns=turns,
+        debrief=debrief, visual_metrics={}, tier_label="Warm-Up", tier_description="No time pressure.",
+    ))
+
+    assert "flash-error" in html
+    assert "Clarity dropped versus your last attempt." in html
+    assert "you dodged a direct question again." in html

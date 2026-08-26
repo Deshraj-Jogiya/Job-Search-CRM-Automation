@@ -30,6 +30,15 @@
         {% endfor %}
     </div>
 
+    {% if session.camera_enabled %}
+    <p class="muted-note" id="camera-status">
+        Camera feedback: {% if session.status == "in_progress" %}initializing...{% else %}see debrief below.{% endif %}
+    </p>
+    {% if session.status == "in_progress" %}
+    <video id="camera-feed" autoplay muted playsinline style="display:none; width:160px; border-radius:8px;"></video>
+    {% endif %}
+    {% endif %}
+
     {% if session.status == "in_progress" %}
     <form method="post" action="/jobs/{{ application.id }}/mock-interview/{{ session.id }}/respond" id="answer-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -42,9 +51,12 @@
         <p id="speech-status" class="muted-note"></p>
     </form>
 
-    <form method="post" action="/jobs/{{ application.id }}/mock-interview/{{ session.id }}/end" class="inline-form"
+    <form method="post" action="/jobs/{{ application.id }}/mock-interview/{{ session.id }}/end" id="end-session-form" class="inline-form"
           onsubmit="return confirm('End this session and get your debrief?');">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="frames_analyzed" id="frames-analyzed-field" value="0">
+        <input type="hidden" name="frames_face_forward" id="frames-face-forward-field" value="0">
+        <input type="hidden" name="movement_events" id="movement-events-field" value="0">
         <button type="submit" class="btn-secondary">End Session &amp; Get Debrief</button>
     </form>
     {% endif %}
@@ -52,18 +64,55 @@
     {% if debrief %}
     <h3>Debrief</h3>
     <p>{{ debrief.overall_summary }}</p>
+
+    {% if debrief.comparison and debrief.comparison.has_previous %}
+    <div class="flash {% if debrief.comparison.trend == 'declined' %}flash-error{% else %}flash-ok{% endif %}" role="status">
+        <strong>Compared to your last {{ session.round_name }} session ({{ debrief.comparison.trend }}):</strong>
+        {{ debrief.comparison.note }}
+        {% if debrief.comparison.warning %}<br><strong>{{ debrief.comparison.warning }}</strong>{% endif %}
+    </div>
+    {% endif %}
+
+    {% if debrief.scorecard %}
+    <p><strong>Scorecard</strong> <span class="muted-note">(1-5, scored honestly, not inflated)</span></p>
+    <ul>
+        {% for dim, score in debrief.scorecard.items() %}
+        <li>{{ dim.replace("_", " ")|capitalize }}: {{ score }}/5</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
     {% if debrief.strengths %}
     <p><strong>Strengths</strong></p>
     <ul>{% for s in debrief.strengths %}<li>{{ s }}</li>{% endfor %}</ul>
     {% endif %}
+
     {% if debrief.areas_to_improve %}
     <p><strong>Areas to improve</strong></p>
-    <ul>{% for a in debrief.areas_to_improve %}<li>{{ a }}</li>{% endfor %}</ul>
+    {% for a in debrief.areas_to_improve %}
+    <details class="sub-panel" open>
+        <summary>{{ a.issue }}</summary>
+        {% if a.what_you_said %}<p class="muted-note">What you said: "{{ a.what_you_said }}"</p>{% endif %}
+        {% if a.why_it_matters %}<p>{{ a.why_it_matters }}</p>{% endif %}
+        {% if a.example_better_answer %}<p><strong>Try instead:</strong> {{ a.example_better_answer }}</p>{% endif %}
+    </details>
+    {% endfor %}
     {% endif %}
-    {% if debrief.structure_feedback %}
-    <p><strong>Structure/clarity</strong></p>
-    <p class="muted-note">{{ debrief.structure_feedback }}</p>
+
+    {% if debrief.delivery_feedback %}
+    <p><strong>Delivery</strong></p>
+    <p class="muted-note">{{ debrief.delivery_feedback }}</p>
     {% endif %}
+
+    {% if session.camera_enabled and session.visual_metrics_json %}
+    <p><strong>Camera feedback</strong></p>
+    <p class="muted-note">
+        Face oriented toward the camera {{ (100 * visual_metrics.frames_face_forward / visual_metrics.frames_analyzed)|round|int if visual_metrics.frames_analyzed else 0 }}%
+        of the time; {{ visual_metrics.movement_events }} noticeable movement/shift event(s). Observed facts only --
+        not an emotional read. Most guidance suggests aiming for 60-70%+ camera-facing time.
+    </p>
+    {% endif %}
+
     {% if debrief.accuracy_notes %}
     <p><strong>Accuracy check against your real profile</strong></p>
     <ul>{% for n in debrief.accuracy_notes %}<li>{{ n }}</li>{% endfor %}</ul>
@@ -135,6 +184,102 @@
             recognition.start();
         });
     }
+})();
+</script>
+{% endif %}
+
+{% if session.camera_enabled and session.status == "in_progress" %}
+<script>
+(function () {
+    "use strict";
+    // Aggregated numbers only -- never a video frame -- accumulated
+    // across this session's page reloads (this app is server-rendered,
+    // full page reload per answer, so sessionStorage is what survives
+    // that) and cleared automatically when the tab closes. All face
+    // detection runs client-side via MediaPipe; nothing here is
+    // uploaded except the three small counters on "End Session".
+    var storageKey = "mock_interview_visual_{{ session.id }}";
+    var metrics = { frames_analyzed: 0, frames_face_forward: 0, movement_events: 0 };
+    try {
+        var stored = JSON.parse(sessionStorage.getItem(storageKey) || "{}");
+        metrics.frames_analyzed = stored.frames_analyzed || 0;
+        metrics.frames_face_forward = stored.frames_face_forward || 0;
+        metrics.movement_events = stored.movement_events || 0;
+    } catch (e) { /* start fresh */ }
+    var lastNose = null;
+    var cameraStatus = document.getElementById("camera-status");
+
+    function persist() {
+        try { sessionStorage.setItem(storageKey, JSON.stringify(metrics)); } catch (e) { /* non-fatal */ }
+        var fa = document.getElementById("frames-analyzed-field");
+        var ff = document.getElementById("frames-face-forward-field");
+        var me = document.getElementById("movement-events-field");
+        if (fa) fa.value = metrics.frames_analyzed;
+        if (ff) ff.value = metrics.frames_face_forward;
+        if (me) me.value = metrics.movement_events;
+    }
+    persist();
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        if (cameraStatus) cameraStatus.textContent = "Camera feedback: not supported in this browser -- continuing without it.";
+        return;
+    }
+
+    (async function () {
+        try {
+            var video = document.getElementById("camera-feed");
+            var stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+            video.srcObject = stream;
+            video.style.display = "";
+
+            var visionModule = await import("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14");
+            var vision = await visionModule.FilesetResolver.forVisionTasks(
+                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+            );
+            var faceLandmarker = await visionModule.FaceLandmarker.createFromOptions(vision, {
+                baseOptions: {
+                    modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+                    delegate: "GPU",
+                },
+                outputFaceBlendshapes: false,
+                outputFacialTransformationMatrixes: false,
+                runningMode: "VIDEO",
+                numFaces: 1,
+            });
+
+            if (cameraStatus) cameraStatus.textContent = "Camera feedback: active (nothing recorded or uploaded, only small counters).";
+
+            // Sampled every 600ms, not every frame -- this is a coarse
+            // aggregate signal for an end-of-session summary, not a
+            // real-time display, so there's no reason to spend CPU on
+            // every animation frame.
+            setInterval(function () {
+                try {
+                    if (!video.videoWidth) return;
+                    var result = faceLandmarker.detectForVideo(video, performance.now());
+                    metrics.frames_analyzed += 1;
+                    if (result.faceLandmarks && result.faceLandmarks.length > 0) {
+                        var nose = result.faceLandmarks[0][1]; // nose tip, standard landmark index
+                        // Roughly centered in frame is treated as camera-facing --
+                        // a framing/presence proxy, not fine-grained gaze tracking.
+                        if (nose.x > 0.3 && nose.x < 0.7 && nose.y > 0.2 && nose.y < 0.8) {
+                            metrics.frames_face_forward += 1;
+                        }
+                        if (lastNose) {
+                            var dx = nose.x - lastNose.x, dy = nose.y - lastNose.y;
+                            if (Math.sqrt(dx * dx + dy * dy) > 0.04) {
+                                metrics.movement_events += 1;
+                            }
+                        }
+                        lastNose = { x: nose.x, y: nose.y };
+                    }
+                    persist();
+                } catch (e) { /* skip this tick, keep going */ }
+            }, 600);
+        } catch (e) {
+            if (cameraStatus) cameraStatus.textContent = "Camera feedback unavailable (permission denied or not supported) -- continuing without it.";
+        }
+    })();
 })();
 </script>
 {% endif %}

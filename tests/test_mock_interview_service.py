@@ -209,3 +209,124 @@ def test_list_sessions_orders_most_recent_first(db):
 
     sessions = mock_interview_service.list_sessions(db, application.id)
     assert [s.id for s in sessions] == [session_b.id, session_a.id]
+
+
+def test_delivery_stats_counts_filler_words_and_timing():
+    from app.services.mock_interview_service import _delivery_stats
+
+    class FakeTurn:
+        def __init__(self, speaker, content, created_at):
+            self.speaker = speaker
+            self.content = content
+            self.created_at = created_at
+
+    from datetime import datetime, timedelta
+    t0 = datetime(2026, 1, 1, 12, 0, 0)
+    turns = [
+        FakeTurn("interviewer", "Tell me about a project.", t0),
+        FakeTurn("candidate", "Um, so, like, I built a pipeline, you know, with Spark.", t0 + timedelta(seconds=20)),
+    ]
+
+    stats = _delivery_stats(turns)
+    assert "2 filler word(s)" in stats or "3 filler word(s)" in stats  # um, like, you know
+    assert "~20s to respond" in stats
+
+
+def test_delivery_stats_ignores_stale_elapsed_time():
+    from app.services.mock_interview_service import _delivery_stats
+
+    class FakeTurn:
+        def __init__(self, speaker, content, created_at):
+            self.speaker = speaker
+            self.content = content
+            self.created_at = created_at
+
+    from datetime import datetime, timedelta
+    t0 = datetime(2026, 1, 1, 12, 0, 0)
+    turns = [
+        FakeTurn("interviewer", "Question.", t0),
+        FakeTurn("candidate", "Answer with no fillers.", t0 + timedelta(hours=5)),  # stale/resumed session
+    ]
+
+    stats = _delivery_stats(turns)
+    assert "to respond" not in stats
+
+
+def test_find_previous_session_matches_same_round_only(db):
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application = make_application(db, posting)
+    _make_prep(db, application, rounds=[
+        {"round_name": "Round A", "qa_pairs": [{"question": "Q1"}], "other_possible_questions": []},
+        {"round_name": "Round B", "qa_pairs": [{"question": "Q2"}], "other_possible_questions": []},
+    ])
+
+    old_a = mock_interview_service.start_session(db, application.id, "Round A", "warm_up")
+    old_a.status = "completed"
+    old_a.debrief_json = json.dumps({"scorecard": {"communication_clarity": 2}})
+    other_round = mock_interview_service.start_session(db, application.id, "Round B", "warm_up")
+    other_round.status = "completed"
+    db.commit()
+
+    new_a = mock_interview_service.start_session(db, application.id, "Round A", "guided")
+
+    from app.services.mock_interview_service import _find_previous_session
+    found = _find_previous_session(db, new_a)
+    assert found.id == old_a.id
+
+
+def test_find_previous_session_ignores_in_progress_sessions(db):
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application = make_application(db, posting)
+    _make_prep(db, application)
+
+    mock_interview_service.start_session(db, application.id, "Recruiter Screen", "warm_up")
+    new_session = mock_interview_service.start_session(db, application.id, "Recruiter Screen", "warm_up")
+
+    from app.services.mock_interview_service import _find_previous_session
+    assert _find_previous_session(db, new_session) is None
+
+
+def test_end_session_passes_comparison_and_visual_data_to_prompt(db):
+    make_variant(db)
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application = make_application(db, posting)
+    _make_prep(db, application)
+
+    old_session = mock_interview_service.start_session(db, application.id, "Recruiter Screen", "warm_up")
+    old_session.status = "completed"
+    old_session.debrief_json = json.dumps({"scorecard": {"communication_clarity": 2, "content_accuracy": 3}})
+    db.commit()
+
+    new_session = mock_interview_service.start_session(
+        db, application.id, "Recruiter Screen", "guided", camera_enabled=True
+    )
+    fake_qa = json.dumps({"next_line": "ok", "is_followup": False, "suggest_level_up": False, "level_up_note": ""})
+    with patch("app.services.mock_interview_service.get_llm_provider") as mock_llm:
+        mock_llm.return_value.complete_json.return_value = fake_qa
+        mock_interview_service.submit_answer(db, new_session.id, "my real answer")
+
+    fake_debrief = json.dumps({
+        "accuracy_notes": [], "strengths": [], "areas_to_improve": [],
+        "delivery_feedback": "ok", "scorecard": {"communication_clarity": 4},
+        "comparison": {"has_previous": True, "trend": "improved", "note": "better", "warning": ""},
+        "overall_summary": "Improved.",
+    })
+    captured_prompt = {}
+    with patch("app.services.mock_interview_service.get_llm_provider") as mock_llm:
+        def capture(system, prompt, **kwargs):
+            captured_prompt["text"] = prompt
+            return fake_debrief
+        mock_llm.return_value.complete_json.side_effect = capture
+        result = mock_interview_service.end_session(
+            db, new_session.id, visual_metrics={"frames_analyzed": 100, "frames_face_forward": 60, "movement_events": 4}
+        )
+
+    assert "previous COMPLETED session" in captured_prompt["text"]
+    assert "communication_clarity" in captured_prompt["text"]
+    assert "Camera feedback was on" in captured_prompt["text"]
+    assert "60%" in captured_prompt["text"]
+    assert json.loads(result.debrief_json)["comparison"]["trend"] == "improved"
+    assert json.loads(result.visual_metrics_json)["movement_events"] == 4
