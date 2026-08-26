@@ -265,9 +265,38 @@ class InterviewPrep(Base):
 
     general_prep_json = Column(Text, nullable=True)   # questions/talking points based on your background
     company_prep_json = Column(Text, nullable=True)   # company-specific angles, from JD + light research
+    process_research_json = Column(Text, nullable=True)  # real reported interview-process findings + sources, when found
+    predicted_rounds_json = Column(Text, nullable=True)   # round-by-round structured plan, grounded in process_research when available
     generated_at = Column(DateTime, default=utcnow)
 
     application = relationship("JobApplication", back_populates="interview_prep")
+
+
+class BehavioralStory(Base):
+    """Reusable STAR-format behavioral story, tied to a profile variant
+    rather than a single application -- the same real story gets reused
+    across every behavioral/PEI-style round for any job, instead of
+    being regenerated from scratch each time. Draft-then-confirm, same
+    safeguard posture as tailoring: an LLM-drafted story isn't treated
+    as ready-to-use prep material until a human confirms it, and every
+    draft must cite which real profile entry it came from."""
+    __tablename__ = "behavioral_stories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    variant_id = Column(Integer, ForeignKey("profile_variants.id"), nullable=False)
+
+    title = Column(String, nullable=False)
+    situation = Column(Text, nullable=False)
+    task = Column(Text, nullable=False)
+    action = Column(Text, nullable=False)
+    result = Column(Text, nullable=False)
+    traits_json = Column(Text, nullable=False, default="[]")  # e.g. ["leadership", "ownership"]
+    source_reference = Column(String, nullable=True)  # which real experience/project entry this is drawn from
+    status = Column(String, nullable=False, default="draft")  # draft | confirmed
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    variant = relationship("ProfileVariant")
 
 
 # ---------------------------------------------------------------------------

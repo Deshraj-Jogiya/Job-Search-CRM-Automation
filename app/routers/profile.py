@@ -14,12 +14,20 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import ProfileVariant, ProfileVersion
-from ..services import profile_service
+from ..models import BehavioralStory, ProfileVariant, ProfileVersion
+from ..services import behavioral_story_service, profile_service
+from ..services.behavioral_story_service import BehavioralStoryServiceError
 from ..services.profile_service import ProfileServiceError
 from ..templating import render
 
 router = APIRouter(prefix="/profile", tags=["profile"])
+
+
+def _stories_with_parsed_traits(db: Session, variant_id: int) -> list:
+    stories = behavioral_story_service.list_stories(db, variant_id)
+    for s in stories:
+        s.traits = json.loads(s.traits_json) if s.traits_json else []
+    return stories
 
 
 def _redirect(message: str = None, error: str = None) -> RedirectResponse:
@@ -65,6 +73,7 @@ def profile_page(request: Request, db: Session = Depends(get_db)):
                 "education": active_content.get("education") or [],
                 "certifications": active_content.get("certifications") or [],
                 "completeness_warnings": profile_service.profile_completeness_warnings(active_content),
+                "behavioral_stories": _stories_with_parsed_traits(db, variant.id),
             }
         )
 
@@ -258,4 +267,61 @@ def reject_version(version_id: int, db: Session = Depends(get_db)):
         profile_service.reject_version(db, version_id)
         return _redirect(message="Pending profile version rejected.")
     except ProfileServiceError as e:
+        return _redirect(error=str(e))
+
+
+@router.post("/variants/{variant_id}/behavioral-stories/generate")
+def generate_behavioral_stories(variant_id: int, db: Session = Depends(get_db)):
+    try:
+        stories = behavioral_story_service.generate_story_drafts(db, variant_id)
+        return _redirect(message=f"Drafted {len(stories)} behavioral stories -- review and confirm each below.")
+    except BehavioralStoryServiceError as e:
+        return _redirect(error=str(e))
+
+
+@router.post("/behavioral-stories/{story_id}/confirm")
+def confirm_behavioral_story(story_id: int, db: Session = Depends(get_db)):
+    try:
+        behavioral_story_service.confirm_story(db, story_id)
+        return _redirect(message="Story confirmed -- it'll be included in interview prep from now on.")
+    except BehavioralStoryServiceError as e:
+        return _redirect(error=str(e))
+
+
+@router.post("/behavioral-stories/{story_id}/update")
+def update_behavioral_story(
+    story_id: int,
+    title: str = Form(...),
+    situation: str = Form(...),
+    task: str = Form(...),
+    action: str = Form(...),
+    result: str = Form(...),
+    traits: str = Form(""),
+    source_reference: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    trait_list = [t.strip() for t in traits.split(",") if t.strip()]
+    try:
+        behavioral_story_service.update_story(
+            db,
+            story_id,
+            title=title,
+            situation=situation,
+            task=task,
+            action=action,
+            result=result,
+            traits=trait_list,
+            source_reference=source_reference,
+        )
+        return _redirect(message="Story updated.")
+    except BehavioralStoryServiceError as e:
+        return _redirect(error=str(e))
+
+
+@router.post("/behavioral-stories/{story_id}/delete")
+def delete_behavioral_story(story_id: int, db: Session = Depends(get_db)):
+    try:
+        behavioral_story_service.delete_story(db, story_id)
+        return _redirect(message="Story deleted.")
+    except BehavioralStoryServiceError as e:
         return _redirect(error=str(e))
