@@ -1,0 +1,141 @@
+{% extends "_base.html" %}
+
+{% block title %}Career Pilot -- Mock Interview: {{ session.round_name }}{% endblock %}
+
+{% block header_title %}<a href="/" class="plain-link">Career Pilot</a> / <a href="/jobs/{{ application.id }}" class="plain-link">{{ posting.job_title }}</a> / <a href="/jobs/{{ application.id }}/mock-interview" class="plain-link">Mock Interview</a> / {{ session.round_name }}{% endblock %}
+
+{% block content %}
+{% if message %}
+<div class="flash flash-ok" role="status">{{ message }}</div>
+{% endif %}
+{% if error %}
+<div class="flash flash-error" role="alert">{{ error }}</div>
+{% endif %}
+
+<section class="variant-block">
+    <div class="variant-header">
+        <h2>{{ session.round_name }}</h2>
+        <span class="badge {% if session.status == 'completed' %}badge-active{% endif %}">{{ tier_label }} &middot; {{ session.status }}</span>
+    </div>
+    <p class="muted-note">{{ tier_description }}</p>
+
+    <div id="transcript">
+        {% for t in turns %}
+        <div class="sub-panel {% if t.speaker == 'interviewer' %}interviewer-turn{% else %}candidate-turn{% endif %}">
+            <p><strong>{{ "Interviewer" if t.speaker == "interviewer" else "You" }}{% if t.is_followup %} <span class="muted-note">(follow-up)</span>{% endif %}:</strong> {{ t.content }}</p>
+            {% if t.suggest_level_up and t.level_up_note %}
+            <p class="flash flash-ok" role="status">You're handling {{ tier_label }} well -- {{ t.level_up_note }} Consider starting a new session at the next tier.</p>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if session.status == "in_progress" %}
+    <form method="post" action="/jobs/{{ application.id }}/mock-interview/{{ session.id }}/respond" id="answer-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label for="answer-input">Your answer</label>
+        <textarea id="answer-input" name="answer" rows="4" required placeholder="Type your answer, or use Record Answer below."></textarea>
+        <div class="variant-actions">
+            <button type="button" id="record-btn" class="btn-secondary" style="display:none;">Record Answer</button>
+            <button type="submit">Submit Answer</button>
+        </div>
+        <p id="speech-status" class="muted-note"></p>
+    </form>
+
+    <form method="post" action="/jobs/{{ application.id }}/mock-interview/{{ session.id }}/end" class="inline-form"
+          onsubmit="return confirm('End this session and get your debrief?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn-secondary">End Session &amp; Get Debrief</button>
+    </form>
+    {% endif %}
+
+    {% if debrief %}
+    <h3>Debrief</h3>
+    <p>{{ debrief.overall_summary }}</p>
+    {% if debrief.strengths %}
+    <p><strong>Strengths</strong></p>
+    <ul>{% for s in debrief.strengths %}<li>{{ s }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% if debrief.areas_to_improve %}
+    <p><strong>Areas to improve</strong></p>
+    <ul>{% for a in debrief.areas_to_improve %}<li>{{ a }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% if debrief.structure_feedback %}
+    <p><strong>Structure/clarity</strong></p>
+    <p class="muted-note">{{ debrief.structure_feedback }}</p>
+    {% endif %}
+    {% if debrief.accuracy_notes %}
+    <p><strong>Accuracy check against your real profile</strong></p>
+    <ul>{% for n in debrief.accuracy_notes %}<li>{{ n }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% endif %}
+</section>
+
+{% if session.status == "in_progress" %}
+<script>
+(function () {
+    "use strict";
+    var lastTurn = {{ (turns[-1].content | tojson) if turns else '""' }};
+    var lastSpeaker = {{ (turns[-1].speaker | tojson) if turns else '""' }};
+    var speechStatus = document.getElementById("speech-status");
+
+    // Read the interviewer's latest line aloud -- SpeechSynthesis has
+    // much broader browser support than SpeechRecognition, so no
+    // feature-detection gate needed beyond the existence check itself.
+    if (lastSpeaker === "interviewer" && window.speechSynthesis) {
+        try {
+            var utterance = new SpeechSynthesisUtterance(lastTurn);
+            window.speechSynthesis.speak(utterance);
+        } catch (e) { /* non-fatal -- the question is already shown as text */ }
+    }
+
+    // Voice answer capture -- Chrome/Edge support SpeechRecognition,
+    // Firefox does not and Safari's support is inconsistent. Feature-
+    // detect and just hide the button rather than show something broken;
+    // typing the answer always works regardless.
+    var SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+    var recordBtn = document.getElementById("record-btn");
+    var answerInput = document.getElementById("answer-input");
+
+    if (SpeechRecognitionCtor) {
+        recordBtn.style.display = "";
+        var recognizing = false;
+        var recognition = new SpeechRecognitionCtor();
+        recognition.lang = "en-US";
+        recognition.interimResults = true;
+        recognition.continuous = true;
+
+        recognition.onresult = function (event) {
+            var transcript = "";
+            for (var i = 0; i < event.results.length; i++) {
+                transcript += event.results[i][0].transcript;
+            }
+            answerInput.value = transcript;
+        };
+        recognition.onerror = function () {
+            speechStatus.textContent = "Voice capture stopped -- you can keep typing instead.";
+            recognizing = false;
+            recordBtn.textContent = "Record Answer";
+        };
+        recognition.onend = function () {
+            recognizing = false;
+            recordBtn.textContent = "Record Answer";
+            speechStatus.textContent = "Review the transcript above, edit if needed, then submit.";
+        };
+
+        recordBtn.addEventListener("click", function () {
+            if (recognizing) {
+                recognition.stop();
+                return;
+            }
+            recognizing = true;
+            recordBtn.textContent = "Stop Recording";
+            speechStatus.textContent = "Listening...";
+            answerInput.value = "";
+            recognition.start();
+        });
+    }
+})();
+</script>
+{% endif %}
+{% endblock %}

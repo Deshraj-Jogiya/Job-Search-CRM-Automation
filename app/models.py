@@ -212,6 +212,7 @@ class JobApplication(Base):
     documents = relationship("TailoredDocument", back_populates="application", cascade="all, delete-orphan")
     outreach_messages = relationship("OutreachMessage", back_populates="application", cascade="all, delete-orphan")
     interview_prep = relationship("InterviewPrep", back_populates="application", uselist=False, cascade="all, delete-orphan")
+    mock_interview_sessions = relationship("MockInterviewSession", back_populates="application", cascade="all, delete-orphan")
 
 
 class TailoredDocument(Base):
@@ -297,6 +298,64 @@ class BehavioralStory(Base):
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
     variant = relationship("ProfileVariant")
+
+
+class MockInterviewSession(Base):
+    """One practice run through a single predicted round -- the AI plays
+    interviewer, picking an opening question at random from that round's
+    already-grounded pool (predicted_rounds' qa_pairs + other_possible_
+    questions) and reacting to the candidate's actual answers with
+    follow-ups or new questions from the pool, rather than working down
+    a fixed list the candidate can see coming. tier controls how forgiving
+    the session is (see mock_interview_service.py's TIER_DESCRIPTIONS);
+    the adaptive layer can suggest moving up a tier mid-session, but
+    never does so without the candidate explicitly accepting."""
+    __tablename__ = "mock_interview_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    application_id = Column(Integer, ForeignKey("job_applications.id"), nullable=False)
+
+    round_name = Column(String, nullable=False)
+    tier = Column(String, nullable=False, default="warm_up")  # warm_up | guided | full_simulation
+    status = Column(String, nullable=False, default="in_progress")  # in_progress | completed
+    debrief_json = Column(Text, nullable=True)  # filled once, at end_session -- accuracy/completeness/structure feedback
+
+    started_at = Column(DateTime, default=utcnow)
+    ended_at = Column(DateTime, nullable=True)
+
+    application = relationship("JobApplication", back_populates="mock_interview_sessions")
+    turns = relationship(
+        "MockInterviewTurn", back_populates="session", cascade="all, delete-orphan",
+        order_by="MockInterviewTurn.turn_index",
+    )
+
+
+class MockInterviewTurn(Base):
+    """One line of the practice conversation. speaker is 'interviewer'
+    or 'candidate'; is_followup marks an interviewer turn that reacted
+    to the candidate's last answer rather than pulling a fresh question
+    from the round's pool -- kept distinct mainly so a transcript view
+    can visually show where the conversation branched off-script, same
+    as a real interview would."""
+    __tablename__ = "mock_interview_turns"
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("mock_interview_sessions.id"), nullable=False)
+
+    turn_index = Column(Integer, nullable=False)
+    speaker = Column(String, nullable=False)  # interviewer | candidate
+    content = Column(Text, nullable=False)
+    is_followup = Column(Boolean, default=False)
+    # Set on an interviewer turn when the adaptive layer judges the
+    # candidate is finding the current tier comfortably easy -- surfaced
+    # to the candidate, never auto-applied. Persisted (not just returned
+    # in-memory from submit_answer) so it's still visible after a page
+    # reload, at the point in the transcript it actually happened.
+    suggest_level_up = Column(Boolean, default=False)
+    level_up_note = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+
+    session = relationship("MockInterviewSession", back_populates="turns")
 
 
 # ---------------------------------------------------------------------------

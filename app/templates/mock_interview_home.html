@@ -1,0 +1,58 @@
+{% extends "_base.html" %}
+
+{% block title %}Career Pilot -- Mock Interview{% endblock %}
+
+{% block header_title %}<a href="/" class="plain-link">Career Pilot</a> / <a href="/jobs/{{ application.id }}" class="plain-link">{{ posting.job_title }}</a> / Mock Interview{% endblock %}
+
+{% block content %}
+{% if message %}
+<div class="flash flash-ok" role="status">{{ message }}</div>
+{% endif %}
+{% if error %}
+<div class="flash flash-error" role="alert">{{ error }}</div>
+{% endif %}
+
+<section class="variant-block">
+    <h2>Practice a Round</h2>
+    {% if not rounds %}
+    <p class="muted-note">No predicted rounds yet -- generate interview prep on the application page first.</p>
+    {% else %}
+    <form method="post" action="/jobs/{{ application.id }}/mock-interview/start">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+        <label for="round-select">Round</label>
+        <select id="round-select" name="round_name" required>
+            {% for r in rounds %}
+            <option value="{{ r.round_name }}">{{ r.round_name }}{% if r.what_it_tests %} -- {{ r.what_it_tests }}{% endif %}</option>
+            {% endfor %}
+        </select>
+
+        <label>Practice tier</label>
+        {% for key, info in tiers.items() %}
+        <label class="checkbox-label">
+            <input type="radio" name="tier" value="{{ key }}" {{ "checked" if key == "warm_up" }}>
+            <strong>{{ info[0] }}</strong> -- {{ info[1] }}
+        </label>
+        {% endfor %}
+
+        <button type="submit">Start Practice Session</button>
+    </form>
+    {% endif %}
+</section>
+
+{% if sessions %}
+<section class="variant-block">
+    <h2>Past Sessions</h2>
+    <ul class="version-history">
+        {% for s in sessions %}
+        <li>
+            <a href="/jobs/{{ application.id }}/mock-interview/{{ s.id }}">{{ s.round_name }}</a>
+            &middot; {{ tiers.get(s.tier, (s.tier,))[0] }}
+            &middot; <span class="badge {% if s.status == 'completed' %}badge-active{% endif %}">{{ s.status }}</span>
+            &middot; {{ s.started_at.strftime("%Y-%m-%d %H:%M") }} UTC
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% endif %}
+{% endblock %}
