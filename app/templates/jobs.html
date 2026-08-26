@@ -236,7 +236,7 @@
                 <span class="badge">{{ app.posting.source }}</span>
                 <span class="badge">{{ app.status }}</span>
                 {% if app.match_score %}<span class="badge badge-active">{{ app.match_score }}% match</span>{% endif %}
-                {% if app.interview_prep %}<span class="badge badge-active">interview prep ready</span>{% endif %}
+                {% if app.active_interview_prep %}<span class="badge badge-active">interview prep ready</span>{% endif %}
             </div>
             <p class="muted-note">
                 {{ app.posting.company_name_raw }}

@@ -211,8 +211,15 @@ class JobApplication(Base):
     posting = relationship("JobPosting", back_populates="application")
     documents = relationship("TailoredDocument", back_populates="application", cascade="all, delete-orphan")
     outreach_messages = relationship("OutreachMessage", back_populates="application", cascade="all, delete-orphan")
-    interview_prep = relationship("InterviewPrep", back_populates="application", uselist=False, cascade="all, delete-orphan")
+    interview_preps = relationship(
+        "InterviewPrep", back_populates="application", cascade="all, delete-orphan",
+        order_by="InterviewPrep.generated_at.desc()",
+    )
     mock_interview_sessions = relationship("MockInterviewSession", back_populates="application", cascade="all, delete-orphan")
+
+    @property
+    def active_interview_prep(self):
+        return next((p for p in self.interview_preps if p.is_active), None)
 
 
 class TailoredDocument(Base):
@@ -259,18 +266,28 @@ class OutreachMessage(Base):
 # ---------------------------------------------------------------------------
 
 class InterviewPrep(Base):
+    """Versioned, same pattern as ProfileVersion -- regenerating used to
+    silently overwrite the previous prep in place with no way to compare
+    or recover it. Now every generation is a new row; exactly one per
+    application has is_active=True at a time (flipped in
+    interview_prep_service.generate_interview_prep and
+    restore_interview_prep_version), older ones kept for history/restore
+    rather than deleted. JobApplication.active_interview_prep is the
+    plain-Python-property equivalent of the old uselist=False
+    relationship, for callers that only ever want the current one."""
     __tablename__ = "interview_prep"
 
     id = Column(Integer, primary_key=True, index=True)
-    application_id = Column(Integer, ForeignKey("job_applications.id"), nullable=False, unique=True)
+    application_id = Column(Integer, ForeignKey("job_applications.id"), nullable=False)
 
     general_prep_json = Column(Text, nullable=True)   # questions/talking points based on your background
     company_prep_json = Column(Text, nullable=True)   # company-specific angles, from JD + light research
     process_research_json = Column(Text, nullable=True)  # real reported interview-process findings + sources, when found
     predicted_rounds_json = Column(Text, nullable=True)   # round-by-round structured plan, grounded in process_research when available
+    is_active = Column(Boolean, default=True)
     generated_at = Column(DateTime, default=utcnow)
 
-    application = relationship("JobApplication", back_populates="interview_prep")
+    application = relationship("JobApplication", back_populates="interview_preps")
 
 
 class BehavioralStory(Base):
@@ -364,6 +381,17 @@ class MockInterviewTurn(Base):
     # reload, at the point in the transcript it actually happened.
     suggest_level_up = Column(Boolean, default=False)
     level_up_note = Column(Text, nullable=True)
+    # Voice-delivery signals, set only on a candidate turn answered by
+    # voice (see mock_interview_session.html's SpeechRecognition
+    # instrumentation) -- real recorded-speech duration rather than the
+    # wall-clock gap between turns (which conflates think-time,
+    # speaking-time, and transcript-review-time), plus mid-answer pause
+    # tracking from gaps between recognition results while still
+    # recording. Null for typed answers, where neither concept applies
+    # the same way.
+    recording_duration_seconds = Column(Float, nullable=True)
+    pause_count = Column(Integer, nullable=True)
+    longest_pause_seconds = Column(Float, nullable=True)
     created_at = Column(DateTime, default=utcnow)
 
     session = relationship("MockInterviewSession", back_populates="turns")

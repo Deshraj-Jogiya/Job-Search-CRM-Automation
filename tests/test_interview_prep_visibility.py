@@ -27,7 +27,8 @@ def _render_detail(application, posting, **extra_context):
         "cl_doc": None,
         "general_prep": None,
         "company_prep": None,
-        "interview_prep": application.interview_prep,
+        "interview_prep": application.active_interview_prep,
+        "prep_versions": [],
         "outreach_messages": [],
         "daily_outreach_cap": 10,
         "outreach_sent_today": 0,
@@ -54,7 +55,7 @@ def _with_prep(db, application):
     db.add(prep)
     db.commit()
     db.refresh(application)
-    return {"general_prep": general_prep, "interview_prep": application.interview_prep}
+    return {"general_prep": general_prep, "interview_prep": application.active_interview_prep}
 
 
 def test_open_application_with_no_prep_shows_generate_prompt(db):
@@ -116,7 +117,7 @@ def test_jobs_list_shows_interview_prep_ready_badge(db):
     applications = (
         db.query(models.JobApplication)
         .join(models.JobPosting)
-        .options(jobs_router.joinedload(models.JobApplication.interview_prep))
+        .options(jobs_router.joinedload(models.JobApplication.interview_preps))
         .all()
     )
     html = env.get_template("jobs.html").render(

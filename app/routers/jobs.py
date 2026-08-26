@@ -152,7 +152,7 @@ def jobs_page(request: Request, db: Session = Depends(get_db)):
     applications = (
         db.query(JobApplication)
         .join(JobPosting)
-        .options(joinedload(JobApplication.interview_prep))
+        .options(joinedload(JobApplication.interview_preps))
         .order_by(JobApplication.created_at.desc())
         .limit(100)
         .all()
@@ -423,18 +423,20 @@ def _build_detail_context(application_id: int, request: Request, db: Session, di
     )
     settings = get_or_create_settings(db)
 
-    general_prep = json.loads(application.interview_prep.general_prep_json) if (
-        application.interview_prep and application.interview_prep.general_prep_json
+    active_prep = application.active_interview_prep
+    general_prep = json.loads(active_prep.general_prep_json) if (
+        active_prep and active_prep.general_prep_json
     ) else None
-    company_prep = json.loads(application.interview_prep.company_prep_json) if (
-        application.interview_prep and application.interview_prep.company_prep_json
+    company_prep = json.loads(active_prep.company_prep_json) if (
+        active_prep and active_prep.company_prep_json
     ) else None
-    process_research = json.loads(application.interview_prep.process_research_json) if (
-        application.interview_prep and application.interview_prep.process_research_json
+    process_research = json.loads(active_prep.process_research_json) if (
+        active_prep and active_prep.process_research_json
     ) else None
-    predicted_rounds = json.loads(application.interview_prep.predicted_rounds_json) if (
-        application.interview_prep and application.interview_prep.predicted_rounds_json
+    predicted_rounds = json.loads(active_prep.predicted_rounds_json) if (
+        active_prep and active_prep.predicted_rounds_json
     ) else None
+    prep_versions = interview_prep_service.list_interview_prep_versions(db, application_id)
 
     try:
         _, variant_id = matching_service.get_profile_content_for_application(db, application)
@@ -455,7 +457,8 @@ def _build_detail_context(application_id: int, request: Request, db: Session, di
         "process_research": process_research,
         "predicted_rounds": predicted_rounds,
         "confirmed_stories": confirmed_stories,
-        "interview_prep": application.interview_prep,
+        "interview_prep": active_prep,
+        "prep_versions": prep_versions,
         "outreach_messages": outreach_messages,
         "daily_outreach_cap": settings.daily_outreach_cap,
         "outreach_sent_today": outreach_service.sent_count_last_24h(db),
@@ -533,32 +536,53 @@ def generate_interview_prep_now(application_id: int, db: Session = Depends(get_d
 
 
 @router.get("/{application_id}/interview-prep/download")
-def download_interview_prep_cheat_sheet(application_id: int, db: Session = Depends(get_db)):
+def download_interview_prep_cheat_sheet(application_id: int, round_name: str = None, db: Session = Depends(get_db)):
     application = (
         db.query(JobApplication)
-        .options(joinedload(JobApplication.interview_prep), joinedload(JobApplication.posting))
+        .options(joinedload(JobApplication.interview_preps), joinedload(JobApplication.posting))
         .filter(JobApplication.id == application_id)
         .first()
     )
     if not application:
         raise HTTPException(status_code=404, detail="Application not found")
-    if not application.interview_prep or not application.interview_prep.predicted_rounds_json:
+    active_prep = application.active_interview_prep
+    if not active_prep or not active_prep.predicted_rounds_json:
         return _redirect_detail(application_id, error="Generate interview prep first.")
 
-    general_prep = json.loads(application.interview_prep.general_prep_json or "{}")
-    company_prep = json.loads(application.interview_prep.company_prep_json or "{}")
-    predicted_rounds = json.loads(application.interview_prep.predicted_rounds_json)
+    general_prep = json.loads(active_prep.general_prep_json or "{}")
+    company_prep = json.loads(active_prep.company_prep_json or "{}")
+    predicted_rounds = json.loads(active_prep.predicted_rounds_json)
+
+    # round_name, when passed, downloads a filtered cheat sheet for just
+    # that round instead of the whole process -- matches how this
+    # actually gets used, one round at a time over weeks, not the whole
+    # thing dumped at once every time.
+    if round_name:
+        matching = [r for r in predicted_rounds.get("rounds", []) if r.get("round_name") == round_name]
+        if not matching:
+            return _redirect_detail(application_id, error=f"Round '{round_name}' not found in this prep.")
+        predicted_rounds = {**predicted_rounds, "rounds": matching}
 
     pdf_bytes = document_render_service.render_interview_prep_cheat_sheet_pdf(
         application.posting.job_title, application.posting.company_name_raw,
         general_prep, company_prep, predicted_rounds,
     )
-    filename = f"interview-prep-{application.posting.company_name_raw}-{application.posting.job_title}.pdf".replace(" ", "-")
+    name_part = round_name or "full"
+    filename = f"interview-prep-{application.posting.company_name_raw}-{application.posting.job_title}-{name_part}.pdf".replace(" ", "-")
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.post("/{application_id}/interview-prep/{prep_id}/restore")
+def restore_interview_prep(application_id: int, prep_id: int, db: Session = Depends(get_db)):
+    try:
+        interview_prep_service.restore_interview_prep_version(db, prep_id)
+    except interview_prep_service.InterviewPrepServiceError as e:
+        return _redirect_detail(application_id, error=str(e))
+    return _redirect_detail(application_id, message="Restored that interview prep version.")
 
 
 @router.post("/{application_id}/autofill")

@@ -49,6 +49,9 @@
             <button type="submit">Submit Answer</button>
         </div>
         <p id="speech-status" class="muted-note"></p>
+        <input type="hidden" name="recording_duration_seconds" id="recording-duration-field" value="0">
+        <input type="hidden" name="pause_count" id="pause-count-field" value="0">
+        <input type="hidden" name="longest_pause_seconds" id="longest-pause-field" value="0">
     </form>
 
     <form method="post" action="/jobs/{{ application.id }}/mock-interview/{{ session.id }}/end" id="end-session-form" class="inline-form"
@@ -154,7 +157,31 @@
         recognition.interimResults = true;
         recognition.continuous = true;
 
+        // Duration/pause tracking -- only measurable live, during active
+        // recording (a final transcript alone has no timing info). A
+        // "pause" here is a gap between consecutive recognition results
+        // while still listening, not a gap in the final text.
+        var recordingStartedAt = null;
+        var lastResultAt = null;
+        var pauseCount = 0;
+        var longestPause = 0;
+        var PAUSE_THRESHOLD_MS = 2500;
+
+        var durationField = document.getElementById("recording-duration-field");
+        var pauseCountField = document.getElementById("pause-count-field");
+        var longestPauseField = document.getElementById("longest-pause-field");
+
         recognition.onresult = function (event) {
+            var now = Date.now();
+            if (lastResultAt !== null) {
+                var gapSeconds = (now - lastResultAt) / 1000;
+                if (now - lastResultAt > PAUSE_THRESHOLD_MS) {
+                    pauseCount += 1;
+                    if (gapSeconds > longestPause) longestPause = gapSeconds;
+                }
+            }
+            lastResultAt = now;
+
             var transcript = "";
             for (var i = 0; i < event.results.length; i++) {
                 transcript += event.results[i][0].transcript;
@@ -170,6 +197,11 @@
             recognizing = false;
             recordBtn.textContent = "Record Answer";
             speechStatus.textContent = "Review the transcript above, edit if needed, then submit.";
+            if (recordingStartedAt) {
+                durationField.value = ((Date.now() - recordingStartedAt) / 1000).toFixed(1);
+                pauseCountField.value = pauseCount;
+                longestPauseField.value = longestPause.toFixed(1);
+            }
         };
 
         recordBtn.addEventListener("click", function () {
@@ -181,6 +213,10 @@
             recordBtn.textContent = "Stop Recording";
             speechStatus.textContent = "Listening...";
             answerInput.value = "";
+            recordingStartedAt = Date.now();
+            lastResultAt = null;
+            pauseCount = 0;
+            longestPause = 0;
             recognition.start();
         });
     }
