@@ -36,7 +36,8 @@ def _base_detail_context(application, posting, **extra):
         "process_research": None,
         "predicted_rounds": None,
         "confirmed_stories": [],
-        "interview_prep": application.interview_prep,
+        "interview_prep": application.active_interview_prep,
+        "prep_versions": [],
         "outreach_messages": [],
         "daily_outreach_cap": 10,
         "outreach_sent_today": 0,
@@ -85,6 +86,59 @@ def test_predicted_rounds_render_with_sources(db):
     assert "Walk through your resume" in html
     assert "Based on real, reported interview experiences" in html
     assert "https://glassdoor.com/example" in html
+
+
+def test_predicted_rounds_include_per_round_download_link(db):
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application = make_application(db, posting, status="Applied", applied_at=utcnow())
+    application = _with_prep_row(db, application)
+
+    predicted_rounds = {
+        "rounds": [{"round_name": "Recruiter Screen", "what_it_tests": "fit", "prep_focus": []}],
+    }
+
+    html = _base_detail_context(
+        application, posting, predicted_rounds=predicted_rounds, general_prep={"strengths_to_emphasize": ["x"]},
+    )
+
+    assert f"/jobs/{application.id}/interview-prep/download?round_name=Recruiter%20Screen" in html
+    assert "Download This Round Only" in html
+
+
+def test_version_history_hidden_with_only_one_version(db):
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application = make_application(db, posting, status="Applied", applied_at=utcnow())
+    application = _with_prep_row(db, application)
+
+    html = _base_detail_context(
+        application, posting, general_prep={"strengths_to_emphasize": ["x"]},
+        prep_versions=[application.active_interview_prep],
+    )
+
+    assert "Version history" not in html
+
+
+def test_version_history_shows_restore_for_past_versions(db):
+    from app import models
+
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application = make_application(db, posting, status="Applied", applied_at=utcnow())
+    application = _with_prep_row(db, application)
+    old_version = models.InterviewPrep(application_id=application.id, is_active=False)
+    db.add(old_version)
+    db.commit()
+    db.refresh(old_version)
+
+    html = _base_detail_context(
+        application, posting, general_prep={"strengths_to_emphasize": ["x"]},
+        prep_versions=[application.active_interview_prep, old_version],
+    )
+
+    assert "Version history (2)" in html
+    assert f"/jobs/{application.id}/interview-prep/{old_version.id}/restore" in html
 
 
 def test_predicted_rounds_generic_fallback_labeled_as_such(db):

@@ -90,7 +90,11 @@ _MAX_TURNS_BEFORE_NATURAL_WRAP = 10  # roughly how many exchanges a real round t
 
 
 def _get_round(db: Session, application_id: int, round_name: str) -> dict:
-    prep = db.query(InterviewPrep).filter(InterviewPrep.application_id == application_id).first()
+    prep = (
+        db.query(InterviewPrep)
+        .filter(InterviewPrep.application_id == application_id, InterviewPrep.is_active == True)  # noqa: E712
+        .first()
+    )
     if not prep or not prep.predicted_rounds_json:
         raise MockInterviewServiceError("Generate interview prep for this application first.")
     rounds = json.loads(prep.predicted_rounds_json).get("rounds", [])
@@ -119,24 +123,53 @@ _FILLER_WORD_PATTERN = re.compile(r"\b(um+|uh+|erm+|like|you know|sort of|kind o
 
 def _delivery_stats(turns: list[MockInterviewTurn]) -> str:
     """Mechanical (non-LLM), computed straight from data already on
-    hand -- no new capture. Filler-word counting is the one delivery
-    metric research consistently treats as reliable (plain counting,
-    no inference); response timing uses the turn timestamps that
-    already exist. Returned as a formatted block for the debrief
-    prompt, not a hard pass/fail judgment -- the model still interprets
-    what a given count/pace actually means in context."""
+    hand -- no new capture beyond what the voice-answer path already
+    submits. Filler-word counting is the one delivery metric research
+    consistently treats as reliable (plain counting, no inference).
+
+    Pace: when recording_duration_seconds is present (a voice answer --
+    see mock_interview_session.html's SpeechRecognition start/stop
+    instrumentation), that's the ACTUAL recorded-speech duration, giving
+    a real words-per-minute figure. Falls back to wall-clock time
+    between turns for typed answers, where speaking pace isn't a
+    meaningful concept anyway -- labeled differently so the debrief
+    prompt doesn't conflate think-time with speaking-time.
+
+    Pauses: pause_count/longest_pause_seconds come from gaps between
+    live speech-recognition results while still recording (only
+    measurable during active voice capture, not from a final transcript
+    alone -- this is why the earlier "not cleanly measurable" scope-cut
+    specifically needed client-side instrumentation, not a server-side
+    trick on already-stored text).
+
+    Returned as a formatted block for the debrief prompt, not a hard
+    pass/fail judgment -- the model still interprets what a given
+    count/pace/pause pattern actually means in context."""
     lines = []
     for i, t in enumerate(turns):
         if t.speaker != "candidate":
             continue
         fillers = _FILLER_WORD_PATTERN.findall(t.content)
         word_count = len(t.content.split())
-        elapsed = ""
-        if i > 0:
-            delta = (t.created_at - turns[i - 1].created_at).total_seconds()
-            if 0 < delta < 3600:  # sanity bound -- a stale/resumed session shouldn't skew this
-                elapsed = f", ~{int(delta)}s to respond"
-        lines.append(f"- Answer {i}: {word_count} words{elapsed}, {len(fillers)} filler word(s) ({', '.join(fillers) or 'none'})")
+
+        if t.recording_duration_seconds and t.recording_duration_seconds > 0:
+            wpm = round(word_count / (t.recording_duration_seconds / 60))
+            pace = f", {round(t.recording_duration_seconds)}s of actual recorded speech (~{wpm} words/min)"
+        else:
+            pace = ""
+            if i > 0:
+                delta = (t.created_at - turns[i - 1].created_at).total_seconds()
+                if 0 < delta < 3600:  # sanity bound -- a stale/resumed session shouldn't skew this
+                    pace = f", ~{int(delta)}s from question shown to answer submitted (typed, not a speech-pace measurement)"
+
+        pause_info = ""
+        if t.pause_count:
+            pause_info = f", {t.pause_count} mid-answer pause(s) (longest ~{round(t.longest_pause_seconds or 0)}s)"
+
+        lines.append(
+            f"- Answer {i}: {word_count} words{pace}{pause_info}, "
+            f"{len(fillers)} filler word(s) ({', '.join(fillers) or 'none'})"
+        )
     return "\n".join(lines)
 
 
@@ -184,7 +217,9 @@ def start_session(
     return session
 
 
-def submit_answer(db: Session, session_id: int, candidate_answer: str) -> MockInterviewTurn:
+def submit_answer(
+    db: Session, session_id: int, candidate_answer: str, voice_metrics: dict = None
+) -> MockInterviewTurn:
     session = db.query(MockInterviewSession).filter(MockInterviewSession.id == session_id).first()
     if not session:
         raise MockInterviewServiceError(f"Session {session_id} not found.")
@@ -193,8 +228,12 @@ def submit_answer(db: Session, session_id: int, candidate_answer: str) -> MockIn
 
     turns = list(session.turns)
     next_index = len(turns)
+    voice_metrics = voice_metrics or {}
     candidate_turn = MockInterviewTurn(
         session_id=session.id, turn_index=next_index, speaker="candidate", content=candidate_answer,
+        recording_duration_seconds=voice_metrics.get("duration_seconds") or None,
+        pause_count=voice_metrics.get("pause_count") or None,
+        longest_pause_seconds=voice_metrics.get("longest_pause_seconds") or None,
     )
     db.add(candidate_turn)
     turns.append(candidate_turn)
@@ -369,7 +408,11 @@ def list_sessions(db: Session, application_id: int) -> list[MockInterviewSession
 
 
 def get_available_rounds(db: Session, application_id: int) -> list[dict]:
-    prep = db.query(InterviewPrep).filter(InterviewPrep.application_id == application_id).first()
+    prep = (
+        db.query(InterviewPrep)
+        .filter(InterviewPrep.application_id == application_id, InterviewPrep.is_active == True)  # noqa: E712
+        .first()
+    )
     if not prep or not prep.predicted_rounds_json:
         return []
     rounds = json.loads(prep.predicted_rounds_json).get("rounds", [])

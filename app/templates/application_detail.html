@@ -116,6 +116,26 @@
             {% if general_prep or company_prep %}
             <p class="muted-note">Generated {{ interview_prep.generated_at.strftime("%Y-%m-%d %H:%M") }} UTC.</p>
 
+            {% if prep_versions and prep_versions|length > 1 %}
+            <details class="sub-panel">
+                <summary>Version history ({{ prep_versions|length }})</summary>
+                <ul class="version-history">
+                    {% for v in prep_versions %}
+                    <li>
+                        <span class="badge {% if v.is_active %}badge-active{% endif %}">{{ "active" if v.is_active else "past" }}</span>
+                        {{ v.generated_at.strftime("%Y-%m-%d %H:%M") }} UTC
+                        {% if not v.is_active and not is_closed %}
+                        <form method="post" action="/jobs/{{ application.id }}/interview-prep/{{ v.id }}/restore" class="inline-form">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" class="btn-secondary">Restore</button>
+                        </form>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+            </details>
+            {% endif %}
+
             {% if general_prep %}
             <h3>Quick Reference (based on your background)</h3>
             {% if general_prep.strengths_to_emphasize %}
@@ -193,6 +213,7 @@
                 <p><strong>Questions to ask in this round</strong></p>
                 <ul>{% for q in round.questions_to_ask_them %}<li>{{ q }}</li>{% endfor %}</ul>
                 {% endif %}
+                <a href="/jobs/{{ application.id }}/interview-prep/download?round_name={{ round.round_name | urlencode }}" class="btn-secondary">Download This Round Only</a>
             </details>
             {% endfor %}
             {% if process_research and process_research.sources %}

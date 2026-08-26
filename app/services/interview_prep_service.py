@@ -493,16 +493,24 @@ def generate_interview_prep(db: Session, application_id: int) -> JobApplication:
 
     predicted_rounds["grounding_warnings"] = check_answer_grounding(profile_content, predicted_rounds)
 
-    prep = db.query(InterviewPrep).filter(InterviewPrep.application_id == application.id).first()
-    if not prep:
-        prep = InterviewPrep(application_id=application.id)
-        db.add(prep)
+    # Versioned, same pattern as ProfileVersion -- a regenerate used to
+    # silently overwrite the previous prep in place with no way to
+    # compare or recover it. Now every generation is a new row; the
+    # previously-active one (if any) is deactivated, never deleted.
+    db.query(InterviewPrep).filter(
+        InterviewPrep.application_id == application.id, InterviewPrep.is_active == True  # noqa: E712
+    ).update({"is_active": False})
 
-    prep.general_prep_json = json.dumps(general)
-    prep.company_prep_json = json.dumps(company)
-    prep.process_research_json = json.dumps(process_research)
-    prep.predicted_rounds_json = json.dumps(predicted_rounds)
-    prep.generated_at = utcnow()
+    prep = InterviewPrep(
+        application_id=application.id,
+        general_prep_json=json.dumps(general),
+        company_prep_json=json.dumps(company),
+        process_research_json=json.dumps(process_research),
+        predicted_rounds_json=json.dumps(predicted_rounds),
+        is_active=True,
+        generated_at=utcnow(),
+    )
+    db.add(prep)
     db.commit()
 
     log_activity(
@@ -518,3 +526,36 @@ def generate_interview_prep(db: Session, application_id: int) -> JobApplication:
 
     db.refresh(application)
     return application
+
+
+def list_interview_prep_versions(db: Session, application_id: int) -> list[InterviewPrep]:
+    return (
+        db.query(InterviewPrep)
+        .filter(InterviewPrep.application_id == application_id)
+        .order_by(InterviewPrep.generated_at.desc())
+        .all()
+    )
+
+
+def restore_interview_prep_version(db: Session, prep_id: int) -> InterviewPrep:
+    """Makes an older version active again -- deactivate-and-flip, same
+    mechanics as generate_interview_prep switching versions, just
+    without generating anything new. The version being replaced stays
+    in history; nothing is ever deleted by this."""
+    target = db.query(InterviewPrep).filter(InterviewPrep.id == prep_id).first()
+    if not target:
+        raise InterviewPrepServiceError(f"Interview prep version {prep_id} not found.")
+    if target.is_active:
+        return target
+
+    db.query(InterviewPrep).filter(
+        InterviewPrep.application_id == target.application_id, InterviewPrep.is_active == True  # noqa: E712
+    ).update({"is_active": False})
+    target.is_active = True
+    db.commit()
+    db.refresh(target)
+
+    log_activity(
+        db, f"Restored an earlier interview prep version (generated {target.generated_at:%Y-%m-%d %H:%M} UTC).", "INFO"
+    )
+    return target
