@@ -320,6 +320,17 @@ class MockInterviewSession(Base):
     status = Column(String, nullable=False, default="in_progress")  # in_progress | completed
     debrief_json = Column(Text, nullable=True)  # filled once, at end_session -- accuracy/completeness/structure feedback
 
+    # Camera feedback is opt-in per session (not every round is actually
+    # on video, and the candidate is the one who knows their own real
+    # scheduled format). visual_metrics_json holds only small aggregated
+    # numbers submitted once at end_session (face-forward ratio, a
+    # movement count) -- raw video/frames never reach the server, all
+    # detection runs client-side. See mock_interview_service.py's
+    # docstring for why this deliberately does NOT do facial-expression/
+    # emotion inference, only observable, descriptive signals.
+    camera_enabled = Column(Boolean, default=False)
+    visual_metrics_json = Column(Text, nullable=True)
+
     started_at = Column(DateTime, default=utcnow)
     ended_at = Column(DateTime, nullable=True)
 
