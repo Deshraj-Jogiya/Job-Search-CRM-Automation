@@ -467,6 +467,19 @@ class GlobalSettings(Base):
     hunter_calls_used_this_month = Column(Integer, default=0)
     hunter_month_reset_at = Column(DateTime, nullable=True)
 
+    # Interview prep no longer caps how many questions surface per round
+    # (a real interview isn't bounded by a quota either), but drafting a
+    # full, ready-to-say answer for every single one is what actually
+    # drives real LLM cost/latency -- confirmed the hard way (3 failed
+    # generations from JSON truncation before this existed). This caps
+    # how many get a FULL drafted answer per round; anything beyond that
+    # still surfaces as a plain question (no answer) instead of vanishing.
+    # Defaults low/free-tier-friendly since this is a public platform
+    # forkers may run on a free-tier key, not just this deployment --
+    # live-editable per instance for anyone (like the operator here) who
+    # wants deeper prep and is fine paying more for it.
+    interview_prep_answer_target = Column(Integer, default=8)
+
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
 

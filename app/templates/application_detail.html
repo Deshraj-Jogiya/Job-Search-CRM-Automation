@@ -159,6 +159,12 @@
                 No real process information was found for this company -- generic structure, treat as a starting point, not a limit.
                 {% endif %}
             </p>
+            {% if predicted_rounds.grounding_warnings %}
+            <div class="flash flash-error" role="alert">
+                <strong>{{ predicted_rounds.grounding_warnings|length }} drafted answer(s) cite a number not found in your real profile -- verify before using:</strong>
+                <ul>{% for w in predicted_rounds.grounding_warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+            </div>
+            {% endif %}
             {% for round in predicted_rounds.rounds %}
             <details class="sub-panel" open>
                 <summary>{{ loop.index }}. {{ round.round_name }}{% if round.likely_interviewer %} &middot; likely run by: {{ round.likely_interviewer }}{% endif %}</summary>
@@ -177,6 +183,10 @@
                     {% endif %}
                 </div>
                 {% endfor %}
+                {% endif %}
+                {% if round.other_possible_questions %}
+                <p><strong>Other possible questions in this round (no drafted answer -- adapt a nearby one)</strong></p>
+                <ul>{% for q in round.other_possible_questions %}<li>{{ q }}</li>{% endfor %}</ul>
                 {% endif %}
                 {% if round.questions_to_ask_them %}
                 <p><strong>Questions to ask in this round</strong></p>
