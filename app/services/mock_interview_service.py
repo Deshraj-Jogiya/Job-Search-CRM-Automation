@@ -142,6 +142,11 @@ def submit_answer(db: Session, session_id: int, candidate_answer: str) -> MockIn
     tier_label, tier_description = TIER_DESCRIPTIONS[session.tier]
     turns_so_far = len([t for t in turns if t.speaker == "candidate"])
     should_consider_wrap = turns_so_far >= _MAX_TURNS_BEFORE_NATURAL_WRAP
+    wrap_instruction = (
+        "The conversation has run a realistic length for this round -- if it feels natural, begin "
+        "wrapping up rather than opening a new thread."
+        if should_consider_wrap else ""
+    )
 
     llm = get_llm_provider()
     raw = llm.complete_json(
@@ -160,8 +165,7 @@ def submit_answer(db: Session, session_id: int, candidate_answer: str) -> MockIn
             "Decide your next line as the interviewer: either a natural follow-up reacting to what the "
             "candidate just said, or a transition to one of the remaining questions above (verbatim or "
             "lightly rephrased to flow naturally) -- never invent a new topic question not in that list. "
-            f"{'The conversation has run a realistic length for this round -- if it feels natural, begin '
-               'wrapping up rather than opening a new thread.' if should_consider_wrap else ''}\n"
+            f"{wrap_instruction}\n"
             "Also assess, honestly, whether the candidate is finding this tier comfortably easy based on "
             "their answers so far -- if so, note it; otherwise leave the note empty.\n\n"
             "Respond with EXACTLY this JSON shape:\n"
