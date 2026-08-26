@@ -70,6 +70,7 @@ def generate_story_drafts(db: Session, variant_id: int) -> list[BehavioralStory]
             "output in markdown code fences."
         ),
         temperature=0.3,
+        max_tokens=4000,
     )
     parsed = parse_json_response(raw)
 
