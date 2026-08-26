@@ -16,6 +16,7 @@ from app.services.document_render_service import (
     _humanize_skill_category,
     _section_header,
     render_cover_letter_pdf,
+    render_interview_prep_cheat_sheet_pdf,
     render_resume_pdf,
 )
 
@@ -135,4 +136,50 @@ def test_render_resume_pdf_handles_missing_optional_fields_without_crashing():
 
 def test_render_cover_letter_pdf_still_works():
     pdf_bytes = render_cover_letter_pdf("Dear hiring manager,\n\nI'd love to join.", "Jane Doe")
+    assert pdf_bytes.startswith(b"%PDF")
+
+
+_CHEAT_SHEET_ROUNDS = {
+    "rounds": [
+        {
+            "round_name": "Recruiter Screen",
+            "likely_interviewer": "HR generalist",
+            "what_it_tests": "fit and motivation",
+            "qa_pairs": [
+                {
+                    "question": "Tell me about yourself.",
+                    "draft_answer": "A long drafted answer that would read as a paragraph in the app.",
+                    "quick_reference": "MS ASU -> data eng roles -> CurioSync",
+                }
+            ],
+            "questions_to_ask_them": ["What does day-to-day look like?"],
+        }
+    ],
+    "grounded_in_real_research": True,
+}
+
+
+def test_render_interview_prep_cheat_sheet_produces_a_real_pdf():
+    pdf_bytes = render_interview_prep_cheat_sheet_pdf(
+        "Data Engineer II", "Acme & Co", {"strengths_to_emphasize": ["Real pipelines"]},
+        {"why_this_company_talking_points": ["Their AI mission"]}, _CHEAT_SHEET_ROUNDS,
+    )
+    assert pdf_bytes.startswith(b"%PDF")
+
+
+def test_render_interview_prep_cheat_sheet_handles_missing_sections():
+    pdf_bytes = render_interview_prep_cheat_sheet_pdf("Data Engineer II", "Acme & Co", {}, {}, {"rounds": []})
+    assert pdf_bytes.startswith(b"%PDF")
+
+
+def test_render_interview_prep_cheat_sheet_handles_special_characters():
+    rounds = {
+        "rounds": [
+            {
+                "round_name": "Tech & Systems <Design>",
+                "qa_pairs": [{"question": "AT&T style Q?", "quick_reference": "cue with & and <tags>"}],
+            }
+        ]
+    }
+    pdf_bytes = render_interview_prep_cheat_sheet_pdf("Role & Title", "Acme <Co>", {}, {}, rounds)
     assert pdf_bytes.startswith(b"%PDF")

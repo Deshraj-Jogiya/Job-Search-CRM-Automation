@@ -46,14 +46,15 @@ def _render_detail(application, posting, **extra_context):
 
 
 def _with_prep(db, application):
+    general_prep = {"strengths_to_emphasize": ["Tell me about yourself."]}
     prep = models.InterviewPrep(
         application_id=application.id,
-        general_prep_json=json.dumps({"likely_questions": ["Tell me about yourself."]}),
+        general_prep_json=json.dumps(general_prep),
     )
     db.add(prep)
     db.commit()
     db.refresh(application)
-    return {"general_prep": {"likely_questions": ["Tell me about yourself."]}, "interview_prep": application.interview_prep}
+    return {"general_prep": general_prep, "interview_prep": application.interview_prep}
 
 
 def test_open_application_with_no_prep_shows_generate_prompt(db):

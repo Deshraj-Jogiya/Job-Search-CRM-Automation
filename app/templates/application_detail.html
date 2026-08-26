@@ -97,12 +97,17 @@
         <section class="variant-block">
             <div class="variant-header">
                 <h2>Interview Prep</h2>
-                {% if not is_closed %}
-                <form method="post" action="/jobs/{{ application.id }}/interview-prep" class="inline-form">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <button type="submit">{{ "Regenerate" if interview_prep else "Generate Interview Prep" }}</button>
-                </form>
-                {% endif %}
+                <div class="variant-actions">
+                    {% if not is_closed %}
+                    <form method="post" action="/jobs/{{ application.id }}/interview-prep" class="inline-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit">{{ "Regenerate" if interview_prep else "Generate Interview Prep" }}</button>
+                    </form>
+                    {% endif %}
+                    {% if predicted_rounds and predicted_rounds.rounds %}
+                    <a href="/jobs/{{ application.id }}/interview-prep/download" class="btn-secondary">Download One-Page Cheat Sheet</a>
+                    {% endif %}
+                </div>
             </div>
             {% if is_closed and (general_prep or company_prep) %}
             <p class="muted-note">This application is closed -- kept below for reference, not editable.</p>
@@ -110,20 +115,74 @@
             {% if general_prep or company_prep %}
             <p class="muted-note">Generated {{ interview_prep.generated_at.strftime("%Y-%m-%d %H:%M") }} UTC.</p>
 
+            {% if general_prep %}
+            <h3>Quick Reference (based on your background)</h3>
+            {% if general_prep.strengths_to_emphasize %}
+            <p><strong>Strengths to emphasize</strong></p>
+            <ul>{% for s in general_prep.strengths_to_emphasize %}<li>{{ s }}</li>{% endfor %}</ul>
+            {% endif %}
+            {% if general_prep.potential_gaps_to_address %}
+            <p><strong>Potential gaps to address honestly if raised</strong></p>
+            <ul>{% for g in general_prep.potential_gaps_to_address %}<li>{{ g }}</li>{% endfor %}</ul>
+            {% endif %}
+            {% endif %}
+
+            {% if company_prep %}
+            <h3>Company-specific ({{ posting.company_name_raw }})</h3>
+            {% if company_prep.company_context %}
+            <p class="muted-note">{{ company_prep.company_context }}</p>
+            {% endif %}
+            {% if company_prep.recent_publications %}
+            <p><strong>Real, recently published work worth having skimmed</strong></p>
+            <ul>
+                {% for pub in company_prep.recent_publications %}
+                <li><a href="{{ pub.url }}" target="_blank" rel="noopener">{{ pub.title }}</a> -- {{ pub.why_it_matters }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+            {% if company_prep.why_this_company_talking_points %}
+            <p><strong>"Why this company" talking points</strong></p>
+            <ul>{% for t in company_prep.why_this_company_talking_points %}<li>{{ t }}</li>{% endfor %}</ul>
+            {% endif %}
+            {% if company_prep.questions_to_ask_them %}
+            <p><strong>Questions to ask them</strong></p>
+            <ul>{% for q in company_prep.questions_to_ask_them %}<li>{{ q }}</li>{% endfor %}</ul>
+            {% endif %}
+            {% endif %}
+
             {% if predicted_rounds and predicted_rounds.rounds %}
-            <h3>Predicted Interview Rounds</h3>
+            <h3>Predicted Interview Rounds -- Full Drafted Answers</h3>
             <p class="muted-note">
                 {% if predicted_rounds.grounded_in_real_research %}
                 Based on real, reported interview experiences for this company/role.
                 {% else %}
-                No real process information was found for this company -- generic structure, treat as a starting point only.
+                No real process information was found for this company -- generic structure, treat as a starting point, not a limit.
                 {% endif %}
             </p>
             {% for round in predicted_rounds.rounds %}
-            <p><strong>{{ loop.index }}. {{ round.round_name }}</strong> -- {{ round.what_it_tests }}</p>
-            {% if round.prep_focus %}
-            <ul>{% for f in round.prep_focus %}<li>{{ f }}</li>{% endfor %}</ul>
-            {% endif %}
+            <details class="sub-panel" open>
+                <summary>{{ loop.index }}. {{ round.round_name }}{% if round.likely_interviewer %} &middot; likely run by: {{ round.likely_interviewer }}{% endif %}</summary>
+                <p class="muted-note">{{ round.what_it_tests }}</p>
+                {% if round.prep_focus %}
+                <p><strong>Prep focus</strong></p>
+                <ul>{% for f in round.prep_focus %}<li>{{ f }}</li>{% endfor %}</ul>
+                {% endif %}
+                {% if round.qa_pairs %}
+                {% for qa in round.qa_pairs %}
+                <div class="sub-panel">
+                    <p><strong>Q: {{ qa.question }}</strong>{% if qa.category %} <span class="muted-note">({{ qa.category }})</span>{% endif %}</p>
+                    <p>{{ qa.draft_answer }}</p>
+                    {% if qa.quick_reference %}
+                    <p class="muted-note">Cue: {{ qa.quick_reference }}</p>
+                    {% endif %}
+                </div>
+                {% endfor %}
+                {% endif %}
+                {% if round.questions_to_ask_them %}
+                <p><strong>Questions to ask in this round</strong></p>
+                <ul>{% for q in round.questions_to_ask_them %}<li>{{ q }}</li>{% endfor %}</ul>
+                {% endif %}
+            </details>
             {% endfor %}
             {% if process_research and process_research.sources %}
             <details class="sub-panel">
@@ -146,47 +205,8 @@
             </details>
             {% endfor %}
             {% endif %}
-
-            {% if general_prep %}
-            <h3>General (based on your background)</h3>
-            {% if general_prep.likely_questions %}
-            <p><strong>Likely questions</strong></p>
-            <ul>{% for q in general_prep.likely_questions %}<li>{{ q }}</li>{% endfor %}</ul>
-            {% endif %}
-            {% if general_prep.talking_points %}
-            <p><strong>Talking points</strong></p>
-            <ul>{% for t in general_prep.talking_points %}<li>{{ t }}</li>{% endfor %}</ul>
-            {% endif %}
-            {% if general_prep.strengths_to_emphasize %}
-            <p><strong>Strengths to emphasize</strong></p>
-            <ul>{% for s in general_prep.strengths_to_emphasize %}<li>{{ s }}</li>{% endfor %}</ul>
-            {% endif %}
-            {% if general_prep.potential_gaps_to_address %}
-            <p><strong>Potential gaps to address</strong></p>
-            <ul>{% for g in general_prep.potential_gaps_to_address %}<li>{{ g }}</li>{% endfor %}</ul>
-            {% endif %}
-            {% endif %}
-
-            {% if company_prep %}
-            <h3>Company-specific ({{ posting.company_name_raw }})</h3>
-            {% if company_prep.company_context %}
-            <p class="muted-note">{{ company_prep.company_context }}</p>
-            {% endif %}
-            {% if company_prep.company_specific_questions %}
-            <p><strong>Likely company-specific questions</strong></p>
-            <ul>{% for q in company_prep.company_specific_questions %}<li>{{ q }}</li>{% endfor %}</ul>
-            {% endif %}
-            {% if company_prep.why_this_company_talking_points %}
-            <p><strong>"Why this company" talking points</strong></p>
-            <ul>{% for t in company_prep.why_this_company_talking_points %}<li>{{ t }}</li>{% endfor %}</ul>
-            {% endif %}
-            {% if company_prep.questions_to_ask_them %}
-            <p><strong>Questions to ask them</strong></p>
-            <ul>{% for q in company_prep.questions_to_ask_them %}<li>{{ q }}</li>{% endfor %}</ul>
-            {% endif %}
-            {% endif %}
             {% else %}
-            <p class="muted-note">Not generated yet -- click "Generate Interview Prep" for general talking points plus company-specific angles (grounded in real research when Tavily is configured, JD-only otherwise).</p>
+            <p class="muted-note">Not generated yet -- click "Generate Interview Prep" for a full round-by-round plan with drafted answers, grounded in real research when Tavily is configured, JD-only otherwise.</p>
             {% endif %}
         </section>
         {% endif %}
