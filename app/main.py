@@ -379,6 +379,7 @@ def update_settings(
     min_score_for_auto_launch: int = Form(...),
     tavily_monthly_call_budget: int = Form(...),
     hunter_monthly_call_budget: int = Form(...),
+    interview_prep_answer_target: int = Form(8),
     daily_outreach_cap: int = Form(...),
     quiet_hours_enabled: bool = Form(False),
     quiet_hours_start_hour: int = Form(...),
@@ -405,6 +406,7 @@ def update_settings(
     settings.min_score_for_auto_launch = min_score_for_auto_launch
     settings.tavily_monthly_call_budget = tavily_monthly_call_budget
     settings.hunter_monthly_call_budget = hunter_monthly_call_budget
+    settings.interview_prep_answer_target = interview_prep_answer_target
     settings.notification_digest_interval_minutes = notification_digest_interval_minutes
     settings.daily_outreach_cap = daily_outreach_cap
     settings.quiet_hours_enabled = quiet_hours_enabled
