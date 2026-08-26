@@ -1,14 +1,21 @@
 """
 Interview prep generation. Independent pieces:
 
-- General prep: likely questions and talking points grounded in the
-  candidate's real profile -- the kind of prep that applies to this
-  type of role regardless of which company it's at.
-- Company-specific prep: questions and talking points shaped by this
-  JD and, when Tavily is configured, a few real, current facts about
-  the company -- not the LLM's own (possibly stale or invented)
-  knowledge of it. Same "discover real info, don't guess" posture as
+- General prep: a short, quick-reference cheat sheet of real strengths
+  to steer toward and real gaps worth a prepared honest answer for --
+  not Q&A (the actual drafted answers live in predicted rounds below),
+  just glance-at-your-notes pointers that apply to this type of role
+  regardless of which company it's at.
+- Company-specific prep: company context, real recently-published work
+  (via _research_company_publications), and questions worth asking
+  them -- grounded in real research where Tavily is configured, not
+  the LLM's own (possibly stale or invented) knowledge of the company.
+  Same "discover real info, don't guess" posture as
   contact_discovery_service.py, which is where tavily_search() lives.
+  Direct fetches of a company's own site often hit bot-detection this
+  app deliberately does not try to route around (e.g. mckinsey.com's
+  Akamai WAF) -- Tavily's own search index reaches indexed/cached
+  content instead.
 - Process research: same posture applied to the interview PROCESS
   itself, not just company facts -- real candidates' reported rounds
   and format (Glassdoor/Blind/etc-style sources, via Tavily), because
@@ -17,9 +24,16 @@ Interview prep generation. Independent pieces:
   startup running a take-home + one call. Falls back to a clearly-
   labeled generic structure when nothing real is found, same as every
   other optional integration here.
-- Predicted rounds: restructures the above into an ordered, round-by-
-  round plan instead of one flat list, so prep reads as "here's what
-  round 2 actually tests" rather than an undifferentiated question dump.
+- Predicted rounds: the actual round-by-round study material. Each
+  round gets full, ready-to-say drafted answers (qa_pairs) grounded
+  only in the candidate's real profile and confirmed behavioral
+  stories -- never invented achievements -- plus a short quick_reference
+  cue per answer for glancing at during the real call, and
+  questions_to_ask_them scoped to who's realistically running that
+  specific round (a recruiter screen isn't run by the engineer who'd
+  recognize a deep technical question). Nothing here is capped to a
+  fixed count -- real interviews aren't bounded by a quota, and neither
+  is this prep.
 
 On-demand (a button on the application detail page), not automatic --
 same real-LLM-cost reasoning as scoring/tailoring elsewhere in this
@@ -35,6 +49,7 @@ from sqlalchemy.orm import Session
 
 from ..database import utcnow
 from ..models import InterviewPrep, JobApplication
+from . import behavioral_story_service
 from .activity_logger import log_activity
 from .contact_discovery_service import is_tavily_configured, tavily_search
 from .llm import get_llm_provider, parse_json_response
@@ -57,6 +72,33 @@ def _light_company_research(db: Session, company_name: str) -> str:
         return ""
     snippets = [r.get("content", "")[:400] for r in results if r.get("content")]
     return "\n\n".join(snippets)
+
+
+def _research_company_publications(db: Session, company_name: str) -> list:
+    """Best-effort, never raises. Distinct from _light_company_research
+    (generic "what does this company do" facts) -- this specifically
+    hunts for the company's own recent published work (articles,
+    insights, case studies) so company-specific prep can cite something
+    a real interviewer might actually expect a candidate to have read,
+    not generic boilerplate. Direct fetches of a company's own site
+    often hit bot-detection (e.g. mckinsey.com's Akamai WAF returns
+    "Access Denied" to automated fetchers) -- Tavily's own search index
+    routes around that without this app trying to bypass any block
+    itself. Returns a list of {"title", "url", "snippet"}; an empty
+    list means the caller falls back to JD-only grounding."""
+    if not is_tavily_configured():
+        return []
+    try:
+        results = tavily_search(
+            db, f"{company_name} recent published insights articles case studies client work", max_results=6
+        )
+    except Exception:
+        return []
+    return [
+        {"title": r.get("title", ""), "url": r.get("url", ""), "snippet": r.get("content", "")[:500]}
+        for r in results
+        if r.get("content")
+    ]
 
 
 def _research_interview_process(db: Session, company_name: str, job_title: str) -> dict:
@@ -82,7 +124,30 @@ def _research_interview_process(db: Session, company_name: str, job_title: str) 
     return {"summary": "\n\n".join(snippets), "sources": sources}
 
 
-def _generate_predicted_rounds(job_title: str, company_name: str, jd_text: str, process_research: dict) -> dict:
+def _format_confirmed_stories(confirmed_stories: list) -> str:
+    if not confirmed_stories:
+        return ""
+    lines = []
+    for s in confirmed_stories:
+        traits = ", ".join(json.loads(s.traits_json)) if s.traits_json else ""
+        lines.append(
+            f"- \"{s.title}\" ({traits}). Situation: {s.situation} Task: {s.task} "
+            f"Action: {s.action} Result: {s.result}"
+        )
+    return "\n".join(lines)
+
+
+def _format_publications(publications: list) -> str:
+    if not publications:
+        return ""
+    lines = [f"- \"{p['title']}\" ({p['url']}): {p['snippet']}" for p in publications if p.get("title")]
+    return "\n".join(lines)
+
+
+def _generate_predicted_rounds(
+    job_title: str, company_name: str, jd_text: str, process_research: dict,
+    profile_content: dict, confirmed_stories: list, publications: list,
+) -> dict:
     llm = get_llm_provider()
     if process_research.get("summary"):
         research_block = (
@@ -91,65 +156,136 @@ def _generate_predicted_rounds(job_title: str, company_name: str, jd_text: str, 
         )
     else:
         research_block = (
-            "No real information about this company's actual interview process was found -- use a "
-            "reasonable generic structure (e.g. screen, technical, behavioral) and set "
-            "grounded_in_real_research to false. Do not invent specific claims about this company's "
-            "real process.\n\n"
+            "No real information about this company's actual interview process was found. Do NOT invent "
+            "specific claims about this company's real process, and set grounded_in_real_research to "
+            "false -- but that only limits what you claim to know about THIS company's specific process. "
+            "It does not mean less preparation: still cover a realistic, comprehensive default structure "
+            "(e.g. recruiter/HR screen, technical screen, deeper technical/system-design round, behavioral "
+            "round) with full depth in each. A real interview can go in directions research never "
+            "predicted -- the goal is broad readiness, not narrowly matching whatever was or wasn't "
+            "found.\n\n"
         )
+
+    stories_block = ""
+    if confirmed_stories:
+        stories_block = (
+            "\nThe candidate has these real, human-confirmed behavioral stories on file. For any round "
+            "that is behavioral/fit-focused, prefer drafting answers that surface one of these real "
+            "stories (referenced naturally, not verbatim-copied) over inventing a new anecdote:\n"
+            f"{_format_confirmed_stories(confirmed_stories)}\n"
+        )
+
+    publications_block = ""
+    if publications:
+        publications_block = (
+            "\nThe company's own real, recently published work (articles/insights/case studies) -- for "
+            "rounds run by someone actually close to the technical work (engineers, hiring managers), it's "
+            "realistic they'd expect a candidate to have read something like this; weave a genuine, "
+            "specific connection into questions_to_ask or a draft_answer where it fits naturally, citing "
+            "the real title. Do NOT force a citation into a recruiter/HR round -- that person is often not "
+            "the one who wrote or would recognize these:\n"
+            f"{_format_publications(publications)}\n"
+        )
+
     raw = llm.complete_json(
         system="You are an expert interview coach. You return only raw JSON.",
         prompt=(
-            f"Predict the realistic round-by-round interview structure a candidate should prepare for, "
+            f"Build a realistic, thorough round-by-round interview prep plan for a candidate interviewing "
             f"for {job_title} at {company_name}.\n\n{research_block}"
             f"Job Description:\n{jd_text}\n\n"
+            f"Candidate's Real Profile:\n{json.dumps(profile_content, indent=2)}\n"
+            f"{stories_block}{publications_block}\n"
+            "For EACH round, draft actual ready-to-say answers, not just topics to mention -- a candidate "
+            "should be able to read a draft_answer aloud as a real response, then adapt it in their own "
+            "words. Every draft_answer must be grounded in something that genuinely appears in the "
+            "candidate's real profile above -- never invent achievements, numbers, or tools they don't "
+            "have. Match each round's question style to who is realistically running it: a recruiter/HR "
+            "screen is run by someone who is often NOT deeply technical and not necessarily familiar with "
+            "this specific project or team -- keep those questions accessible (background, motivation, "
+            "logistics, high-level project summaries), not deep technical internals. Save genuinely deep "
+            "technical/system-design questions for rounds an engineer or hiring manager would actually run. "
+            "Also include, per round, a few questions_to_ask_them appropriate to who's running THAT round "
+            "(don't ask a recruiter a deep architecture question, don't waste a technical round on a "
+            "logistics question).\n\n"
             "Respond with EXACTLY this JSON shape:\n"
             "{\n"
             '  "rounds": [\n'
-            '    {"round_name": "...", "what_it_tests": "...", "prep_focus": ["...", "..."]}\n'
+            "    {\n"
+            '      "round_name": "...",\n'
+            '      "what_it_tests": "...",\n'
+            '      "likely_interviewer": "e.g. \'recruiter/HR generalist, not deeply technical\' or \'senior data engineer\'",\n'
+            '      "prep_focus": ["pointer", "..."],\n'
+            '      "qa_pairs": [\n'
+            '        {"question": "...", "category": "background|motivation|logistics|technical|behavioral", "draft_answer": "full ready-to-say answer", "quick_reference": "one short line -- the cue to glance at during the actual call, not the full answer"}\n'
+            "      ],\n"
+            '      "questions_to_ask_them": ["...", "..."]\n'
+            "    }\n"
             "  ],\n"
             '  "grounded_in_real_research": true or false\n'
             "}\n"
-            "3-6 rounds, ordered as they would realistically occur. 2-4 items per prep_focus list. "
-            "Do not wrap the output in markdown code fences."
+            "Do not artificially limit yourself to a fixed number of rounds, qa_pairs, or questions -- "
+            "include as many as are realistically distinct and useful for this specific role and company, "
+            "not a padded-out quota and not an arbitrarily trimmed-down list. Cover realistic curveballs "
+            "too (a gap, a tradeoff that didn't pan out, a disagreement with a teammate), not just the "
+            "flattering questions. Do not wrap the output in markdown code fences."
         ),
         temperature=0.4,
+        max_tokens=8000,
     )
     return parse_json_response(raw)
 
 
 def _generate_general_prep(profile_content: dict, jd_text: str) -> dict:
+    """Cheat-sheet-style pointers, not Q&A -- the actual drafted answers now
+    live in _generate_predicted_rounds's qa_pairs. This stays scoped to
+    quick-reference strengths/gaps, the kind of thing worth a single line
+    on a one-page printout, not something you'd read aloud verbatim."""
     llm = get_llm_provider()
     raw = llm.complete_json(
         system="You are an expert interview coach. You return only raw JSON.",
         prompt=(
-            "Based on this candidate's real background and the target role, generate interview prep that "
-            "does NOT depend on which specific company this is -- the kind of questions and talking points "
-            "that apply to this type of role generally.\n\n"
+            "Based on this candidate's real background and the target role, identify the strengths worth "
+            "actively steering the conversation toward, and the real gaps worth having a honest, prepared "
+            "answer for if raised -- not questions to answer, just quick-reference points for a candidate "
+            "glancing at notes.\n\n"
             f"Candidate Profile:\n{json.dumps(profile_content, indent=2)}\n\n"
             f"Target Role (job description):\n{jd_text}\n\n"
             "Respond with EXACTLY this JSON shape:\n"
             "{\n"
-            '  "likely_questions": ["...", "..."],\n'
-            '  "talking_points": ["...", "..."],\n'
             '  "strengths_to_emphasize": ["...", "..."],\n'
             '  "potential_gaps_to_address": ["...", "..."]\n'
             "}\n"
-            "Ground every talking point/strength in something that genuinely appears in the candidate's "
-            "profile -- do not invent experience. 5-8 items per list. Do not wrap the output in markdown "
-            "code fences."
+            "Ground every item in something that genuinely appears in the candidate's profile -- do not "
+            "invent experience, and do not soften a real gap into something false. Include as many "
+            "genuinely relevant items as apply -- don't pad the list to hit a quota, and don't trim a real "
+            "one to fit one. Do not wrap the output in markdown code fences."
         ),
         temperature=0.4,
     )
     return parse_json_response(raw)
 
 
-def _generate_company_prep(company_name: str, job_title: str, jd_text: str, research: str) -> dict:
+def _generate_company_prep(
+    company_name: str, job_title: str, jd_text: str, research: str, publications: list
+) -> dict:
     llm = get_llm_provider()
-    research_block = (
-        f"Recent real information found about the company:\n{research}\n\n"
-        if research
-        else "No external research available -- base this only on the job description below.\n\n"
-    )
+    if research or publications:
+        research_block = ""
+        if research:
+            research_block += f"Recent real information found about the company:\n{research}\n\n"
+        if publications:
+            research_block += (
+                "The company's own real, recently published work (cite these by real title when relevant "
+                "-- never invent an article that isn't in this list):\n"
+                f"{_format_publications(publications)}\n\n"
+            )
+    else:
+        research_block = (
+            "No external research was found for this company -- do not invent specific facts (funding, "
+            "headcount, recent news, publications). Ground company_context and the questions in the job "
+            "description's own specific language instead of generic boilerplate, and set "
+            "grounded_in_real_research to false.\n\n"
+        )
     raw = llm.complete_json(
         system="You are an expert interview coach. You return only raw JSON.",
         prompt=(
@@ -159,16 +295,24 @@ def _generate_company_prep(company_name: str, job_title: str, jd_text: str, rese
             f"Job Description:\n{jd_text}\n\n"
             "Respond with EXACTLY this JSON shape:\n"
             "{\n"
-            '  "company_context": "2-3 sentences on what this company does and what seems to matter to them right now",\n'
-            '  "company_specific_questions": ["...", "..."],\n'
+            '  "company_context": "what this company does and what seems to matter to them right now, grounded in whatever real info is above",\n'
+            '  "recent_publications": [{"title": "...", "url": "...", "why_it_matters": "..."}],\n'
             '  "why_this_company_talking_points": ["...", "..."],\n'
-            '  "questions_to_ask_them": ["...", "..."]\n'
+            '  "questions_to_ask_them": ["...", "..."],\n'
+            '  "grounded_in_real_research": true or false\n'
             "}\n"
-            "If no real research was provided, keep company_context general and clearly grounded in the JD "
-            "only -- do not fabricate specific facts (funding, headcount, recent news) you were not given. "
-            "4-6 items per list. Do not wrap the output in markdown code fences."
+            "recent_publications should only include real items from the list above (empty array if none "
+            "were provided) -- pick the ones a candidate would genuinely benefit from having skimmed, not "
+            "every single one indiscriminately. questions_to_ask_them must be a genuine mix, not all "
+            "technical: include team/day-to-day questions, growth/success-metric questions, and (only when "
+            "real research or publications were provided above) a question tied to something specific and "
+            "current about the company -- never a generic 'what's the culture like' filler if you have "
+            "anything more specific to draw on. Include as many genuinely distinct, useful "
+            "questions/talking-points as apply -- don't pad to a quota, don't trim a real one to fit. Do "
+            "not wrap the output in markdown code fences."
         ),
         temperature=0.4,
+        max_tokens=4000,
     )
     return parse_json_response(raw)
 
@@ -181,20 +325,25 @@ def generate_interview_prep(db: Session, application_id: int) -> JobApplication:
         raise InterviewPrepServiceError("Can't generate interview prep for a Rejected application.")
 
     try:
-        profile_content, _ = get_profile_content_for_application(db, application)
+        profile_content, variant_id = get_profile_content_for_application(db, application)
     except MatchingServiceError as e:
         raise InterviewPrepServiceError(str(e)) from e
 
     posting = application.posting
     jd_text = posting.job_description
+    confirmed_stories = behavioral_story_service.list_stories(db, variant_id, confirmed_only=True)
 
     try:
         general = _generate_general_prep(profile_content, jd_text)
         research = _light_company_research(db, posting.company_name_raw)
-        company = _generate_company_prep(posting.company_name_raw, posting.job_title, jd_text, research)
+        publications = _research_company_publications(db, posting.company_name_raw)
+        company = _generate_company_prep(
+            posting.company_name_raw, posting.job_title, jd_text, research, publications
+        )
         process_research = _research_interview_process(db, posting.company_name_raw, posting.job_title)
         predicted_rounds = _generate_predicted_rounds(
-            posting.job_title, posting.company_name_raw, jd_text, process_research
+            posting.job_title, posting.company_name_raw, jd_text, process_research,
+            profile_content, confirmed_stories, publications,
         )
     except Exception as e:
         raise InterviewPrepServiceError(f"Interview prep generation failed: {e}") from e

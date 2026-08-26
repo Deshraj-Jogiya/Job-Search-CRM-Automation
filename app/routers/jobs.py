@@ -23,7 +23,7 @@ import json
 import threading
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
@@ -46,6 +46,7 @@ from ..services import (
     behavioral_story_service,
     confirmation_service,
     contact_discovery_service,
+    document_render_service,
     intake_service,
     interview_prep_service,
     matching_service,
@@ -528,6 +529,35 @@ def generate_interview_prep_now(application_id: int, db: Session = Depends(get_d
     threading.Thread(target=_interview_prep_in_background, args=(application_id,), daemon=True).start()
     return _redirect_detail(
         application_id, message="Generating interview prep -- runs a couple of AI passes, refresh in ~20-40s."
+    )
+
+
+@router.get("/{application_id}/interview-prep/download")
+def download_interview_prep_cheat_sheet(application_id: int, db: Session = Depends(get_db)):
+    application = (
+        db.query(JobApplication)
+        .options(joinedload(JobApplication.interview_prep), joinedload(JobApplication.posting))
+        .filter(JobApplication.id == application_id)
+        .first()
+    )
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+    if not application.interview_prep or not application.interview_prep.predicted_rounds_json:
+        return _redirect_detail(application_id, error="Generate interview prep first.")
+
+    general_prep = json.loads(application.interview_prep.general_prep_json or "{}")
+    company_prep = json.loads(application.interview_prep.company_prep_json or "{}")
+    predicted_rounds = json.loads(application.interview_prep.predicted_rounds_json)
+
+    pdf_bytes = document_render_service.render_interview_prep_cheat_sheet_pdf(
+        application.posting.job_title, application.posting.company_name_raw,
+        general_prep, company_prep, predicted_rounds,
+    )
+    filename = f"interview-prep-{application.posting.company_name_raw}-{application.posting.job_title}.pdf".replace(" ", "-")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

@@ -179,6 +179,73 @@ def render_resume_pdf(resume_content: dict) -> bytes:
     return buf.getvalue()
 
 
+_cheat_title_style = ParagraphStyle("CheatTitleStyle", parent=_styles["Title"], fontSize=14, spaceAfter=2)
+_cheat_subtitle_style = ParagraphStyle(
+    "CheatSubtitleStyle", parent=_styles["Normal"], fontSize=9, textColor=colors.grey, spaceAfter=8,
+)
+_cheat_round_style = ParagraphStyle(
+    "CheatRoundStyle", parent=_styles["Heading3"], fontSize=10.5, spaceBefore=8, spaceAfter=1,
+    textColor=colors.HexColor("#1a1a1a"),
+)
+_cheat_meta_style = ParagraphStyle("CheatMetaStyle", parent=_styles["Normal"], fontSize=7.5, textColor=colors.grey, spaceAfter=3)
+_cheat_cue_style = ParagraphStyle("CheatCueStyle", parent=_styles["Normal"], fontSize=8.5, leading=11, leftIndent=10, spaceAfter=2)
+
+
+def render_interview_prep_cheat_sheet_pdf(
+    job_title: str, company_name: str, general_prep: dict, company_prep: dict, predicted_rounds: dict,
+) -> bytes:
+    """Compact quick-reference version of interview prep -- glance-during-
+    the-call cues (question + quick_reference), not the full drafted
+    answers (those are the in-app study view, deliberately not what
+    this prints -- reading a paragraph off a page mid-call reads as
+    reading a script, a one-line cue doesn't). Genuinely uncapped
+    content (see interview_prep_service.py's docstring) means this may
+    run past one physical page for a role with many rounds -- real prep
+    isn't trimmed to fit a page count."""
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=letter,
+        topMargin=0.5 * inch, bottomMargin=0.5 * inch,
+        leftMargin=0.6 * inch, rightMargin=0.6 * inch,
+    )
+    flow = [
+        Paragraph(_esc(f"{job_title} @ {company_name}"), _cheat_title_style),
+        Paragraph("Quick-reference cues -- see the app for full drafted answers.", _cheat_subtitle_style),
+    ]
+
+    if general_prep and general_prep.get("strengths_to_emphasize"):
+        flow.append(Paragraph("STRENGTHS TO EMPHASIZE", _cheat_round_style))
+        for s in general_prep["strengths_to_emphasize"]:
+            flow.append(Paragraph(f"- {_esc(s)}", _cheat_cue_style))
+
+    if general_prep and general_prep.get("potential_gaps_to_address"):
+        flow.append(Paragraph("GAPS TO ADDRESS HONESTLY IF RAISED", _cheat_round_style))
+        for g in general_prep["potential_gaps_to_address"]:
+            flow.append(Paragraph(f"- {_esc(g)}", _cheat_cue_style))
+
+    if company_prep and company_prep.get("why_this_company_talking_points"):
+        flow.append(Paragraph("WHY THIS COMPANY", _cheat_round_style))
+        for t in company_prep["why_this_company_talking_points"]:
+            flow.append(Paragraph(f"- {_esc(t)}", _cheat_cue_style))
+
+    for round_ in (predicted_rounds or {}).get("rounds", []):
+        header = round_.get("round_name", "")
+        interviewer = round_.get("likely_interviewer")
+        flow.append(Paragraph(_esc(header.upper()), _cheat_round_style))
+        if interviewer:
+            flow.append(Paragraph(_esc(f"likely run by: {interviewer}"), _cheat_meta_style))
+        for qa in round_.get("qa_pairs", []):
+            question = qa.get("question", "")
+            cue = qa.get("quick_reference") or qa.get("draft_answer", "")[:120]
+            flow.append(Paragraph(f"<b>Q:</b> {_esc(question)}", _cheat_cue_style))
+            flow.append(Paragraph(f"<b>Cue:</b> {_esc(cue)}", _cheat_cue_style))
+        if round_.get("questions_to_ask_them"):
+            flow.append(Paragraph("<b>Ask them:</b> " + _esc(" / ".join(round_["questions_to_ask_them"])), _cheat_cue_style))
+
+    doc.build(flow)
+    return buf.getvalue()
+
+
 def render_cover_letter_pdf(cover_letter_text: str, candidate_name: str) -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
