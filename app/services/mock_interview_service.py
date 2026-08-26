@@ -25,6 +25,26 @@ tailored-resume-preferred source as prep generation) so feedback is
 judged against the same material the interview prep itself was built
 from.
 
+The debrief itself has three deliberately-scoped inputs beyond the raw
+transcript:
+- Filler-word counts and response timing, computed mechanically here
+  (regex + turn timestamps already on hand) -- the one category actual
+  research on this consistently calls reliable, unlike facial/tonal
+  inference. No new capture needed; the data already exists.
+- Visual metrics, only when camera_enabled: a face-forward ratio and a
+  movement count, aggregated entirely client-side (MediaPipe, in the
+  browser) and submitted once at end_session as two numbers -- never a
+  video frame. Framed to the model as observable facts ("looked at the
+  camera N% of the time"), explicitly NOT as emotion/confidence
+  inference, which real research (and the EU AI Act's employment-context
+  ban on it) treats as unreliable even before the ethical concerns.
+- A comparison against the candidate's most recent prior COMPLETED
+  session for the SAME round (if any), including its scorecard -- so
+  the debrief can call out genuine improvement or decline instead of
+  each session existing in isolation. Tier changes between sessions are
+  passed through explicitly so the model doesn't score a harder tier as
+  "you got worse" just because the bar moved.
+
 On-demand and real-LLM-cost per turn, same posture as everywhere else
 in this app -- every candidate response is one real LLM call. No
 extra guardrail beyond the existing pattern (human-clicked, not
@@ -33,6 +53,7 @@ automatic) since that's already this codebase's standard cost control.
 
 import json
 import random
+import re
 
 from sqlalchemy.orm import Session
 
@@ -93,7 +114,49 @@ def _format_transcript(turns: list[MockInterviewTurn]) -> str:
     return "\n".join(lines)
 
 
-def start_session(db: Session, application_id: int, round_name: str, tier: str) -> MockInterviewSession:
+_FILLER_WORD_PATTERN = re.compile(r"\b(um+|uh+|erm+|like|you know|sort of|kind of|basically|actually)\b", re.IGNORECASE)
+
+
+def _delivery_stats(turns: list[MockInterviewTurn]) -> str:
+    """Mechanical (non-LLM), computed straight from data already on
+    hand -- no new capture. Filler-word counting is the one delivery
+    metric research consistently treats as reliable (plain counting,
+    no inference); response timing uses the turn timestamps that
+    already exist. Returned as a formatted block for the debrief
+    prompt, not a hard pass/fail judgment -- the model still interprets
+    what a given count/pace actually means in context."""
+    lines = []
+    for i, t in enumerate(turns):
+        if t.speaker != "candidate":
+            continue
+        fillers = _FILLER_WORD_PATTERN.findall(t.content)
+        word_count = len(t.content.split())
+        elapsed = ""
+        if i > 0:
+            delta = (t.created_at - turns[i - 1].created_at).total_seconds()
+            if 0 < delta < 3600:  # sanity bound -- a stale/resumed session shouldn't skew this
+                elapsed = f", ~{int(delta)}s to respond"
+        lines.append(f"- Answer {i}: {word_count} words{elapsed}, {len(fillers)} filler word(s) ({', '.join(fillers) or 'none'})")
+    return "\n".join(lines)
+
+
+def _find_previous_session(db: Session, session: MockInterviewSession) -> MockInterviewSession | None:
+    return (
+        db.query(MockInterviewSession)
+        .filter(
+            MockInterviewSession.application_id == session.application_id,
+            MockInterviewSession.round_name == session.round_name,
+            MockInterviewSession.status == "completed",
+            MockInterviewSession.id != session.id,
+        )
+        .order_by(MockInterviewSession.started_at.desc())
+        .first()
+    )
+
+
+def start_session(
+    db: Session, application_id: int, round_name: str, tier: str, camera_enabled: bool = False
+) -> MockInterviewSession:
     if tier not in TIER_DESCRIPTIONS:
         raise MockInterviewServiceError(f"Unknown tier '{tier}'.")
     application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
@@ -107,7 +170,9 @@ def start_session(db: Session, application_id: int, round_name: str, tier: str) 
 
     opening_question = random.choice(pool)
 
-    session = MockInterviewSession(application_id=application_id, round_name=round_name, tier=tier)
+    session = MockInterviewSession(
+        application_id=application_id, round_name=round_name, tier=tier, camera_enabled=camera_enabled,
+    )
     db.add(session)
     db.flush()  # need session.id for the first turn's FK before commit
 
@@ -197,7 +262,7 @@ def submit_answer(db: Session, session_id: int, candidate_answer: str) -> MockIn
     return interviewer_turn
 
 
-def end_session(db: Session, session_id: int) -> MockInterviewSession:
+def end_session(db: Session, session_id: int, visual_metrics: dict = None) -> MockInterviewSession:
     session = db.query(MockInterviewSession).filter(MockInterviewSession.id == session_id).first()
     if not session:
         raise MockInterviewServiceError(f"Session {session_id} not found.")
@@ -214,6 +279,42 @@ def end_session(db: Session, session_id: int) -> MockInterviewSession:
     except InterviewPrepServiceError as e:
         raise MockInterviewServiceError(str(e)) from e
 
+    if session.camera_enabled and visual_metrics:
+        session.visual_metrics_json = json.dumps(visual_metrics)
+
+    visual_block = ""
+    if session.camera_enabled and visual_metrics and visual_metrics.get("frames_analyzed"):
+        face_forward_pct = round(
+            100 * visual_metrics.get("frames_face_forward", 0) / visual_metrics["frames_analyzed"]
+        )
+        visual_block = (
+            f"\nCamera feedback was on for this session. Observed (client-side, no video retained): "
+            f"face oriented toward the camera {face_forward_pct}% of the time; "
+            f"{visual_metrics.get('movement_events', 0)} noticeable movement/shift events over the session. "
+            "Report these as plain observed facts, never as an inferred emotional state (not \"nervous\" or "
+            "\"confident\" -- just what was observed and what real interview guidance suggests about it).\n"
+        )
+    elif session.camera_enabled:
+        visual_block = "\nCamera feedback was enabled but no usable data was captured for this session.\n"
+
+    previous = _find_previous_session(db, session)
+    comparison_block = ""
+    if previous and previous.debrief_json:
+        prev_debrief = json.loads(previous.debrief_json)
+        if previous.tier == session.tier:
+            tier_change_note = "same tier as now"
+        else:
+            tier_change_note = (
+                "a different tier than now -- account for this, a similar score at a HARDER tier "
+                "is real improvement, not a plateau"
+            )
+        comparison_block = (
+            f"\nThe candidate has a previous COMPLETED session for this SAME round, at "
+            f"{TIER_DESCRIPTIONS.get(previous.tier, (previous.tier,))[0]} tier ({tier_change_note}). "
+            f"Its scorecard was: {json.dumps(prev_debrief.get('scorecard', {}))}. "
+            "Compare honestly against it in the comparison field below.\n"
+        )
+
     llm = get_llm_provider()
     raw = llm.complete_json(
         system="You are an expert interview coach reviewing a completed practice interview. You return only raw JSON.",
@@ -221,20 +322,30 @@ def end_session(db: Session, session_id: int) -> MockInterviewSession:
             f"Review this practice interview transcript for the '{session.round_name}' round "
             f"({TIER_DESCRIPTIONS[session.tier][0]} tier).\n\n"
             f"Transcript:\n{_format_transcript(turns)}\n\n"
+            f"Delivery data (computed directly, not estimated):\n{_delivery_stats(turns)}\n"
+            f"{visual_block}{comparison_block}\n"
             f"Candidate's Real Profile (for accuracy-checking their answers):\n{json.dumps(profile_content, indent=2)}\n\n"
             "Respond with EXACTLY this JSON shape:\n"
             "{\n"
             '  "accuracy_notes": ["anything the candidate said that is unsupported by or contradicts their real profile -- empty list if nothing found"],\n'
             '  "strengths": ["what genuinely landed well"],\n'
-            '  "areas_to_improve": ["specific, actionable feedback"],\n'
-            '  "structure_feedback": "1-2 sentences on clarity/structure (e.g. STAR usage for behavioral answers)",\n'
+            '  "areas_to_improve": [\n'
+            '    {"issue": "short label", "what_you_said": "the actual moment, quoted or closely paraphrased", "why_it_matters": "...", "example_better_answer": "a concrete rewrite grounded in the real profile above -- not generic advice"}\n'
+            "  ],\n"
+            '  "delivery_feedback": "1-2 sentences on pace/filler words/response length, grounded in the delivery data above",\n'
+            '  "scorecard": {"communication_clarity": 1, "content_accuracy": 1, "structure": 1, "confidence_and_directness": 1},\n'
+            '  "comparison": {"has_previous": true or false, "trend": "improved" or "same" or "declined" or "n/a", "note": "specific, honest comparison if has_previous else empty string", "warning": "explicit warning text ONLY if trend is declined on something meaningful, else empty string"},\n'
             '  "overall_summary": "2-3 sentences, direct and honest, like a real post-interview self-review"\n'
             "}\n"
-            "Be honest, not just encouraging -- a real interviewer's silence on a weak answer doesn't mean "
-            "it was strong. Do not wrap the output in markdown code fences."
+            "Score the scorecard honestly on a real 1-5 scale -- do not default to inflated scores the way a "
+            "generic assistant would; a real hiring-caliber interviewer's scoring penalizes vagueness and "
+            "rewards concrete, specific answers. Every example_better_answer must be grounded in the real "
+            "profile, never inventing an achievement. Be honest throughout, not just encouraging -- a real "
+            "interviewer's silence on a weak answer doesn't mean it was strong. Do not wrap the output in "
+            "markdown code fences."
         ),
         temperature=0.3,
-        max_tokens=2000,
+        max_tokens=3000,
     )
     debrief = parse_json_response(raw)
 

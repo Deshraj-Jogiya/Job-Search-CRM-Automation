@@ -37,6 +37,12 @@ def mock_interview_home(application_id: int, request: Request, db: Session = Dep
 
     rounds = mock_interview_service.get_available_rounds(db, application_id)
     sessions = mock_interview_service.list_sessions(db, application_id)
+    for s in sessions:
+        s.trend = None
+        if s.debrief_json:
+            comparison = json.loads(s.debrief_json).get("comparison") or {}
+            if comparison.get("has_previous"):
+                s.trend = comparison.get("trend")
     return render(
         request,
         "mock_interview_home.html",
@@ -54,10 +60,14 @@ def mock_interview_home(application_id: int, request: Request, db: Session = Dep
 
 @router.post("/{application_id}/mock-interview/start")
 def start_mock_interview(
-    application_id: int, round_name: str = Form(...), tier: str = Form(...), db: Session = Depends(get_db)
+    application_id: int,
+    round_name: str = Form(...),
+    tier: str = Form(...),
+    camera_enabled: bool = Form(False),
+    db: Session = Depends(get_db),
 ):
     try:
-        session = mock_interview_service.start_session(db, application_id, round_name, tier)
+        session = mock_interview_service.start_session(db, application_id, round_name, tier, camera_enabled)
     except MockInterviewServiceError as e:
         return _redirect(application_id, error=str(e))
     return RedirectResponse(url=f"/jobs/{application_id}/mock-interview/{session.id}", status_code=303)
@@ -70,6 +80,7 @@ def mock_interview_session_detail(application_id: int, session_id: int, request:
         return RedirectResponse(url=f"/jobs/{application_id}/mock-interview", status_code=303)
 
     debrief = json.loads(session.debrief_json) if session.debrief_json else None
+    visual_metrics = json.loads(session.visual_metrics_json) if session.visual_metrics_json else {}
     tier_label, tier_description = TIER_DESCRIPTIONS.get(session.tier, (session.tier, ""))
     return render(
         request,
@@ -80,6 +91,7 @@ def mock_interview_session_detail(application_id: int, session_id: int, request:
             "session": session,
             "turns": session.turns,
             "debrief": debrief,
+            "visual_metrics": visual_metrics,
             "tier_label": tier_label,
             "tier_description": tier_description,
             "message": request.query_params.get("message"),
@@ -100,9 +112,23 @@ def respond_mock_interview(application_id: int, session_id: int, answer: str = F
 
 
 @router.post("/{application_id}/mock-interview/{session_id}/end")
-def end_mock_interview(application_id: int, session_id: int, db: Session = Depends(get_db)):
+def end_mock_interview(
+    application_id: int,
+    session_id: int,
+    frames_analyzed: int = Form(0),
+    frames_face_forward: int = Form(0),
+    movement_events: int = Form(0),
+    db: Session = Depends(get_db),
+):
+    # Only ever three small numbers -- never a video frame -- submitted
+    # by the client-side face tracker (see mock_interview_session.html).
+    # Absent/zero when camera feedback wasn't used for this session.
+    visual_metrics = (
+        {"frames_analyzed": frames_analyzed, "frames_face_forward": frames_face_forward, "movement_events": movement_events}
+        if frames_analyzed else None
+    )
     try:
-        mock_interview_service.end_session(db, session_id)
+        mock_interview_service.end_session(db, session_id, visual_metrics=visual_metrics)
     except MockInterviewServiceError as e:
         return RedirectResponse(
             url=f"/jobs/{application_id}/mock-interview/{session_id}?error={quote(str(e))}", status_code=303

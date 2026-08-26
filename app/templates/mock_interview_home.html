@@ -35,6 +35,18 @@
         </label>
         {% endfor %}
 
+        <label class="checkbox-label">
+            <input type="checkbox" name="camera_enabled" value="true">
+            <strong>Enable camera feedback</strong> (optional)
+        </label>
+        <p class="muted-note">
+            <strong>Off (default):</strong> voice/text only -- same as a phone screen or any non-video round.
+            <strong>On:</strong> adds webcam feedback on eye contact, framing, and stillness. Turn this on
+            specifically when you know the real round you're practicing for will actually be on video --
+            these signals only matter when a real interviewer can see you. Nothing is recorded, uploaded,
+            or stored; all analysis runs in your browser and only small numbers (not video) ever reach the app.
+        </p>
+
         <button type="submit">Start Practice Session</button>
     </form>
     {% endif %}
@@ -49,6 +61,10 @@
             <a href="/jobs/{{ application.id }}/mock-interview/{{ s.id }}">{{ s.round_name }}</a>
             &middot; {{ tiers.get(s.tier, (s.tier,))[0] }}
             &middot; <span class="badge {% if s.status == 'completed' %}badge-active{% endif %}">{{ s.status }}</span>
+            {% if s.trend == "improved" %}<span class="badge badge-active">&#9650; improved</span>
+            {% elif s.trend == "declined" %}<span class="badge">&#9660; declined</span>
+            {% elif s.trend == "same" %}<span class="badge">&#8594; steady</span>
+            {% endif %}
             &middot; {{ s.started_at.strftime("%Y-%m-%d %H:%M") }} UTC
         </li>
         {% endfor %}
