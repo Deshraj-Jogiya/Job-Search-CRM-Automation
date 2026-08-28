@@ -35,7 +35,7 @@ class OllamaProvider(LLMProvider):
         # Ollama's local /api/chat endpoint isn't token-capped the same
         # way here -- max_tokens accepted for interface parity with the
         # other providers, not forwarded (matches complete_text below).
-        return self._call(system, prompt, temperature)
+        return self._call_with_retry(self._call, system, prompt, temperature)
 
     def complete_text(self, system: str, prompt: str, temperature: float = 0.4, max_tokens: int = None) -> str:
-        return self._call(system, prompt, temperature)
+        return self._call_with_retry(self._call, system, prompt, temperature)
