@@ -447,7 +447,7 @@ class JobSource(Base):
     __tablename__ = "job_sources"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, nullable=False, unique=True)  # 'linkedin' | 'adzuna' | 'greenhouse' | 'lever' | 'ashby' | 'recruitee' | 'personio' | 'jobspipe'
+    name = Column(String, nullable=False, unique=True)  # 'linkedin' | 'adzuna' | 'greenhouse' | 'lever' | 'ashby' | 'recruitee' | 'personio' | 'jobspipe' | 'jobright' | 'ats_dataset' | 'job_board_aggregator'
     is_active = Column(Boolean, default=True)
     calls_used_this_period = Column(Integer, default=0)
     period_reset_at = Column(DateTime, nullable=True)
@@ -499,6 +499,18 @@ class GlobalSettings(Base):
     # fetch for no new data. Not a paid-API-budget concern like Adzuna,
     # but still a real tunable rather than a hardcoded constant.
     jobright_poll_interval_hours = Column(Integer, default=24)
+
+    # Bulk company-discovery datasets (ats_dataset_discovery.py,
+    # job_board_aggregator_discovery.py) -- free, open, daily-refreshed
+    # third-party datasets mapping real companies to real ATS slugs.
+    # Polled on the same slow cadence as jobright (re-fetching a
+    # multi-thousand-row dataset doesn't need to happen often); each
+    # cycle only ingests a capped batch of new companies
+    # (bulk_discovery_batch_size) so verification-probe traffic against
+    # Greenhouse/Lever/etc doesn't spike and the Company table grows
+    # gradually across cycles instead of all at once.
+    bulk_discovery_poll_interval_hours = Column(Integer, default=24)
+    bulk_discovery_batch_size = Column(Integer, default=25)
 
     # Confirmation queue
     confirmation_window_hours = Column(Float, default=15.0)
