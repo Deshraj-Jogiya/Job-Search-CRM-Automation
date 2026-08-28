@@ -32,7 +32,7 @@ from ..models import (
     SeniorityExclusion,
     get_or_create_settings,
 )
-from . import ats_dataset_discovery, board_discovery, job_board_aggregator_discovery, jobright_discovery
+from . import ats_dataset_discovery, board_discovery, job_board_aggregator_discovery, jobright_discovery, yc_directory_discovery
 from .activity_logger import log_activity
 from .company_utils import normalize_company_name, normalize_title
 from .llm import get_llm_provider, parse_json_response
@@ -583,6 +583,58 @@ def _discover_companies_from_job_board_aggregator(db: Session, settings: GlobalS
     )
 
 
+def _discover_companies_from_yc_directory(db: Session, settings: GlobalSettings, force: bool = False) -> None:
+    """Seeds new Company rows from YC's own public company-directory API
+    (see yc_directory_discovery.py's docstring for why this is company
+    names only -- workatastartup.com's actual job board needs a login,
+    so this uses YC's public directory API instead and lets the ATS
+    slug get guessed the normal way, same as jobright). Shares the same
+    JobSource-cadence-gated shape as _discover_companies_from_jobright,
+    and reuses the bulk-discovery cadence/batch settings the other two
+    bulk sources use rather than adding a fourth near-identical
+    GlobalSettings pair -- same kind of "large company-name list,
+    re-scanned each due cycle, only new rows acted on" pattern."""
+    source_row = _get_or_create_job_source(db, "yc_directory")
+    if not source_row.is_active:
+        return
+    now = utcnow()
+    if not force and not _is_due(source_row, settings.bulk_discovery_poll_interval_hours * 60, now):
+        return
+
+    try:
+        names = yc_directory_discovery.fetch_hiring_company_names()
+    except Exception as e:
+        source_row.last_error = str(e)[:250]
+        source_row.last_polled_at = now
+        db.commit()
+        log_activity(db, f"YC directory company discovery failed: {e}", "ERROR")
+        return
+
+    source_row.last_polled_at = now
+    source_row.last_error = None
+    db.commit()
+
+    existing_normalized = {row[0] for row in db.query(Company.normalized_name).all()}
+    batch_cap = settings.bulk_discovery_batch_size
+    new_count = 0
+    for name in names:
+        if new_count >= batch_cap:
+            break
+        normalized = normalize_company_name(name)
+        if normalized in existing_normalized:
+            continue
+        existing_normalized.add(normalized)
+        _get_or_create_company(db, name)
+        new_count += 1
+
+    log_activity(
+        db,
+        f"YC directory: scanned {len(names)} currently-hiring compan(ies), "
+        f"{new_count} newly discovered (queued for board-slug backfill).",
+        "INFO",
+    )
+
+
 def _find_matching_posting(db: Session, company_id: int, raw) -> tuple[JobPosting | None, bool]:
     """Returns (matched_posting, is_repost). matched_posting is None if
     nothing matches at all."""
@@ -938,5 +990,6 @@ def run_intake_cycle(db: Session, force: bool = False) -> None:
     _discover_companies_from_jobright(db, settings, force=force)
     _discover_companies_from_ats_dataset(db, settings, force=force)
     _discover_companies_from_job_board_aggregator(db, settings, force=force)
+    _discover_companies_from_yc_directory(db, settings, force=force)
     _backfill_board_slugs(db)
     _flag_stale_postings(db, settings.stale_posting_threshold_days)

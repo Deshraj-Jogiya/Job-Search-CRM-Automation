@@ -447,7 +447,7 @@ class JobSource(Base):
     __tablename__ = "job_sources"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, nullable=False, unique=True)  # 'linkedin' | 'adzuna' | 'greenhouse' | 'lever' | 'ashby' | 'recruitee' | 'personio' | 'jobspipe' | 'jobright' | 'ats_dataset' | 'job_board_aggregator'
+    name = Column(String, nullable=False, unique=True)  # 'linkedin' | 'adzuna' | 'greenhouse' | 'lever' | 'ashby' | 'recruitee' | 'personio' | 'jobspipe' | 'jobright' | 'ats_dataset' | 'job_board_aggregator' | 'yc_directory'
     is_active = Column(Boolean, default=True)
     calls_used_this_period = Column(Integer, default=0)
     period_reset_at = Column(DateTime, nullable=True)
