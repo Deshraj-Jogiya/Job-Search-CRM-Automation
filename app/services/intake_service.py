@@ -515,28 +515,45 @@ def _discover_companies_from_job_board_aggregator(db: Session, settings: GlobalS
 
     with ThreadPoolExecutor(max_workers=min(len(candidates), 10)) as pool:
         verified = list(pool.map(lambda c: board_discovery.probe_known_slug(c[0], c[1]), candidates))
+    live_candidates = [c for c, is_verified in zip(candidates, verified) if is_verified]
+
+    # For platforms whose API exposes a real employer name alongside
+    # the listings (confirmed for Greenhouse -- see fetch_verified_name's
+    # docstring), fetch it now rather than falling back to the
+    # slug-derived guess; a live board with no such field (Ashby) or an
+    # unprobeable one (Lever, currently auth-walled) gets None back and
+    # keeps the provisional name.
+    with ThreadPoolExecutor(max_workers=min(len(live_candidates), 10)) as pool:
+        real_names = list(pool.map(lambda c: board_discovery.fetch_verified_name(c[0], c[1]), live_candidates))
 
     new_count = 0
-    for (ats, slug), is_verified in zip(candidates, verified):
-        if not is_verified:
-            continue
+    real_name_count = 0
+    for (ats, slug), real_name in zip(live_candidates, real_names):
         provisional_name = job_board_aggregator_discovery.slug_to_provisional_name(slug)
-        normalized = normalize_company_name(provisional_name)
-        # A same-cycle collision -- two different slugs deriving the
-        # same provisional name -- is possible since this is a lossy
-        # title-cased guess, not a real name; skip rather than merge.
-        if db.query(Company).filter(Company.normalized_name == normalized).first():
+        name_to_use = real_name or provisional_name
+        normalized = normalize_company_name(name_to_use)
+        # A same-cycle collision (two slugs resolving to the same name,
+        # or a real name that turns out to already be tracked under a
+        # different source) means this company is already accounted
+        # for -- skip rather than merge, no postings lost since nothing
+        # pointed at this slug before.
+        if normalized in existing_normalized or db.query(Company).filter(Company.normalized_name == normalized).first():
             continue
-        company = _get_or_create_company(db, provisional_name)
+        existing_normalized.add(normalized)
+        company = _get_or_create_company(db, name_to_use)
         setattr(company, f"{ats}_slug", slug)
         company.board_slugs_checked_at = utcnow()
         new_count += 1
+        if real_name:
+            real_name_count += 1
     db.commit()
 
     log_activity(
         db,
-        f"job-board-aggregator discovery: {new_count} new compan(ies) seeded this cycle with a "
-        "live-verified (but slug-derived, not confirmed) name -- review/correct from the Jobs page.",
+        f"job-board-aggregator discovery: {new_count} new compan(ies) seeded this cycle "
+        f"({real_name_count} with a real name recovered from the ATS's own API, "
+        f"{new_count - real_name_count} still under a slug-derived placeholder name -- "
+        "review/correct those from the Jobs page).",
         "INFO",
     )
 
