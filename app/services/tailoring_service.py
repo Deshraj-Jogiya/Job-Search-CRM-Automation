@@ -48,6 +48,15 @@ _TOOL_EQUIVALENCE_GROUPS = [
     {"kafka", "apache kafka", "kinesis", "aws kinesis", "pub/sub", "pubsub", "rabbitmq"},
     {"github actions", "gitlab ci", "jenkins", "circleci", "travis ci", "azure devops"},
     {"kubernetes", "amazon ecs", "ecs", "docker swarm", "nomad"},
+    # Statistical/experimentation methods -- a real, confirmed false
+    # positive (2026-08-27): a JD's own generic "A/B testing, hypothesis
+    # testing" phrasing got flagged as unsupported even though the real
+    # profile documents Kolmogorov-Smirnov tests and Population Stability
+    # Index work -- a KS-test IS a hypothesis test, just named more
+    # specifically than the JD's own vocabulary. Same underlying
+    # statistical skill, different name.
+    {"hypothesis testing", "a/b testing", "ab testing", "kolmogorov-smirnov", "ks-test", "ks test",
+     "chi-square test", "t-test", "z-test", "statistical significance testing", "population stability index"},
 ]
 
 # Re-tailoring one of these would silently undo a decision the human
@@ -245,13 +254,24 @@ def _find_unsupported_keywords(original_profile_content: dict, resolved_keywords
     it can't be fooled by the same failure mode it's checking for.
 
     A keyword also counts as supported if the profile shows hands-on
-    experience with a directly comparable tool in the same
+    experience with a directly comparable tool/technique in the same
     _TOOL_EQUIVALENCE_GROUPS category -- e.g. real Tableau experience
     is honest evidence for a "Power BI" keyword, since the underlying
     BI/visualization skill genuinely transfers even though the product
     name differs. Still fully mechanical/deterministic, not an LLM
     judgment call -- only the narrow, curated equivalence groups count,
-    nothing else."""
+    nothing else.
+
+    Group matching is substring-based, not exact-match -- a real
+    confirmed false positive (2026-08-27): "missing keywords" here are
+    whatever the ATS-verify LLM pass extracted from the JD, often a
+    whole verbose requirement phrase ("statistics and experimentation
+    (A/B testing, hypothesis testing)"), not a single clean term. An
+    exact `keyword in group` check never matches a phrase like that even
+    when it plainly contains a group member ("hypothesis testing") --
+    the real profile's Kolmogorov-Smirnov/PSI project got flagged as
+    unsupported despite being the exact real evidence for that
+    requirement, just under more specific vocabulary than the JD used."""
     haystack = (json.dumps(original_profile_content) + " " + extra_text).lower()
 
     def _is_supported(keyword: str) -> bool:
@@ -259,7 +279,8 @@ def _find_unsupported_keywords(original_profile_content: dict, resolved_keywords
         if kw_lower in haystack:
             return True
         for group in _TOOL_EQUIVALENCE_GROUPS:
-            if kw_lower in group and any(equivalent in haystack for equivalent in group if equivalent != kw_lower):
+            keyword_touches_group = any(term in kw_lower for term in group)
+            if keyword_touches_group and any(equivalent in haystack for equivalent in group):
                 return True
         return False
 
