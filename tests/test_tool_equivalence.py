@@ -43,3 +43,39 @@ def test_mixed_batch_only_flags_the_genuinely_unsupported_ones():
     profile = {"skills": {"bi_tools": ["Tableau"], "languages": ["Python"]}}
     result = _find_unsupported_keywords(profile, ["Power BI", "Python", "Kafka"])
     assert result == ["Kafka"]
+
+
+# Real false positive (2026-08-27): a verbose JD-derived keyword phrase
+# never exact-matched a group member, even when the profile plainly had
+# the equivalent real skill under different vocabulary -- Kolmogorov-
+# Smirnov tests/Population Stability Index work got flagged as
+# unsupported for a "statistics and experimentation (A/B testing,
+# hypothesis testing)" JD phrase. Fixed to substring-match a group term
+# INSIDE the keyword phrase, not require the whole phrase to equal one.
+
+def test_verbose_jd_phrase_containing_a_group_term_is_supported():
+    profile = {
+        "projects": [
+            {
+                "name": "AI Model Observability & Fairness Audits",
+                "bullets": ["Audits ML models by running Kolmogorov-Smirnov (KS) tests and Population Stability Index (PSI) to monitor feature drift."],
+            }
+        ]
+    }
+    result = _find_unsupported_keywords(
+        profile, ["statistics and experimentation (A/B testing, hypothesis testing)"]
+    )
+    assert result == []
+
+
+def test_verbose_jd_phrase_still_flagged_when_genuinely_unsupported():
+    profile = {"skills": {"languages": ["Python", "SQL"]}}
+    result = _find_unsupported_keywords(
+        profile, ["statistics and experimentation (A/B testing, hypothesis testing)"]
+    )
+    assert result == ["statistics and experimentation (A/B testing, hypothesis testing)"]
+
+
+def test_exact_single_term_group_matches_still_work_after_the_substring_change():
+    profile = {"skills": {"bi_tools": ["Tableau"]}}
+    assert _find_unsupported_keywords(profile, ["Power BI"]) == []
