@@ -130,6 +130,38 @@ _PROBES = {
 }
 
 
+def fetch_verified_name(ats_type: str, slug: str) -> str | None:
+    """When the ATS's own public API response carries a real employer
+    name, returns it -- used by job_board_aggregator_discovery's
+    callers to replace a slug-derived guess (e.g. "1456754456yhgbhfg")
+    with the real company name (e.g. "Davidson Kempner Capital
+    Management") whenever the platform actually exposes one, instead
+    of leaving an obviously-provisional name in place. Confirmed live
+    (2026-08-27): Greenhouse's job-list API includes a real
+    `company_name` field per job. Ashby's does not -- no company/
+    organization field exists anywhere in its response, confirmed by
+    inspecting the full real job object -- so this returns None for
+    Ashby rather than guessing from description text (a wrong guessed
+    name would be worse than an honest slug-derived placeholder).
+    Lever also returns None: its public postings API now requires
+    authentication for every company tested (a real, separate outage,
+    not specific to any one company), so nothing can be verified there
+    at all right now."""
+    try:
+        if ats_type == "greenhouse":
+            resp = requests.get(f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs", timeout=_TIMEOUT)
+            if resp.status_code != 200:
+                return None
+            for job in resp.json().get("jobs") or []:
+                name = (job.get("company_name") or "").strip()
+                if name:
+                    return name
+            return None
+        return None
+    except Exception:
+        return None
+
+
 def probe_known_slug(ats_type: str, slug: str, company_name: str = "") -> bool:
     """Verifies an ALREADY-KNOWN slug -- e.g. from an external bulk
     dataset, not guessed from a name -- is still live. Skips the

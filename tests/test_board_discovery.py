@@ -78,3 +78,36 @@ def test_probe_known_slug_passes_company_name_to_recruitee_for_its_cross_check()
 def test_probe_known_slug_rejects_unknown_ats_type():
     with pytest.raises(ValueError):
         board_discovery.probe_known_slug("workday", "some-slug")
+
+
+def test_fetch_verified_name_returns_the_real_greenhouse_company_name():
+    resp = _fake_response(json_data={"jobs": [{"company_name": "Davidson Kempner Capital Management"}]})
+    with patch.object(board_discovery.requests, "get", return_value=resp):
+        assert board_discovery.fetch_verified_name("greenhouse", "1456754456yhgbhfg") == "Davidson Kempner Capital Management"
+
+
+def test_fetch_verified_name_greenhouse_no_jobs_returns_none():
+    resp = _fake_response(json_data={"jobs": []})
+    with patch.object(board_discovery.requests, "get", return_value=resp):
+        assert board_discovery.fetch_verified_name("greenhouse", "empty-board") is None
+
+
+def test_fetch_verified_name_greenhouse_non_200_returns_none():
+    resp = _fake_response(status_code=404)
+    with patch.object(board_discovery.requests, "get", return_value=resp):
+        assert board_discovery.fetch_verified_name("greenhouse", "gone") is None
+
+
+def test_fetch_verified_name_ashby_has_no_name_field_so_returns_none():
+    # Ashby's job-board API genuinely carries no company/organization
+    # field anywhere in the response (confirmed live) -- always None,
+    # regardless of what requests.get would return, since the function
+    # doesn't even attempt a lookup for this platform.
+    assert board_discovery.fetch_verified_name("ashby", "some-real-board") is None
+
+
+def test_fetch_verified_name_lever_returns_none():
+    # Lever's public postings API currently requires authentication for
+    # every company (a real, confirmed outage, not company-specific) --
+    # nothing recoverable there right now.
+    assert board_discovery.fetch_verified_name("lever", "some-real-board") is None
