@@ -107,7 +107,24 @@ def test_fetch_verified_name_ashby_has_no_name_field_so_returns_none():
 
 
 def test_fetch_verified_name_lever_returns_none():
-    # Lever's public postings API currently requires authentication for
-    # every company (a real, confirmed outage, not company-specific) --
-    # nothing recoverable there right now.
+    # Lever's postings carry no company-identifying field either
+    # (confirmed on the real job object, same v0 endpoint _probe_lever
+    # uses) -- nothing recoverable there, unlike Greenhouse.
     assert board_discovery.fetch_verified_name("lever", "some-real-board") is None
+
+
+def test_probe_lever_uses_the_still_public_v0_endpoint_not_the_auth_walled_v1():
+    # v1 (with or without ?mode=json) started returning 401 for every
+    # company tested on 2026-08-28; v0 is still public and returns the
+    # same shape. Assert the probe actually hits v0, not v1 -- a
+    # regression back to v1 would make every Lever probe silently fail.
+    captured_urls = []
+
+    def fake_get(url, timeout):
+        captured_urls.append(url)
+        return _fake_response(json_data=[])
+
+    with patch.object(board_discovery.requests, "get", side_effect=fake_get):
+        assert board_discovery._probe_lever("some-real-board") is True
+
+    assert captured_urls == ["https://api.lever.co/v0/postings/some-real-board"]

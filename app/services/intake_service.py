@@ -416,17 +416,31 @@ def _discover_companies_from_ats_dataset(db: Session, settings: GlobalSettings, 
     batch_cap = settings.bulk_discovery_batch_size
     candidates = []  # (ats, name, slug)
     seen_this_batch = set()
-    for ats, pairs in by_ats.items():
-        for name, slug in pairs:
+
+    # Round-robin across ATS platforms, one candidate at a time, rather
+    # than draining them in a fixed order -- Greenhouse alone has
+    # thousands more not-yet-seen rows than the other four combined, so
+    # a fixed-order greedy fill let it consume the entire per-cycle
+    # batch by itself every time, starving Lever/Ashby/Recruitee/
+    # Personio completely (confirmed live: 0 Lever candidates ever
+    # reached, cycle after cycle, until this was caught and fixed).
+    iterators = {ats: iter(pairs) for ats, pairs in by_ats.items()}
+    while len(candidates) < batch_cap and iterators:
+        exhausted = []
+        for ats, it in iterators.items():
             if len(candidates) >= batch_cap:
                 break
-            normalized = normalize_company_name(name)
-            if normalized in existing_normalized or normalized in seen_this_batch:
-                continue
-            seen_this_batch.add(normalized)
-            candidates.append((ats, name, slug))
-        if len(candidates) >= batch_cap:
-            break
+            for name, slug in it:
+                normalized = normalize_company_name(name)
+                if normalized in existing_normalized or normalized in seen_this_batch:
+                    continue
+                seen_this_batch.add(normalized)
+                candidates.append((ats, name, slug))
+                break
+            else:
+                exhausted.append(ats)
+        for ats in exhausted:
+            del iterators[ats]
 
     if not candidates:
         log_activity(db, "ATS-dataset discovery: no new companies this cycle (all already known).", "INFO")
@@ -487,27 +501,38 @@ def _discover_companies_from_job_board_aggregator(db: Session, settings: GlobalS
 
     existing_normalized = {row[0] for row in db.query(Company.normalized_name).all()}
     slug_field_map = {"greenhouse": Company.greenhouse_slug, "lever": Company.lever_slug, "ashby": Company.ashby_slug}
+    # A slug already attached to a known company (most likely found via
+    # ats_dataset_discovery, which has real names) shouldn't be
+    # re-seeded here under a worse, slug-derived name.
+    existing_slugs_by_ats = {
+        ats: {row[0] for row in db.query(field).filter(field.isnot(None)).all()}
+        for ats, field in slug_field_map.items()
+    }
 
     batch_cap = settings.bulk_discovery_batch_size
     candidates = []  # (ats, slug)
-    for ats, slugs in by_ats.items():
-        # A slug already attached to a known company (most likely found
-        # via ats_dataset_discovery, which has real names) shouldn't be
-        # re-seeded here under a worse, slug-derived name.
-        existing_slugs_for_ats = {
-            row[0] for row in db.query(slug_field_map[ats]).filter(slug_field_map[ats].isnot(None)).all()
-        }
-        for slug in slugs:
+
+    # Round-robin across ATS platforms rather than draining them in a
+    # fixed order -- same fairness fix as _discover_companies_from_ats_dataset,
+    # so Greenhouse's much larger candidate pool doesn't starve Lever/Ashby.
+    iterators = {ats: iter(slugs) for ats, slugs in by_ats.items()}
+    while len(candidates) < batch_cap and iterators:
+        exhausted = []
+        for ats, it in iterators.items():
             if len(candidates) >= batch_cap:
                 break
-            if slug in existing_slugs_for_ats:
-                continue
-            provisional_name = job_board_aggregator_discovery.slug_to_provisional_name(slug)
-            if normalize_company_name(provisional_name) in existing_normalized:
-                continue
-            candidates.append((ats, slug))
-        if len(candidates) >= batch_cap:
-            break
+            for slug in it:
+                if slug in existing_slugs_by_ats[ats]:
+                    continue
+                provisional_name = job_board_aggregator_discovery.slug_to_provisional_name(slug)
+                if normalize_company_name(provisional_name) in existing_normalized:
+                    continue
+                candidates.append((ats, slug))
+                break
+            else:
+                exhausted.append(ats)
+        for ats in exhausted:
+            del iterators[ats]
 
     if not candidates:
         log_activity(db, "job-board-aggregator discovery: no new companies this cycle.", "INFO")
