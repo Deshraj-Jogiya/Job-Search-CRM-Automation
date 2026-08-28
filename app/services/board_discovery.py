@@ -79,22 +79,43 @@ def _probe_ashby(slug: str) -> bool:
         return False
 
 
+_OG_SITE_NAME_RE = re.compile(
+    r'property="og:site_name"[^>]*content="([^"]*)"|content="([^"]*)"[^>]*property="og:site_name"'
+)
+
+
 def _probe_recruitee(slug: str, company_name: str) -> bool:
     # Recruitee slugs are short and common enough (e.g. "bbc") that an
-    # unrelated company can legitimately own the same one -- the API
-    # response includes the real employer's name, so cross-check it
-    # against the company we're actually looking for instead of
-    # trusting "a board exists at this slug" alone. Substring match on
-    # the normalized names, since Recruitee's company_name often carries
-    # a legal suffix ("BBC NV") the target name won't have.
+    # unrelated company can legitimately own the same one -- originally
+    # cross-checked via the API's own `company_name` field, but Recruitee
+    # removed that field from /api/offers/ (confirmed 2026-08-28: the
+    # response is bare {"offers": [...]} now, nothing else). The public
+    # careers page itself still carries the real name via its
+    # `og:site_name` meta tag, so fetch that instead -- `requests`
+    # follows redirects by default, which turns out to matter: a slug
+    # whose careers page has moved to a custom domain (e.g. "bbc" now
+    # redirects to careers.bbc.be) lands on that domain's own
+    # og:site_name, confirmed live to read "BBC NV" -- the exact same
+    # real company this check exists to reject, not the British
+    # Broadcasting Corporation. A slug with no hosted page at all
+    # (redirects to Recruitee's generic marketing site) has no
+    # og:site_name to find, so it's correctly rejected too rather than
+    # trusted on "offers exist" alone.
     try:
-        resp = requests.get(f"https://{slug}.recruitee.com/api/offers/", timeout=_TIMEOUT)
-        if resp.status_code != 200:
+        offers_resp = requests.get(f"https://{slug}.recruitee.com/api/offers/", timeout=_TIMEOUT)
+        if offers_resp.status_code != 200:
             return False
-        data = resp.json()
-        if not isinstance(data.get("offers"), list):
+        offers_data = offers_resp.json()
+        if not isinstance(offers_data.get("offers"), list):
             return False
-        listed_name = normalize_company_name(data.get("company_name") or "")
+
+        page_resp = requests.get(f"https://{slug}.recruitee.com/", timeout=_TIMEOUT)
+        if page_resp.status_code != 200:
+            return False
+        match = _OG_SITE_NAME_RE.search(page_resp.text)
+        if not match:
+            return False
+        listed_name = normalize_company_name(match.group(1) or match.group(2) or "")
         target_name = normalize_company_name(company_name)
         if not listed_name or not target_name:
             return False
