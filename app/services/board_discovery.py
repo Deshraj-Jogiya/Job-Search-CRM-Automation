@@ -51,8 +51,16 @@ def _probe_greenhouse(slug: str) -> bool:
 
 
 def _probe_lever(slug: str) -> bool:
+    # The v1 endpoint (.../v1/postings/{slug}?mode=json) started
+    # returning 401 Unauthorized for every company tested (2026-08-28,
+    # confirmed against real live customers pulled fresh from the
+    # ats-scrapers dataset, and against flagship names like Netflix/
+    # Notion/Plaid -- not a per-company issue, and not a curl-specific
+    # block, checked with a real browser User-Agent too). The older v0
+    # path is still public and returns the same posting shape (same
+    # field names lever_source.py already parses), so use that instead.
     try:
-        resp = requests.get(f"https://api.lever.co/v1/postings/{slug}?mode=json", timeout=_TIMEOUT)
+        resp = requests.get(f"https://api.lever.co/v0/postings/{slug}", timeout=_TIMEOUT)
         if resp.status_code != 200:
             return False
         return isinstance(resp.json(), list)
@@ -142,11 +150,10 @@ def fetch_verified_name(ats_type: str, slug: str) -> str | None:
     organization field exists anywhere in its response, confirmed by
     inspecting the full real job object -- so this returns None for
     Ashby rather than guessing from description text (a wrong guessed
-    name would be worse than an honest slug-derived placeholder).
-    Lever also returns None: its public postings API now requires
-    authentication for every company tested (a real, separate outage,
-    not specific to any one company), so nothing can be verified there
-    at all right now."""
+    name would be worse than an honest slug-derived placeholder). Lever
+    also returns None -- its postings (see _probe_lever) carry no
+    company-identifying field either, confirmed on the same real job
+    object."""
     try:
         if ats_type == "greenhouse":
             resp = requests.get(f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs", timeout=_TIMEOUT)

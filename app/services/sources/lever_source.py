@@ -1,9 +1,18 @@
 """
 Direct Lever job board intake -- same shape as
 greenhouse_source.py, driven by Company rows with a lever_slug set.
-Lever's public postings API (https://api.lever.co/v1/postings/{slug}
-?mode=json) returns the full description in the same listing call, no
-separate per-posting fetch needed.
+Lever's public postings API returns the full description in the same
+listing call, no separate per-posting fetch needed.
+
+Uses the v0 endpoint (https://api.lever.co/v0/postings/{slug}), not
+v1 -- v1 (with or without ?mode=json) started returning 401
+Unauthorized for every company tested (2026-08-28, confirmed against
+real live customers, not a per-company or curl-specific issue). v0 is
+still public and returns the identical JSON shape (same field names
+used below), so this is a like-for-like swap, not a behavior change.
+If v0 ever gets walled off the same way, the next fallback is
+scraping the still-public jobs.lever.co/{slug} HTML board pages
+directly (confirmed live) rather than an API call.
 """
 
 import html
@@ -56,8 +65,7 @@ def cheap_scan(keywords: list[str], location: str, limit: int = 15) -> list[RawP
     for company in companies:
         try:
             resp = requests.get(
-                f"https://api.lever.co/v1/postings/{company.lever_slug}",
-                params={"mode": "json"},
+                f"https://api.lever.co/v0/postings/{company.lever_slug}",
                 timeout=_TIMEOUT,
             )
             resp.raise_for_status()
