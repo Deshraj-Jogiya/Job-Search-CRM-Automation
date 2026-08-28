@@ -130,6 +130,21 @@ _PROBES = {
 }
 
 
+def probe_known_slug(ats_type: str, slug: str, company_name: str = "") -> bool:
+    """Verifies an ALREADY-KNOWN slug -- e.g. from an external bulk
+    dataset, not guessed from a name -- is still live. Skips the
+    guess-multiple-candidates step discover_slugs does, but not
+    verification itself: an externally-sourced slug can go stale
+    between the dataset's own refresh and this app actually using it
+    (company renamed its board, switched ATS, shut down). Recruitee
+    needs company_name for its same-slug-different-company cross-check
+    (see _probe_recruitee); the other four ignore it."""
+    probe = _PROBES.get(ats_type)
+    if not probe:
+        raise ValueError(f"Unknown ATS type '{ats_type}'.")
+    return probe(slug, company_name)
+
+
 def discover_slugs(company_name: str) -> dict:
     """Best-effort probe across a couple of slug candidates per ATS.
     Returns {"greenhouse": slug_or_None, "lever": slug_or_None,

@@ -32,7 +32,7 @@ from ..models import (
     SeniorityExclusion,
     get_or_create_settings,
 )
-from . import board_discovery, jobright_discovery
+from . import ats_dataset_discovery, board_discovery, job_board_aggregator_discovery, jobright_discovery
 from .activity_logger import log_activity
 from .company_utils import normalize_company_name, normalize_title
 from .llm import get_llm_provider, parse_json_response
@@ -370,6 +370,173 @@ def _discover_companies_from_jobright(db: Session, settings: GlobalSettings, for
         db,
         f"jobright: scanned {len(matched_companies)} keyword-matching compan(ies) from the daily list, "
         f"{new_count} newly discovered (queued for board-slug backfill).",
+        "INFO",
+    )
+
+
+def _discover_companies_from_ats_dataset(db: Session, settings: GlobalSettings, force: bool = False) -> None:
+    """Seeds new Company rows -- WITH their real ATS slug already
+    verified live -- from the ats-scrapers open dataset (see
+    ats_dataset_discovery.py's docstring). Unlike jobright's company-
+    name-only seeding, a company from here goes straight to a
+    board_slugs_checked_at-set, slug-populated state on its very first
+    save if the live probe confirms the dataset's slug still works --
+    no separate _backfill_board_slugs pass needed for these. Capped at
+    settings.bulk_discovery_batch_size new companies per cycle so this
+    doesn't spike probe traffic or flood the Company table in one go;
+    the dataset itself (~15,500 rows across the 5 supported platforms)
+    is re-scanned every cycle this source is due, but only rows not
+    already a known Company are acted on, so later cycles naturally
+    pick up where earlier ones left off."""
+    source_row = _get_or_create_job_source(db, "ats_dataset")
+    if not source_row.is_active:
+        return
+    now = utcnow()
+    if not force and not _is_due(source_row, settings.bulk_discovery_poll_interval_hours * 60, now):
+        return
+
+    try:
+        by_ats = ats_dataset_discovery.fetch_companies_by_ats()
+    except Exception as e:
+        source_row.last_error = str(e)[:250]
+        source_row.last_polled_at = now
+        db.commit()
+        log_activity(db, f"ATS-dataset company discovery failed: {e}", "ERROR")
+        return
+
+    source_row.last_polled_at = now
+    source_row.last_error = None
+    db.commit()
+
+    # Loaded once up front rather than one query per candidate -- the
+    # dataset has ~15,500 rows and this app already tracks hundreds of
+    # companies, so an in-memory set beats thousands of repeated
+    # indexed lookups every cycle.
+    existing_normalized = {row[0] for row in db.query(Company.normalized_name).all()}
+    batch_cap = settings.bulk_discovery_batch_size
+    candidates = []  # (ats, name, slug)
+    seen_this_batch = set()
+    for ats, pairs in by_ats.items():
+        for name, slug in pairs:
+            if len(candidates) >= batch_cap:
+                break
+            normalized = normalize_company_name(name)
+            if normalized in existing_normalized or normalized in seen_this_batch:
+                continue
+            seen_this_batch.add(normalized)
+            candidates.append((ats, name, slug))
+        if len(candidates) >= batch_cap:
+            break
+
+    if not candidates:
+        log_activity(db, "ATS-dataset discovery: no new companies this cycle (all already known).", "INFO")
+        return
+
+    # Verification probes are independent network calls -- run
+    # concurrently, same rationale as _backfill_board_slugs (SQLAlchemy
+    # Sessions aren't thread-safe, so DB writes happen back on this
+    # thread, sequentially, once all probes return).
+    with ThreadPoolExecutor(max_workers=min(len(candidates), 10)) as pool:
+        verified = list(pool.map(lambda c: board_discovery.probe_known_slug(c[0], c[2], c[1]), candidates))
+
+    verified_count = 0
+    for (ats, name, slug), is_verified in zip(candidates, verified):
+        company = _get_or_create_company(db, name)
+        if is_verified:
+            setattr(company, f"{ats}_slug", slug)
+            company.board_slugs_checked_at = utcnow()
+            verified_count += 1
+    db.commit()
+
+    log_activity(
+        db,
+        f"ATS-dataset discovery: {len(candidates)} new compan(ies) seeded this cycle, "
+        f"{verified_count} with a live-verified board slug on first save.",
+        "INFO",
+    )
+
+
+def _discover_companies_from_job_board_aggregator(db: Session, settings: GlobalSettings, force: bool = False) -> None:
+    """Secondary/supplementary to _discover_companies_from_ats_dataset
+    -- see job_board_aggregator_discovery.py's docstring for why this
+    source only has bare slugs (greenhouse/lever/ashby only, no
+    company name, no recruitee/personio coverage). A verified slug
+    here is seeded under a slug-derived provisional name (clearly a
+    guess) -- same lower-confidence posture board_discovery.py already
+    applies to Personio; correctable manually from the Jobs page like
+    any other auto-detected slug."""
+    source_row = _get_or_create_job_source(db, "job_board_aggregator")
+    if not source_row.is_active:
+        return
+    now = utcnow()
+    if not force and not _is_due(source_row, settings.bulk_discovery_poll_interval_hours * 60, now):
+        return
+
+    try:
+        by_ats = job_board_aggregator_discovery.fetch_slugs_by_ats()
+    except Exception as e:
+        source_row.last_error = str(e)[:250]
+        source_row.last_polled_at = now
+        db.commit()
+        log_activity(db, f"job-board-aggregator company discovery failed: {e}", "ERROR")
+        return
+
+    source_row.last_polled_at = now
+    source_row.last_error = None
+    db.commit()
+
+    existing_normalized = {row[0] for row in db.query(Company.normalized_name).all()}
+    slug_field_map = {"greenhouse": Company.greenhouse_slug, "lever": Company.lever_slug, "ashby": Company.ashby_slug}
+
+    batch_cap = settings.bulk_discovery_batch_size
+    candidates = []  # (ats, slug)
+    for ats, slugs in by_ats.items():
+        # A slug already attached to a known company (most likely found
+        # via ats_dataset_discovery, which has real names) shouldn't be
+        # re-seeded here under a worse, slug-derived name.
+        existing_slugs_for_ats = {
+            row[0] for row in db.query(slug_field_map[ats]).filter(slug_field_map[ats].isnot(None)).all()
+        }
+        for slug in slugs:
+            if len(candidates) >= batch_cap:
+                break
+            if slug in existing_slugs_for_ats:
+                continue
+            provisional_name = job_board_aggregator_discovery.slug_to_provisional_name(slug)
+            if normalize_company_name(provisional_name) in existing_normalized:
+                continue
+            candidates.append((ats, slug))
+        if len(candidates) >= batch_cap:
+            break
+
+    if not candidates:
+        log_activity(db, "job-board-aggregator discovery: no new companies this cycle.", "INFO")
+        return
+
+    with ThreadPoolExecutor(max_workers=min(len(candidates), 10)) as pool:
+        verified = list(pool.map(lambda c: board_discovery.probe_known_slug(c[0], c[1]), candidates))
+
+    new_count = 0
+    for (ats, slug), is_verified in zip(candidates, verified):
+        if not is_verified:
+            continue
+        provisional_name = job_board_aggregator_discovery.slug_to_provisional_name(slug)
+        normalized = normalize_company_name(provisional_name)
+        # A same-cycle collision -- two different slugs deriving the
+        # same provisional name -- is possible since this is a lossy
+        # title-cased guess, not a real name; skip rather than merge.
+        if db.query(Company).filter(Company.normalized_name == normalized).first():
+            continue
+        company = _get_or_create_company(db, provisional_name)
+        setattr(company, f"{ats}_slug", slug)
+        company.board_slugs_checked_at = utcnow()
+        new_count += 1
+    db.commit()
+
+    log_activity(
+        db,
+        f"job-board-aggregator discovery: {new_count} new compan(ies) seeded this cycle with a "
+        "live-verified (but slug-derived, not confirmed) name -- review/correct from the Jobs page.",
         "INFO",
     )
 
@@ -727,5 +894,7 @@ def run_intake_cycle(db: Session, force: bool = False) -> None:
         _run_source(db, jobspipe_source, jobspipe_row, location_query)
 
     _discover_companies_from_jobright(db, settings, force=force)
+    _discover_companies_from_ats_dataset(db, settings, force=force)
+    _discover_companies_from_job_board_aggregator(db, settings, force=force)
     _backfill_board_slugs(db)
     _flag_stale_postings(db, settings.stale_posting_threshold_days)
