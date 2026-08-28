@@ -44,6 +44,18 @@
 <section class="variant-block">
     <h2>Status Funnel</h2>
     {% if funnel %}
+    {% set max_count = funnel | map(attribute='count') | max %}
+    <div class="bar-chart">
+        {% for row in funnel %}
+        <div class="bar-row">
+            <span class="bar-row-label">{{ row.status }}</span>
+            <span class="bar-track">
+                <span class="bar-fill bar-fill-primary" style="width: {{ (row.count / max_count * 100) if max_count else 0 }}%"></span>
+            </span>
+            <span class="bar-row-value">{{ row.count }}{% if row.pct_of_total is not none %} &middot; {{ row.pct_of_total }}%{% endif %}</span>
+        </div>
+        {% endfor %}
+    </div>
     <div class="table-scroll">
         <table class="review-table">
             <thead><tr><th>Status</th><th>Count</th><th>% of Total</th></tr></thead>
@@ -75,6 +87,19 @@
 <section class="variant-block">
     <h2>By Source</h2>
     {% if by_source %}
+    {% set max_total = by_source | map(attribute='total') | max %}
+    <div class="bar-chart">
+        {% for row in by_source %}
+        <div class="bar-row">
+            <span class="bar-row-label">{{ row.source }}</span>
+            <span class="bar-track">
+                <span class="bar-fill-total" style="width: {{ (row.total / max_total * 100) if max_total else 0 }}%"></span>
+                <span class="bar-fill{{ ' bar-fill-zero' if not row.applied }}" style="width: {{ (row.applied / max_total * 100) if max_total else 0 }}%"></span>
+            </span>
+            <span class="bar-row-value">{{ row.applied }}/{{ row.total }} applied</span>
+        </div>
+        {% endfor %}
+    </div>
     <div class="table-scroll">
         <table class="review-table">
             <thead><tr><th>Source</th><th>Total</th><th>Applied</th><th>Apply Rate</th><th>Avg Match Score</th></tr></thead>
@@ -98,6 +123,19 @@
 
 <section class="variant-block">
     <h2>By Match-Score Band</h2>
+    {% set max_band_total = by_score_band | map(attribute='total') | max %}
+    <div class="bar-chart">
+        {% for row in by_score_band %}
+        <div class="bar-row">
+            <span class="bar-row-label">{{ row.band }}</span>
+            <span class="bar-track">
+                <span class="bar-fill-total" style="width: {{ (row.total / max_band_total * 100) if max_band_total else 0 }}%"></span>
+                <span class="bar-fill{{ ' bar-fill-zero' if not row.applied }}" style="width: {{ (row.applied / max_band_total * 100) if max_band_total else 0 }}%"></span>
+            </span>
+            <span class="bar-row-value">{{ row.applied }}/{{ row.total }} applied</span>
+        </div>
+        {% endfor %}
+    </div>
     <div class="table-scroll">
         <table class="review-table">
             <thead><tr><th>Band</th><th>Total</th><th>Applied</th><th>Apply Rate</th></tr></thead>
@@ -121,6 +159,25 @@
         Scam/repost/stale flags are informational-only elsewhere in this app -- this just shows whether
         that caution has actually correlated with lower apply rates.
     </p>
+    {% set max_flag_total = [flags.flagged.total, flags.clean.total] | max %}
+    <div class="bar-chart">
+        <div class="bar-row">
+            <span class="bar-row-label">Flagged</span>
+            <span class="bar-track">
+                <span class="bar-fill-total" style="width: {{ (flags.flagged.total / max_flag_total * 100) if max_flag_total else 0 }}%"></span>
+                <span class="bar-fill{{ ' bar-fill-zero' if not flags.flagged.applied }}" style="width: {{ (flags.flagged.applied / max_flag_total * 100) if max_flag_total else 0 }}%"></span>
+            </span>
+            <span class="bar-row-value">{{ flags.flagged.applied }}/{{ flags.flagged.total }} applied</span>
+        </div>
+        <div class="bar-row">
+            <span class="bar-row-label">Clean</span>
+            <span class="bar-track">
+                <span class="bar-fill-total" style="width: {{ (flags.clean.total / max_flag_total * 100) if max_flag_total else 0 }}%"></span>
+                <span class="bar-fill{{ ' bar-fill-zero' if not flags.clean.applied }}" style="width: {{ (flags.clean.applied / max_flag_total * 100) if max_flag_total else 0 }}%"></span>
+            </span>
+            <span class="bar-row-value">{{ flags.clean.applied }}/{{ flags.clean.total }} applied</span>
+        </div>
+    </div>
     <div class="table-scroll">
         <table class="review-table">
             <thead><tr><th></th><th>Total</th><th>Applied</th><th>Apply Rate</th></tr></thead>

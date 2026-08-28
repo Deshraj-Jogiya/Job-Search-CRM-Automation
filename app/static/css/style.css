@@ -879,6 +879,90 @@ html.light-theme .flag-warning {
 }
 
 /* ==========================================================================
+   Bar charts (Analytics page) -- a track + proportional fill, single
+   accent hue per chart. Color here encodes "how much of this converted"
+   (applied is a subset of total, shown as an inset fill on a dimmed
+   total track), not category identity -- the row label is the identity,
+   so no categorical palette or legend is needed. Every bar carries a
+   direct numeric label instead of a hover tooltip; the table underneath
+   each chart is the exact-value view the chart summarizes.
+   ========================================================================== */
+
+.bar-chart {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 16px 0 24px;
+}
+
+.bar-row {
+    display: grid;
+    grid-template-columns: minmax(110px, 200px) 1fr auto;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.85rem;
+}
+
+.bar-row-label {
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.bar-track {
+    position: relative;
+    display: block;
+    height: 18px;
+    background: var(--input-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.bar-fill-total {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    background: var(--text-muted);
+    opacity: 0.3;
+    border-radius: 999px;
+}
+
+.bar-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    background: var(--accent-emerald);
+    border-radius: 999px;
+    transition: var(--transition-smooth);
+}
+
+/* A genuinely-zero value must render as zero width -- min-width would
+   make "0 applied" show the same reassuring sliver as "1 applied",
+   which is exactly the kind of small dishonesty a chart shouldn't have.
+   Applied as a modifier, not baked into .bar-fill, so a real nonzero
+   value that happens to round to a very thin sliver still gets a
+   visible floor. */
+.bar-fill:not(.bar-fill-zero) {
+    min-width: 3px;
+}
+
+.bar-fill.bar-fill-primary {
+    background: var(--accent-indigo);
+}
+
+.bar-row-value {
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    text-align: right;
+    font-size: 0.82rem;
+}
+
+/* ==========================================================================
    Responsive
    ========================================================================== */
 
@@ -899,6 +983,15 @@ html.light-theme .flag-warning {
     .variant-header {
         flex-direction: column;
         align-items: flex-start;
+    }
+
+    .bar-row {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+
+    .bar-row-value {
+        text-align: left;
     }
 
     .summary-cards {
