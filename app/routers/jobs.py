@@ -488,7 +488,14 @@ def discover_outreach_contacts(application_id: int, request: Request, db: Sessio
         context["error"] = "Contact discovery isn't configured -- add TAVILY_API_KEY (and optionally HUNTER_API_KEY) to .env."
         return render(request, "application_detail.html", context)
 
-    discovered = contact_discovery_service.discover_contacts(db, application.posting.company_name_raw)
+    try:
+        profile_content, _ = matching_service.get_profile_content_for_application(db, application)
+    except matching_service.MatchingServiceError:
+        profile_content = None  # overlap-based reasons just won't fire; discovery itself still works
+
+    discovered = contact_discovery_service.discover_contacts(
+        db, application.posting.company_name_raw, job_title=application.posting.job_title, profile_content=profile_content
+    )
     context = _build_detail_context(application_id, request, db, discovered_contacts=discovered)
     if not discovered:
         context["message"] = "No candidates found -- try manual entry below."
@@ -583,6 +590,20 @@ def restore_interview_prep(application_id: int, prep_id: int, db: Session = Depe
     except interview_prep_service.InterviewPrepServiceError as e:
         return _redirect_detail(application_id, error=str(e))
     return _redirect_detail(application_id, message="Restored that interview prep version.")
+
+
+@router.post("/{application_id}/interview-prep/networking-insight")
+def add_networking_insight(
+    application_id: int,
+    round_name: str = Form(...),
+    insight_text: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    try:
+        interview_prep_service.add_networking_insight_to_round(db, application_id, round_name, insight_text)
+    except interview_prep_service.InterviewPrepServiceError as e:
+        return _redirect_detail(application_id, error=str(e))
+    return _redirect_detail(application_id, message=f"Added your note to the '{round_name}' round's prep.")
 
 
 @router.post("/{application_id}/autofill")
