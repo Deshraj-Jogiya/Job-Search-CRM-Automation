@@ -5,6 +5,8 @@ actually being tracked. See app/services/board_discovery.py."""
 
 from unittest.mock import patch
 
+import pytest
+
 from app.services import board_discovery
 
 
@@ -53,3 +55,26 @@ def test_discover_slugs_passes_company_name_through_to_recruitee_probe():
         result = board_discovery.discover_slugs("Acme")
     assert result["recruitee"] == "acme"
     assert result["greenhouse"] is None
+
+
+def test_probe_known_slug_verifies_an_externally_sourced_slug():
+    resp = _fake_response(json_data={"jobs": []})
+    with patch.object(board_discovery.requests, "get", return_value=resp):
+        assert board_discovery.probe_known_slug("greenhouse", "stripe") is True
+
+
+def test_probe_known_slug_false_when_the_dataset_slug_has_gone_stale():
+    resp = _fake_response(status_code=404)
+    with patch.object(board_discovery.requests, "get", return_value=resp):
+        assert board_discovery.probe_known_slug("lever", "some-old-slug") is False
+
+
+def test_probe_known_slug_passes_company_name_to_recruitee_for_its_cross_check():
+    resp = _fake_response(json_data={"offers": [], "company_name": "Unrelated Company"})
+    with patch.object(board_discovery.requests, "get", return_value=resp):
+        assert board_discovery.probe_known_slug("recruitee", "bbc", "British Broadcasting Corporation") is False
+
+
+def test_probe_known_slug_rejects_unknown_ats_type():
+    with pytest.raises(ValueError):
+        board_discovery.probe_known_slug("workday", "some-slug")
