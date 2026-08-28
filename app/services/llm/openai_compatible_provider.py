@@ -32,7 +32,7 @@ class OpenAICompatibleProvider(LLMProvider):
         return response.choices[0].message.content.strip()
 
     def complete_json(self, system: str, prompt: str, temperature: float = 0.3, max_tokens: int = None) -> str:
-        return self._call(system, prompt, temperature, max_tokens=max_tokens or 2000)
+        return self._call_with_retry(self._call, system, prompt, temperature, max_tokens=max_tokens or 2000)
 
     def complete_text(self, system: str, prompt: str, temperature: float = 0.4, max_tokens: int = None) -> str:
-        return self._call(system, prompt, temperature, max_tokens=max_tokens or 1200)
+        return self._call_with_retry(self._call, system, prompt, temperature, max_tokens=max_tokens or 1200)
