@@ -6,6 +6,8 @@ logic (list/restore) without needing the real LLM-calling generation
 path -- InterviewPrep rows are constructed directly, same convention
 as test_interview_prep_visibility.py and test_interview_prep_platform.py."""
 
+import json
+
 import pytest
 
 from app import models
@@ -87,6 +89,82 @@ def test_restore_already_active_version_is_a_noop(db):
 def test_restore_nonexistent_version_raises(db):
     with pytest.raises(InterviewPrepServiceError):
         interview_prep_service.restore_interview_prep_version(db, 999)
+
+
+def _make_rounds_version(db, application, rounds, is_active=True):
+    prep = models.InterviewPrep(
+        application_id=application.id,
+        predicted_rounds_json=json.dumps({"rounds": rounds}),
+        is_active=is_active,
+    )
+    db.add(prep)
+    db.commit()
+    db.refresh(prep)
+    return prep
+
+
+def test_add_networking_insight_appends_without_overwriting_existing_prep_focus(db):
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application = make_application(db, posting)
+    _make_rounds_version(
+        db, application, [{"round_name": "PEI", "prep_focus": ["existing point"]}],
+    )
+
+    new_version = interview_prep_service.add_networking_insight_to_round(
+        db, application.id, "PEI", "It's conversational, not formal"
+    )
+
+    rounds = json.loads(new_version.predicted_rounds_json)["rounds"]
+    focus = rounds[0]["prep_focus"]
+    assert "existing point" in focus  # nothing already there was lost
+    assert any("It's conversational, not formal" in f for f in focus)
+    assert any("Source: networking conversation" in f for f in focus)
+
+
+def test_add_networking_insight_creates_a_new_version_not_an_in_place_edit(db):
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application = make_application(db, posting)
+    original = _make_rounds_version(db, application, [{"round_name": "PEI", "prep_focus": []}])
+
+    new_version = interview_prep_service.add_networking_insight_to_round(db, application.id, "PEI", "a real insight")
+
+    assert new_version.id != original.id
+    db.refresh(original)
+    assert original.is_active is False
+    assert new_version.is_active is True
+    db.refresh(application)
+    assert application.active_interview_prep.id == new_version.id
+
+
+def test_add_networking_insight_rejects_unknown_round(db):
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application = make_application(db, posting)
+    _make_rounds_version(db, application, [{"round_name": "PEI", "prep_focus": []}])
+
+    with pytest.raises(InterviewPrepServiceError):
+        interview_prep_service.add_networking_insight_to_round(db, application.id, "Nonexistent Round", "x")
+
+
+def test_add_networking_insight_rejects_empty_text(db):
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application = make_application(db, posting)
+    _make_rounds_version(db, application, [{"round_name": "PEI", "prep_focus": []}])
+
+    with pytest.raises(InterviewPrepServiceError):
+        interview_prep_service.add_networking_insight_to_round(db, application.id, "PEI", "   ")
+
+
+def test_add_networking_insight_requires_existing_prep(db):
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application = make_application(db, posting)
+
+    with pytest.raises(InterviewPrepServiceError):
+        interview_prep_service.add_networking_insight_to_round(db, application.id, "PEI", "a real insight")
 
 
 def test_restore_only_deactivates_versions_for_the_same_application(db):

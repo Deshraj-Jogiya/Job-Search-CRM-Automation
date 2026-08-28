@@ -35,10 +35,13 @@ def draft_outreach(
     recipient_name: str = Form(""),
     recipient_address: str = Form(""),
     channel: str = Form(...),
+    context_note: str = Form(""),
     db: Session = Depends(get_db),
 ):
     try:
-        outreach_service.draft_outreach_message(db, application_id, recipient_name, recipient_address, channel)
+        outreach_service.draft_outreach_message(
+            db, application_id, recipient_name, recipient_address, channel, context_note=context_note or None
+        )
         return _redirect_detail(application_id, message="Outreach message drafted -- review before approving.")
     except (OutreachServiceError, MatchingServiceError) as e:
         # draft_outreach_message calls get_profile_content_for_application,

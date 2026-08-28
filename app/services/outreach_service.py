@@ -69,7 +69,9 @@ def verify_email_address(email: str) -> bool:
         return False
 
 
-def _draft_note_text(profile_content: dict, posting, recipient_name: str, channel: str) -> str:
+def _draft_note_text(
+    profile_content: dict, posting, recipient_name: str, channel: str, context_note: str | None = None
+) -> str:
     if channel == "linkedin_connection":
         instruction = (
             "Write a LinkedIn connection request note, STRICTLY under 300 characters total including spaces, "
@@ -82,6 +84,18 @@ def _draft_note_text(profile_content: dict, posting, recipient_name: str, channe
             "expressing genuine interest in the role, referencing something specific from the job description."
         )
         max_tokens = 400
+
+    # context_note comes from contact_discovery_service.compute_reason --
+    # a real, mechanically-found detail about the recipient (a recent
+    # hiring post, a shared school, a shared past employer), never an
+    # LLM guess. Explicitly told not to quote it verbatim so it reads as
+    # a human noticed it, not as a mail-merge field.
+    context_line = (
+        f"\nReal detail about the recipient worth weaving in naturally if it genuinely fits -- do not quote it "
+        f"verbatim or force it: {context_note}"
+        if context_note
+        else ""
+    )
 
     llm = get_llm_provider()
     text = llm.complete_text(
@@ -98,6 +112,7 @@ def _draft_note_text(profile_content: dict, posting, recipient_name: str, channe
             f"Target company: {posting.company_name_raw}\n"
             f"Target role: {posting.job_title}\n"
             f"Job description excerpt: {(posting.job_description or '')[:800]}"
+            f"{context_line}"
         ),
         temperature=0.5,
         max_tokens=max_tokens,
@@ -106,7 +121,12 @@ def _draft_note_text(profile_content: dict, posting, recipient_name: str, channe
 
 
 def draft_outreach_message(
-    db: Session, application_id: int, recipient_name: str, recipient_address: str, channel: str
+    db: Session,
+    application_id: int,
+    recipient_name: str,
+    recipient_address: str,
+    channel: str,
+    context_note: str | None = None,
 ) -> OutreachMessage:
     application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
     if not application:
@@ -120,7 +140,7 @@ def draft_outreach_message(
     posting = application.posting
 
     try:
-        body = _draft_note_text(profile_content, posting, recipient_name, channel)
+        body = _draft_note_text(profile_content, posting, recipient_name, channel, context_note)
     except Exception as e:
         raise OutreachServiceError(f"Drafting failed: {e}") from e
 
