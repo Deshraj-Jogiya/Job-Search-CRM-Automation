@@ -559,3 +559,51 @@ def restore_interview_prep_version(db: Session, prep_id: int) -> InterviewPrep:
         db, f"Restored an earlier interview prep version (generated {target.generated_at:%Y-%m-%d %H:%M} UTC).", "INFO"
     )
     return target
+
+
+def add_networking_insight_to_round(db: Session, application_id: int, round_name: str, insight_text: str) -> InterviewPrep:
+    """Closes the loop a real conversation with a discovered contact
+    (see contact_discovery_service.py) can open: something a real person
+    told you about a specific round is exactly the kind of grounding
+    _generate_round_qa already tries to produce from web research, just
+    from a source no search API can reach. Appends the insight to that
+    round's prep_focus with a dated source tag (never rewrites what's
+    already there) and creates a new version -- same deactivate-and-flip
+    mechanics as generate_interview_prep and restore_interview_prep_version,
+    nothing is ever overwritten in place."""
+    insight_text = (insight_text or "").strip()
+    if not insight_text:
+        raise InterviewPrepServiceError("Insight text can't be empty.")
+
+    application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+    if not application:
+        raise InterviewPrepServiceError(f"Application {application_id} not found.")
+    current = application.active_interview_prep
+    if not current or not current.predicted_rounds_json:
+        raise InterviewPrepServiceError("Generate interview prep first -- there's no round to attach this to yet.")
+
+    predicted_rounds = json.loads(current.predicted_rounds_json)
+    rounds = predicted_rounds.get("rounds", [])
+    target_round = next((r for r in rounds if r.get("round_name") == round_name), None)
+    if not target_round:
+        raise InterviewPrepServiceError(f"Round '{round_name}' not found in the current prep.")
+
+    dated_note = f"{insight_text} (Source: networking conversation, {utcnow():%Y-%m-%d})"
+    target_round.setdefault("prep_focus", []).append(dated_note)
+
+    current.is_active = False
+    new_version = InterviewPrep(
+        application_id=application_id,
+        general_prep_json=current.general_prep_json,
+        company_prep_json=current.company_prep_json,
+        process_research_json=current.process_research_json,
+        predicted_rounds_json=json.dumps(predicted_rounds),
+        is_active=True,
+        generated_at=utcnow(),
+    )
+    db.add(new_version)
+    db.commit()
+    db.refresh(new_version)
+
+    log_activity(db, f"Added a networking insight to the '{round_name}' round.", "INFO")
+    return new_version
