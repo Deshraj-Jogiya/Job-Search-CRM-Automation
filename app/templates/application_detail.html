@@ -186,6 +186,12 @@
                 <ul>{% for w in predicted_rounds.grounding_warnings %}<li>{{ w }}</li>{% endfor %}</ul>
             </div>
             {% endif %}
+            {% if predicted_rounds.answering_method_guidance %}
+            <div class="sub-panel">
+                <p><strong>How to actually structure your answers here</strong></p>
+                <p class="muted-note">{{ predicted_rounds.answering_method_guidance }}</p>
+            </div>
+            {% endif %}
             {% for round in predicted_rounds.rounds %}
             <details class="sub-panel" open>
                 <summary>{{ loop.index }}. {{ round.round_name }}{% if round.likely_interviewer %} &middot; likely run by: {{ round.likely_interviewer }}{% endif %}</summary>
@@ -201,6 +207,10 @@
                     <p>{{ qa.draft_answer }}</p>
                     {% if qa.quick_reference %}
                     <p class="muted-note">Cue: {{ qa.quick_reference }}</p>
+                    {% endif %}
+                    {% if qa.possible_follow_ups %}
+                    <p class="muted-note"><strong>Be ready for follow-ups on this one:</strong></p>
+                    <ul>{% for f in qa.possible_follow_ups %}<li>{{ f }}</li>{% endfor %}</ul>
                     {% endif %}
                 </div>
                 {% endfor %}
