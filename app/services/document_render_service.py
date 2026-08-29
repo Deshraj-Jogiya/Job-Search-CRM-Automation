@@ -44,23 +44,23 @@ from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer,
 
 _styles = getSampleStyleSheet()
 
-_name_style = ParagraphStyle("NameStyle", parent=_styles["Title"], fontSize=17, spaceAfter=2)
+_name_style = ParagraphStyle("NameStyle", parent=_styles["Title"], fontSize=16, spaceAfter=1)
 _contact_style = ParagraphStyle(
-    "ContactStyle", parent=_styles["Normal"], fontSize=8.5, textColor=colors.grey,
-    spaceAfter=7, alignment=TA_CENTER,
+    "ContactStyle", parent=_styles["Normal"], fontSize=8.3, textColor=colors.grey,
+    spaceAfter=5, alignment=TA_CENTER,
 )
 _section_style = ParagraphStyle(
-    "SectionStyle", parent=_styles["Heading2"], fontSize=10.5, spaceBefore=6, spaceAfter=1,
+    "SectionStyle", parent=_styles["Heading2"], fontSize=10, spaceBefore=5, spaceAfter=0,
     textColor=colors.HexColor("#1a1a1a"), borderPadding=0,
 )
-_role_style = ParagraphStyle("RoleStyle", parent=_styles["Normal"], fontSize=10, fontName="Helvetica-Bold", spaceAfter=0)
-_role_italic_style = ParagraphStyle("RoleItalicStyle", parent=_styles["Normal"], fontSize=9.5, fontName="Helvetica-Oblique", spaceAfter=0)
-_meta_style = ParagraphStyle("MetaStyle", parent=_styles["Normal"], fontSize=8.5, textColor=colors.grey, spaceAfter=2)
+_role_style = ParagraphStyle("RoleStyle", parent=_styles["Normal"], fontSize=9.7, fontName="Helvetica-Bold", spaceAfter=0)
+_role_italic_style = ParagraphStyle("RoleItalicStyle", parent=_styles["Normal"], fontSize=9.2, fontName="Helvetica-Oblique", spaceAfter=0)
+_meta_style = ParagraphStyle("MetaStyle", parent=_styles["Normal"], fontSize=8.3, textColor=colors.grey, spaceAfter=1)
 _meta_right_style = ParagraphStyle("MetaRightStyle", parent=_meta_style, alignment=TA_RIGHT)
-_body_style = ParagraphStyle("BodyStyle", parent=_styles["Normal"], fontSize=9, leading=11.5, spaceAfter=5)
-_bullet_style = ParagraphStyle("BulletStyle", parent=_styles["Normal"], fontSize=9, leading=11.5, leftIndent=14, spaceAfter=1)
+_body_style = ParagraphStyle("BodyStyle", parent=_styles["Normal"], fontSize=8.7, leading=10.6, spaceAfter=4)
+_bullet_style = ParagraphStyle("BulletStyle", parent=_styles["Normal"], fontSize=8.7, leading=10.6, leftIndent=13, spaceAfter=0.5)
 
-_CONTENT_WIDTH = letter[0] - 1.2 * inch  # page width minus left+right margins (0.6in each)
+_CONTENT_WIDTH = letter[0] - 1.1 * inch  # page width minus left+right margins (0.55in each)
 
 _TWO_COL_TABLE_STYLE = TableStyle([
     ("LEFTPADDING", (0, 0), (-1, -1), 0),
@@ -78,7 +78,7 @@ def _section_header(title: str) -> list:
     alone read as noticeably plainer than that reference."""
     return [
         Paragraph(title.upper(), _section_style),
-        HRFlowable(width="100%", thickness=0.75, color=colors.HexColor("#1a1a1a"), spaceAfter=3),
+        HRFlowable(width="100%", thickness=0.75, color=colors.HexColor("#1a1a1a"), spaceAfter=2),
     ]
 
 
@@ -133,8 +133,8 @@ def render_resume_pdf(resume_content: dict) -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=letter,
-        topMargin=0.5 * inch, bottomMargin=0.5 * inch,
-        leftMargin=0.6 * inch, rightMargin=0.6 * inch,
+        topMargin=0.45 * inch, bottomMargin=0.4 * inch,
+        leftMargin=0.55 * inch, rightMargin=0.55 * inch,
     )
     flow = [Paragraph(_esc(resume_content.get("name") or ""), _name_style)]
     flow += [Paragraph(line, _contact_style) for line in _contact_lines(resume_content.get("contact") or {})]
@@ -156,10 +156,10 @@ def render_resume_pdf(resume_content: dict) -> bytes:
         for job in experience:
             flow.append(_two_col_row(job.get("company"), job.get("location"), _role_style, _meta_right_style))
             flow.append(_two_col_row(job.get("role"), job.get("date"), _role_italic_style, _meta_right_style))
-            flow.append(Spacer(1, 1))
+            flow.append(Spacer(1, 0.5))
             for bullet in job.get("bullets", []):
                 flow.append(Paragraph(f"- {_esc(bullet)}", _bullet_style))
-            flow.append(Spacer(1, 3))
+            flow.append(Spacer(1, 2))
 
     projects = resume_content.get("projects") or []
     if projects:
@@ -169,10 +169,10 @@ def render_resume_pdf(resume_content: dict) -> bytes:
             flow.append(_two_col_row(
                 proj.get("name"), tech, _role_style, _meta_right_style, left_link=proj.get("github_url"),
             ))
-            flow.append(Spacer(1, 1))
+            flow.append(Spacer(1, 0.5))
             for bullet in proj.get("bullets", []):
                 flow.append(Paragraph(f"- {_esc(bullet)}", _bullet_style))
-            flow.append(Spacer(1, 3))
+            flow.append(Spacer(1, 2))
 
     education = resume_content.get("education") or []
     if education:
@@ -180,7 +180,7 @@ def render_resume_pdf(resume_content: dict) -> bytes:
         for edu in education:
             flow.append(_two_col_row(edu.get("school"), edu.get("location"), _role_style, _meta_right_style))
             flow.append(_two_col_row(edu.get("degree"), edu.get("date"), _role_italic_style, _meta_right_style))
-            flow.append(Spacer(1, 3))
+            flow.append(Spacer(1, 2))
 
     certifications = resume_content.get("certifications") or []
     if certifications:
