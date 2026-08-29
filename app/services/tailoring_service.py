@@ -29,8 +29,13 @@ MAX_REFINE_PASSES = 2
 # Hard, mechanical cap on how many projects can land in a tailored
 # resume -- the LLM is told to select by relevance, not by count, but
 # this still bounds real-world resume length regardless of what it
-# returns. Enforced in code, not just prompt wording.
-_MAX_TAILORED_PROJECTS = 6
+# returns. Enforced in code, not just prompt wording. Lowered from 6 to
+# 4 (2026-08-29): a real generation at 6 projects + full experience
+# bullets rendered to 4 physical pages, well past the 1-2 page market
+# standard for this candidate's experience level -- 6 was sized around
+# "don't hide a strong project," not around what a real resume can
+# physically hold at readable density.
+_MAX_TAILORED_PROJECTS = 4
 
 # Tools genuinely interchangeable at a skill level, within a single
 # narrow category -- e.g. real hands-on Tableau experience is honest
@@ -97,10 +102,14 @@ def _tailor_experience_and_projects_pass(experience: list, projects: list, jd_te
             "underlying skill genuinely transfers even though the product name doesn't match. Never claim "
             "hands-on use of the JD's specific tool itself if the candidate has never touched it.\n\n"
             "For projects specifically: select based on genuine relevance to THIS job description, not a "
-            "fixed count -- include as many or as few as are actually strong matches (up to 6). A project "
+            "fixed count -- include as many or as few as are actually strong matches (up to 4). A project "
             "belongs in the selection because its real technologies or outcomes would matter to whoever "
-            "reads this JD, not to hit a target number. Rewrite each selected project into 2 concise, "
+            "reads this JD, not to hit a target number. Rewrite each selected project into 3 concise, "
             "metrics-driven bullets using the same real-evidence-only rules as experience above.\n\n"
+            "Real resume density, not an essay: a 1-2 page resume is the market standard for this "
+            "candidate's experience level, and that only works if bullets stay tight. Aim for roughly 3 "
+            "concise, high-impact bullets per experience role (not 5+) -- pick the strongest evidence for "
+            "THIS job description rather than listing everything the candidate has ever done in that role.\n\n"
             f"Original Experience:\n{json.dumps(experience, indent=2)}\n\n"
             f"Original Projects:\n{json.dumps(projects, indent=2)}\n\n"
             f"Job Description:\n{jd_text}\n\n"
@@ -111,12 +120,12 @@ def _tailor_experience_and_projects_pass(experience: list, projects: list, jd_te
             "}\n"
             "experience must have the same roles, same order, same dates as the input -- only bullets "
             "change. projects must each be a real project from the input (same name), selected by "
-            "relevance, at most 6. Do not wrap the output in markdown code fences."
+            "relevance, at most 4. Do not wrap the output in markdown code fences."
         ),
         temperature=0.3,
         # Default complete_json budget (2000 tokens) was sized for a
         # single section (just experience, or just summary/skills/3
-        # projects) -- this call asks for experience AND up to 6
+        # projects) -- this call asks for experience AND up to 4
         # projects together, and a real run hit real truncation (a
         # response cut off mid-string fails JSON parsing outright, not
         # a graceful partial result). Sized generously, not tightly,
@@ -243,7 +252,26 @@ def run_multi_pass_tailoring(experience: list, projects: list, jd_text: str) -> 
         missing = verification.get("missing_keywords", [])
         passes += 1
 
+    tailored_projects = _restore_static_project_fields(projects, tailored_projects)
     return tailored_experience, tailored_projects, score, initial_missing, missing
+
+
+def _restore_static_project_fields(original_projects: list, tailored_projects: list) -> list:
+    """The tailoring LLM's response schema only asks for {name, bullets,
+    technologies} -- fields that exist on the real project but aren't
+    part of that schema (github_url) silently vanish from the tailored
+    output otherwise, not because anything went wrong, just because
+    nothing asked the LLM to carry them through. A repo URL is static,
+    objective data with nothing to tailor about it, so it's restored
+    here by matching on project name rather than asking an LLM to
+    faithfully echo back a URL string it has no reason to alter but also
+    no instruction to preserve."""
+    by_name = {p.get("name"): p for p in original_projects}
+    for project in tailored_projects:
+        original = by_name.get(project.get("name"))
+        if original and original.get("github_url") and not project.get("github_url"):
+            project["github_url"] = original["github_url"]
+    return tailored_projects
 
 
 def _find_unsupported_keywords(original_profile_content: dict, resolved_keywords: list, extra_text: str = "") -> list:
