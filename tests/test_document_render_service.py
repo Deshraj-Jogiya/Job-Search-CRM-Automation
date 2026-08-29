@@ -122,6 +122,23 @@ def test_render_resume_pdf_accepts_json_string():
     assert pdf_bytes.startswith(b"%PDF")
 
 
+def test_render_resume_pdf_with_project_github_link_still_produces_a_real_pdf():
+    content = {**_FULL_CONTENT, "projects": [
+        {"name": "Side Project", "bullets": ["Built it."], "technologies": ["Python"],
+         "github_url": "https://github.com/jane/side-project"},
+    ]}
+    pdf_bytes = render_resume_pdf(content)
+    assert pdf_bytes.startswith(b"%PDF")
+
+
+def test_render_resume_pdf_project_without_github_url_still_renders():
+    content = {**_FULL_CONTENT, "projects": [
+        {"name": "Side Project", "bullets": ["Built it."], "technologies": ["Python"]},
+    ]}
+    pdf_bytes = render_resume_pdf(content)
+    assert pdf_bytes.startswith(b"%PDF")
+
+
 def test_render_resume_pdf_handles_missing_optional_fields_without_crashing():
     sparse = {
         "name": "Jane Doe",
