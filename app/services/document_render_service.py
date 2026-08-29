@@ -50,7 +50,7 @@ _contact_style = ParagraphStyle(
     spaceAfter=7, alignment=TA_CENTER,
 )
 _section_style = ParagraphStyle(
-    "SectionStyle", parent=_styles["Heading2"], fontSize=10.5, spaceBefore=8, spaceAfter=1,
+    "SectionStyle", parent=_styles["Heading2"], fontSize=10.5, spaceBefore=6, spaceAfter=1,
     textColor=colors.HexColor("#1a1a1a"), borderPadding=0,
 )
 _role_style = ParagraphStyle("RoleStyle", parent=_styles["Normal"], fontSize=10, fontName="Helvetica-Bold", spaceAfter=0)
@@ -78,7 +78,7 @@ def _section_header(title: str) -> list:
     alone read as noticeably plainer than that reference."""
     return [
         Paragraph(title.upper(), _section_style),
-        HRFlowable(width="100%", thickness=0.75, color=colors.HexColor("#1a1a1a"), spaceAfter=4),
+        HRFlowable(width="100%", thickness=0.75, color=colors.HexColor("#1a1a1a"), spaceAfter=3),
     ]
 
 
