@@ -307,7 +307,8 @@ def _generate_round_qa(
     say answer for every single one is what actually drives real LLM
     cost/latency (confirmed the hard way: JSON truncation at 8000, then
     16000, then per-round at 6000 and 12000 max_tokens, before this
-    existed). answer_target caps how many get a full drafted answer;
+    existed; adding possible_follow_ups per qa_pair pushed real output past
+    8000 again -- bumped to 12000). answer_target caps how many get a full drafted answer;
     anything beyond that still surfaces in other_possible_questions
     (question text only) instead of vanishing -- many of those are
     answerable by adapting a nearby drafted answer anyway. Defaults low
@@ -432,7 +433,7 @@ def _generate_round_qa(
             "Do not wrap the output in markdown code fences."
         ),
         temperature=0.4,
-        max_tokens=8000,
+        max_tokens=12000,
     )
     return parse_json_response(raw)
 
