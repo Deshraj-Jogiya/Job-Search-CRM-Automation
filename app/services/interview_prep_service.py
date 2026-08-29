@@ -308,7 +308,13 @@ def _generate_round_qa(
     cost/latency (confirmed the hard way: JSON truncation at 8000, then
     16000, then per-round at 6000 and 12000 max_tokens, before this
     existed; adding possible_follow_ups per qa_pair pushed real output past
-    8000 again -- bumped to 12000). answer_target caps how many get a full drafted answer;
+    8000 again -- bumped to 12000, then to 24000 headroom for instances that
+    raise answer_target well above its default, e.g. a candidate wanting
+    every realistic question answered for one specific, urgent
+    application). This max_tokens ceiling is pure headroom -- it doesn't
+    change output for anyone still at a low answer_target, only matters
+    once someone asks for enough drafted answers to need the room.
+    answer_target caps how many get a full drafted answer;
     anything beyond that still surfaces in other_possible_questions
     (question text only) instead of vanishing -- many of those are
     answerable by adapting a nearby drafted answer anyway. Defaults low
@@ -440,7 +446,7 @@ def _generate_round_qa(
             "Do not wrap the output in markdown code fences."
         ),
         temperature=0.4,
-        max_tokens=12000,
+        max_tokens=24000,
     )
     return parse_json_response(raw)
 
