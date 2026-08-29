@@ -57,8 +57,8 @@ _role_style = ParagraphStyle("RoleStyle", parent=_styles["Normal"], fontSize=9.7
 _role_italic_style = ParagraphStyle("RoleItalicStyle", parent=_styles["Normal"], fontSize=9.2, fontName="Helvetica-Oblique", spaceAfter=0)
 _meta_style = ParagraphStyle("MetaStyle", parent=_styles["Normal"], fontSize=8.3, textColor=colors.grey, spaceAfter=1)
 _meta_right_style = ParagraphStyle("MetaRightStyle", parent=_meta_style, alignment=TA_RIGHT)
-_body_style = ParagraphStyle("BodyStyle", parent=_styles["Normal"], fontSize=8.7, leading=10.6, spaceAfter=4)
-_bullet_style = ParagraphStyle("BulletStyle", parent=_styles["Normal"], fontSize=8.7, leading=10.6, leftIndent=13, spaceAfter=0.5)
+_body_style = ParagraphStyle("BodyStyle", parent=_styles["Normal"], fontSize=8.7, leading=10.3, spaceAfter=3.5)
+_bullet_style = ParagraphStyle("BulletStyle", parent=_styles["Normal"], fontSize=8.7, leading=10.3, leftIndent=13, spaceAfter=0.3)
 
 _CONTENT_WIDTH = letter[0] - 1.1 * inch  # page width minus left+right margins (0.55in each)
 
@@ -133,7 +133,7 @@ def render_resume_pdf(resume_content: dict) -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=letter,
-        topMargin=0.45 * inch, bottomMargin=0.4 * inch,
+        topMargin=0.4 * inch, bottomMargin=0.35 * inch,
         leftMargin=0.55 * inch, rightMargin=0.55 * inch,
     )
     flow = [Paragraph(_esc(resume_content.get("name") or ""), _name_style)]
