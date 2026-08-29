@@ -9,7 +9,11 @@ coverage until now."""
 
 from unittest.mock import patch
 
-from app.services.interview_prep_service import _generate_predicted_rounds, check_answer_grounding
+from app.services.interview_prep_service import (
+    _generate_predicted_rounds,
+    _strip_confidential_projects,
+    check_answer_grounding,
+)
 
 
 def test_check_answer_grounding_flags_uncited_metric():
@@ -99,3 +103,27 @@ def test_generate_predicted_rounds_preserves_order_under_concurrency():
 
     for i, round_ in enumerate(result["rounds"]):
         assert round_["qa_pairs"][0]["question"] == f"Round {i}"
+
+
+def test_strip_confidential_projects_removes_flagged_entries():
+    profile = {
+        "projects": [
+            {"name": "Personal Solo Project", "bullets": ["Built X."]},
+            {"name": "Team NDA Project", "bullets": ["Contributed to Y."], "confidential": True},
+        ],
+        "experience": [{"title": "Engineer"}],
+    }
+    result = _strip_confidential_projects(profile)
+    names = [p["name"] for p in result["projects"]]
+    assert names == ["Personal Solo Project"]
+    assert result["experience"] == [{"title": "Engineer"}]
+
+
+def test_strip_confidential_projects_no_op_when_none_flagged():
+    profile = {"projects": [{"name": "A"}, {"name": "B"}]}
+    result = _strip_confidential_projects(profile)
+    assert result == profile
+
+
+def test_strip_confidential_projects_handles_missing_projects_key():
+    assert _strip_confidential_projects({"experience": []}) == {"experience": []}
