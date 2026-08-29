@@ -366,7 +366,9 @@ def _tailor_summary_skills(profile_content: dict, jd_text: str) -> dict:
         system="You are an expert resume writer. You return only raw JSON.",
         prompt=(
             "Tailor this candidate's professional summary and skills grouping to align with the job "
-            "description. Do not fabricate anything.\n\n"
+            "description. Do not fabricate anything. Keep the summary to 3 concise sentences (roughly "
+            "4-5 lines on a resume) -- a resume summary is a hook, not a full recap of the skills section "
+            "that follows it.\n\n"
             f"Candidate Profile:\n{json.dumps(profile_content, indent=2)}\n\n"
             f"Job Description:\n{jd_text}\n\n"
             "Respond with EXACTLY this JSON shape:\n"
