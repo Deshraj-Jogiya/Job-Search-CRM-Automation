@@ -58,7 +58,22 @@ _role_italic_style = ParagraphStyle("RoleItalicStyle", parent=_styles["Normal"],
 _meta_style = ParagraphStyle("MetaStyle", parent=_styles["Normal"], fontSize=8.3, textColor=colors.grey, spaceAfter=1)
 _meta_right_style = ParagraphStyle("MetaRightStyle", parent=_meta_style, alignment=TA_RIGHT)
 _body_style = ParagraphStyle("BodyStyle", parent=_styles["Normal"], fontSize=8.7, leading=10.3, spaceAfter=3.5)
-_bullet_style = ParagraphStyle("BulletStyle", parent=_styles["Normal"], fontSize=8.7, leading=10.3, leftIndent=13, spaceAfter=0.3)
+# bulletIndent < leftIndent is what actually produces a hanging indent --
+# the bullet character sits at bulletIndent, the paragraph's own text
+# (first line AND every wrapped continuation line) starts at leftIndent.
+# This style used to be paired with a literal "- " typed into the bullet
+# text instead of reportlab's real bulletText mechanism -- that put
+# "- " and the text on the exact same left edge for every line, so a
+# bullet that wrapped to a second line had its continuation flush with
+# the dash instead of hanging under the actual text start, reading as
+# visibly uneven/misaligned wherever a bullet ran past one line (which
+# is most of them at this content density). See every Paragraph(...,
+# bulletText="-") call below -- this style alone doesn't fix anything
+# unless paired with that.
+_bullet_style = ParagraphStyle(
+    "BulletStyle", parent=_styles["Normal"], fontSize=8.7, leading=10.3,
+    leftIndent=13, bulletIndent=0, spaceAfter=0.3,
+)
 
 _CONTENT_WIDTH = letter[0] - 1.1 * inch  # page width minus left+right margins (0.55in each)
 
@@ -180,7 +195,7 @@ def render_resume_pdf(resume_content: dict) -> bytes:
             flow.append(_two_col_row(job.get("role"), job.get("date"), _role_italic_style, _meta_right_style))
             flow.append(Spacer(1, 0.5))
             for bullet in job.get("bullets", []):
-                flow.append(Paragraph(f"- {_esc(bullet)}", _bullet_style))
+                flow.append(Paragraph(_esc(bullet), _bullet_style, bulletText="-"))
             flow.append(Spacer(1, 2))
 
     projects = resume_content.get("projects") or []
@@ -193,7 +208,7 @@ def render_resume_pdf(resume_content: dict) -> bytes:
             ))
             flow.append(Spacer(1, 0.5))
             for bullet in proj.get("bullets", []):
-                flow.append(Paragraph(f"- {_esc(bullet)}", _bullet_style))
+                flow.append(Paragraph(_esc(bullet), _bullet_style, bulletText="-"))
             flow.append(Spacer(1, 2))
 
     education = resume_content.get("education") or []
@@ -208,7 +223,7 @@ def render_resume_pdf(resume_content: dict) -> bytes:
     if certifications:
         flow += _section_header("Certifications")
         for cert in certifications:
-            flow.append(Paragraph(f"- {_esc(cert)}", _bullet_style))
+            flow.append(Paragraph(_esc(cert), _bullet_style, bulletText="-"))
 
     doc.build(flow)
     return buf.getvalue()
@@ -223,7 +238,12 @@ _cheat_round_style = ParagraphStyle(
     textColor=colors.HexColor("#1a1a1a"),
 )
 _cheat_meta_style = ParagraphStyle("CheatMetaStyle", parent=_styles["Normal"], fontSize=7.5, textColor=colors.grey, spaceAfter=3)
-_cheat_cue_style = ParagraphStyle("CheatCueStyle", parent=_styles["Normal"], fontSize=8.5, leading=11, leftIndent=10, spaceAfter=2)
+# Same hanging-indent fix as _bullet_style above -- bulletIndent < leftIndent
+# so a wrapped cue line aligns under the text, not under the dash.
+_cheat_cue_style = ParagraphStyle(
+    "CheatCueStyle", parent=_styles["Normal"], fontSize=8.5, leading=11,
+    leftIndent=10, bulletIndent=0, spaceAfter=2,
+)
 
 
 def render_interview_prep_cheat_sheet_pdf(
@@ -251,17 +271,17 @@ def render_interview_prep_cheat_sheet_pdf(
     if general_prep and general_prep.get("strengths_to_emphasize"):
         flow.append(Paragraph("STRENGTHS TO EMPHASIZE", _cheat_round_style))
         for s in general_prep["strengths_to_emphasize"]:
-            flow.append(Paragraph(f"- {_esc(s)}", _cheat_cue_style))
+            flow.append(Paragraph(_esc(s), _cheat_cue_style, bulletText="-"))
 
     if general_prep and general_prep.get("potential_gaps_to_address"):
         flow.append(Paragraph("GAPS TO ADDRESS HONESTLY IF RAISED", _cheat_round_style))
         for g in general_prep["potential_gaps_to_address"]:
-            flow.append(Paragraph(f"- {_esc(g)}", _cheat_cue_style))
+            flow.append(Paragraph(_esc(g), _cheat_cue_style, bulletText="-"))
 
     if company_prep and company_prep.get("why_this_company_talking_points"):
         flow.append(Paragraph("WHY THIS COMPANY", _cheat_round_style))
         for t in company_prep["why_this_company_talking_points"]:
-            flow.append(Paragraph(f"- {_esc(t)}", _cheat_cue_style))
+            flow.append(Paragraph(_esc(t), _cheat_cue_style, bulletText="-"))
 
     for round_ in (predicted_rounds or {}).get("rounds", []):
         header = round_.get("round_name", "")
