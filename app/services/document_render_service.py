@@ -44,23 +44,23 @@ from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer,
 
 _styles = getSampleStyleSheet()
 
-_name_style = ParagraphStyle("NameStyle", parent=_styles["Title"], fontSize=18, spaceAfter=2)
+_name_style = ParagraphStyle("NameStyle", parent=_styles["Title"], fontSize=17, spaceAfter=2)
 _contact_style = ParagraphStyle(
-    "ContactStyle", parent=_styles["Normal"], fontSize=9, textColor=colors.grey,
-    spaceAfter=10, alignment=TA_CENTER,
+    "ContactStyle", parent=_styles["Normal"], fontSize=8.5, textColor=colors.grey,
+    spaceAfter=7, alignment=TA_CENTER,
 )
 _section_style = ParagraphStyle(
-    "SectionStyle", parent=_styles["Heading2"], fontSize=11, spaceBefore=12, spaceAfter=2,
+    "SectionStyle", parent=_styles["Heading2"], fontSize=10.5, spaceBefore=8, spaceAfter=1,
     textColor=colors.HexColor("#1a1a1a"), borderPadding=0,
 )
-_role_style = ParagraphStyle("RoleStyle", parent=_styles["Normal"], fontSize=10.5, fontName="Helvetica-Bold", spaceAfter=1)
-_role_italic_style = ParagraphStyle("RoleItalicStyle", parent=_styles["Normal"], fontSize=10, fontName="Helvetica-Oblique", spaceAfter=1)
-_meta_style = ParagraphStyle("MetaStyle", parent=_styles["Normal"], fontSize=9, textColor=colors.grey, spaceAfter=3)
+_role_style = ParagraphStyle("RoleStyle", parent=_styles["Normal"], fontSize=10, fontName="Helvetica-Bold", spaceAfter=0)
+_role_italic_style = ParagraphStyle("RoleItalicStyle", parent=_styles["Normal"], fontSize=9.5, fontName="Helvetica-Oblique", spaceAfter=0)
+_meta_style = ParagraphStyle("MetaStyle", parent=_styles["Normal"], fontSize=8.5, textColor=colors.grey, spaceAfter=2)
 _meta_right_style = ParagraphStyle("MetaRightStyle", parent=_meta_style, alignment=TA_RIGHT)
-_body_style = ParagraphStyle("BodyStyle", parent=_styles["Normal"], fontSize=9.5, leading=13, spaceAfter=8)
-_bullet_style = ParagraphStyle("BulletStyle", parent=_styles["Normal"], fontSize=9.5, leading=13, leftIndent=14, spaceAfter=2)
+_body_style = ParagraphStyle("BodyStyle", parent=_styles["Normal"], fontSize=9, leading=11.5, spaceAfter=5)
+_bullet_style = ParagraphStyle("BulletStyle", parent=_styles["Normal"], fontSize=9, leading=11.5, leftIndent=14, spaceAfter=1)
 
-_CONTENT_WIDTH = letter[0] - 1.4 * inch  # page width minus left+right margins (0.7in each)
+_CONTENT_WIDTH = letter[0] - 1.2 * inch  # page width minus left+right margins (0.6in each)
 
 _TWO_COL_TABLE_STYLE = TableStyle([
     ("LEFTPADDING", (0, 0), (-1, -1), 0),
@@ -82,13 +82,24 @@ def _section_header(title: str) -> list:
     ]
 
 
-def _two_col_row(left, right, left_style, right_style) -> Table:
+def _two_col_row(left, right, left_style, right_style, left_link: str = None) -> Table:
     """A left-aligned cell and a right-aligned cell sharing one line
     (company + location, role + dates, degree + GPA) -- the reference
     format's defining structural trait, and something a plain
-    Paragraph can't do without tab stops or a table."""
+    Paragraph can't do without tab stops or a table.
+
+    left_link (only ever passed for a project's name row) appends a
+    clickable "| GitHub" -- reportlab's Paragraph markup supports
+    <a href=""> natively (see this module's docstring for why <img> is
+    the actually-dangerous tag, not this one), so this is a real
+    clickable link in the rendered PDF, not just text. The URL itself
+    still goes through _esc() before being interpolated into the href
+    attribute, same discipline as every other dynamic string here."""
+    left_text = _esc(left or "")
+    if left_link:
+        left_text += f' &nbsp;|&nbsp; <a href="{_esc(left_link)}"><font color="#2563eb"><u>GitHub</u></font></a>'
     table = Table(
-        [[Paragraph(_esc(left or ""), left_style), Paragraph(_esc(right or ""), right_style)]],
+        [[Paragraph(left_text, left_style), Paragraph(_esc(right or ""), right_style)]],
         colWidths=[_CONTENT_WIDTH * 0.65, _CONTENT_WIDTH * 0.35],
     )
     table.setStyle(_TWO_COL_TABLE_STYLE)
@@ -122,8 +133,8 @@ def render_resume_pdf(resume_content: dict) -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=letter,
-        topMargin=0.6 * inch, bottomMargin=0.6 * inch,
-        leftMargin=0.7 * inch, rightMargin=0.7 * inch,
+        topMargin=0.5 * inch, bottomMargin=0.5 * inch,
+        leftMargin=0.6 * inch, rightMargin=0.6 * inch,
     )
     flow = [Paragraph(_esc(resume_content.get("name") or ""), _name_style)]
     flow += [Paragraph(line, _contact_style) for line in _contact_lines(resume_content.get("contact") or {})]
@@ -145,21 +156,23 @@ def render_resume_pdf(resume_content: dict) -> bytes:
         for job in experience:
             flow.append(_two_col_row(job.get("company"), job.get("location"), _role_style, _meta_right_style))
             flow.append(_two_col_row(job.get("role"), job.get("date"), _role_italic_style, _meta_right_style))
-            flow.append(Spacer(1, 2))
+            flow.append(Spacer(1, 1))
             for bullet in job.get("bullets", []):
                 flow.append(Paragraph(f"- {_esc(bullet)}", _bullet_style))
-            flow.append(Spacer(1, 4))
+            flow.append(Spacer(1, 3))
 
     projects = resume_content.get("projects") or []
     if projects:
         flow += _section_header("Key Projects")
         for proj in projects:
             tech = ", ".join(proj.get("technologies") or [])
-            flow.append(_two_col_row(proj.get("name"), tech, _role_style, _meta_right_style))
-            flow.append(Spacer(1, 2))
+            flow.append(_two_col_row(
+                proj.get("name"), tech, _role_style, _meta_right_style, left_link=proj.get("github_url"),
+            ))
+            flow.append(Spacer(1, 1))
             for bullet in proj.get("bullets", []):
                 flow.append(Paragraph(f"- {_esc(bullet)}", _bullet_style))
-            flow.append(Spacer(1, 4))
+            flow.append(Spacer(1, 3))
 
     education = resume_content.get("education") or []
     if education:
@@ -167,7 +180,7 @@ def render_resume_pdf(resume_content: dict) -> bytes:
         for edu in education:
             flow.append(_two_col_row(edu.get("school"), edu.get("location"), _role_style, _meta_right_style))
             flow.append(_two_col_row(edu.get("degree"), edu.get("date"), _role_italic_style, _meta_right_style))
-            flow.append(Spacer(1, 4))
+            flow.append(Spacer(1, 3))
 
     certifications = resume_content.get("certifications") or []
     if certifications:
