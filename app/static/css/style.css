@@ -659,6 +659,55 @@ html.light-theme .flag-warning {
     color: var(--text-primary);
 }
 
+/* Interview-prep round headers need to read as major, distinct
+   sections when scanning a long page -- the generic .sub-panel summary
+   style above (small, muted) is right for minor secondary panels like
+   "Sources" or "Log a networking insight", but was also being reused
+   for round titles, making them just as easy to skim past as anything
+   else on the page. */
+.round-panel {
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-top: 20px;
+    background: var(--input-bg);
+}
+
+.round-panel .round-summary {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 10px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+
+.round-panel .round-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    height: 24px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--grad-primary);
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.round-panel .round-title {
+    color: var(--text-primary);
+}
+
+.round-panel .round-interviewer {
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
 .version-history {
     list-style: none;
     padding: 0;
