@@ -108,8 +108,30 @@ def _two_col_row(left, right, left_style, right_style, left_link: str = None) ->
 
 _KNOWN_ACRONYMS = {"ai", "llm", "llms", "bi", "ml", "etl", "elt", "sql", "ui", "ux", "api", "qa"}
 
+# A generic word-by-word capitalize/uppercase pass reads as visibly
+# broken for real category keys -- "llms" fully uppercased ("LLMS")
+# isn't how anyone writes it (LLMs), and a key with no underscore
+# standing in for "and" renders as a run-on noun pile ("Devops Tooling
+# Analytics", "Data Engineering Cloud Platforms") instead of a real
+# section title. Real user feedback (2026-08-29): this read as an
+# unpolished, obviously-generated label on an otherwise clean resume.
+# Explicit overrides for the category keys this app's own seed profile
+# actually uses; falls through to the generic heuristic below for any
+# other fork's differently-named categories rather than assuming this
+# exact key set.
+_CATEGORY_TITLE_OVERRIDES = {
+    "generative_ai_llms_agentic_frameworks": "Generative AI, LLMs & Agentic Frameworks",
+    "machine_learning_deep_learning": "Machine Learning & Deep Learning",
+    "data_engineering_cloud_platforms": "Data Engineering & Cloud Platforms",
+    "full_stack_software_engineering": "Full-Stack Software Engineering",
+    "devops_tooling_analytics": "DevOps, Tooling & Analytics",
+}
+
 
 def _humanize_skill_category(category: str) -> str:
+    override = _CATEGORY_TITLE_OVERRIDES.get(category.lower())
+    if override:
+        return override
     words = category.replace("_", " ").split()
     return " ".join(w.upper() if w.lower() in _KNOWN_ACRONYMS else w.capitalize() for w in words)
 

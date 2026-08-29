@@ -82,6 +82,18 @@ def test_humanize_skill_category_capitalizes_and_uppercases_acronyms():
     assert _humanize_skill_category("ai_ml") == "AI ML"
 
 
+def test_humanize_skill_category_uses_explicit_overrides_for_known_categories():
+    # Real bug: the generic word-by-word pass produced "Generative AI LLMS
+    # Agentic Frameworks" (LLMs fully uppercased) and "Devops Tooling
+    # Analytics" (no "&", reads as a run-on noun pile) -- visibly
+    # unpolished on an otherwise clean resume.
+    assert _humanize_skill_category("generative_ai_llms_agentic_frameworks") == "Generative AI, LLMs & Agentic Frameworks"
+    assert _humanize_skill_category("devops_tooling_analytics") == "DevOps, Tooling & Analytics"
+    assert _humanize_skill_category("machine_learning_deep_learning") == "Machine Learning & Deep Learning"
+    assert _humanize_skill_category("data_engineering_cloud_platforms") == "Data Engineering & Cloud Platforms"
+    assert _humanize_skill_category("full_stack_software_engineering") == "Full-Stack Software Engineering"
+
+
 def test_render_resume_pdf_produces_a_real_pdf():
     pdf_bytes = render_resume_pdf(_FULL_CONTENT)
     assert pdf_bytes.startswith(b"%PDF")
