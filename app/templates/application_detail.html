@@ -193,8 +193,12 @@
             </div>
             {% endif %}
             {% for round in predicted_rounds.rounds %}
-            <details class="sub-panel" open>
-                <summary>{{ loop.index }}. {{ round.round_name }}{% if round.likely_interviewer %} &middot; likely run by: {{ round.likely_interviewer }}{% endif %}</summary>
+            <details class="sub-panel round-panel" open>
+                <summary class="round-summary">
+                    <span class="round-number">{{ loop.index }}</span>
+                    <span class="round-title">{{ round.round_name }}</span>
+                    {% if round.likely_interviewer %}<span class="round-interviewer">likely run by: {{ round.likely_interviewer }}</span>{% endif %}
+                </summary>
                 <p class="muted-note">{{ round.what_it_tests }}</p>
                 {% if round.prep_focus %}
                 <p><strong>Prep focus</strong></p>
