@@ -570,6 +570,30 @@ def _generate_company_prep(
     return parse_json_response(raw)
 
 
+def _strip_confidential_projects(profile_content: dict) -> dict:
+    """A project entry can be marked {"confidential": true} when the
+    candidate genuinely can't discuss it -- team/client work under an
+    NDA or ownership constraint, not something a resume bullet's
+    existence implies permission to detail out loud. Interview prep and
+    mock-interview feedback generate content a candidate might actually
+    SAY in a real interview, so this filters those entries out of the
+    grounding data entirely before it ever reaches the LLM -- not just a
+    prompt instruction asking it to avoid them, which a model can miss or
+    ignore. A resume bullet for a confidential project can still exist on
+    the actual resume (tailoring isn't affected by this); this only keeps
+    it out of material used to draft something spoken. Real incident:
+    found 2026-08-29 when a batch of personal-vs-team project confusion
+    surfaced 5 real team projects sitting unflagged among otherwise-solo
+    entries in this candidate's live profile."""
+    projects = profile_content.get("projects")
+    if not projects:
+        return profile_content
+    filtered = [p for p in projects if not p.get("confidential")]
+    if len(filtered) == len(projects):
+        return profile_content
+    return {**profile_content, "projects": filtered}
+
+
 def resolve_grounding_profile(db: Session, application: JobApplication) -> tuple[dict, int, bool]:
     """Prefer the resume actually tailored/submitted for THIS application
     over the raw base profile -- a tailored resume can emphasize
@@ -592,6 +616,7 @@ def resolve_grounding_profile(db: Session, application: JobApplication) -> tuple
         .first()
     )
     profile_content = json.loads(tailored_resume.content) if tailored_resume else base_profile_content
+    profile_content = _strip_confidential_projects(profile_content)
     return profile_content, variant_id, bool(tailored_resume)
 
 
