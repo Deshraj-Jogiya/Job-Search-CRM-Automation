@@ -229,7 +229,12 @@ def _generate_round_structure(
     per-round instead of all at once (a single call trying to hold full
     drafted answers for an uncapped number of rounds kept truncating
     mid-JSON at both 8000 and 16000 max_tokens in real testing -- this
-    isn't a bigger-number problem, it's a decomposition problem)."""
+    isn't a bigger-number problem, it's a decomposition problem). Even
+    this phase's own output can truncate for a company with a genuinely
+    long real process (e.g. a ~7-9 round consulting-style pipeline) once
+    answering_method_guidance is added on top of every round's fields --
+    confirmed truncating mid-JSON at 3000 max_tokens against a real
+    McKinsey/QuantumBlack process, hence 4500 here."""
     llm = get_llm_provider()
     if process_research.get("summary"):
         research_block = (
@@ -282,7 +287,7 @@ def _generate_round_structure(
             "arbitrarily trimmed-down list. Do not wrap the output in markdown code fences."
         ),
         temperature=0.4,
-        max_tokens=3000,
+        max_tokens=4500,
     )
     return parse_json_response(raw)
 
