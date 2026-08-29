@@ -14,6 +14,7 @@ keyword match while the letter itself is weak, or vice versa.
 """
 
 import json
+import re
 
 from sqlalchemy.orm import Session
 
@@ -282,9 +283,49 @@ def _find_unsupported_keywords(original_profile_content: dict, resolved_keywords
             keyword_touches_group = any(term in kw_lower for term in group)
             if keyword_touches_group and any(equivalent in haystack for equivalent in group):
                 return True
+        # A keyword bundling real tool names inside descriptive wording
+        # ("Terraform (Infrastructure as Code)", "Automated agent
+        # evaluation tooling (LangSmith/Opik/Langfuse)") fails the exact-
+        # phrase check above even when the real profile lists the exact
+        # same tools under different surrounding phrasing ("Terraform
+        # (IaC)", "LLMOps & Automated Agent Evaluation (LangSmith, Opik,
+        # Langfuse)"). Real confirmed false positive (2026-08-29): all
+        # three of Terraform, LangSmith/Opik/Langfuse, and a third case
+        # were genuinely in the profile's skills list, just worded
+        # differently than the JD-extraction pass's phrasing. Checking
+        # each atomic term (parenthetical contents, comma/slash-
+        # separated pieces) individually catches this without loosening
+        # the check for keywords that are genuinely just one made-up
+        # concept with no real term anywhere in the profile.
+        if any(term in haystack for term in _extract_candidate_terms(keyword)):
+            return True
         return False
 
     return [kw for kw in resolved_keywords if not _is_supported(kw)]
+
+
+def _extract_candidate_terms(keyword: str) -> list:
+    """Breaks a JD-derived keyword phrase into its atomic technology
+    terms -- the parts most likely to be literal, checkable tool/product
+    names, as opposed to the surrounding descriptive language a JD-
+    extraction pass tends to wrap around them. Pulls out parenthetical
+    content separately from the text around it, then splits on the
+    comma/slash/'and'/'&' separators real JD phrases use to bundle
+    several real tool names together. Short generic words are dropped
+    (len < 3) but this stays intentionally permissive otherwise -- a
+    false match here only means a real keyword-not-fabricated call, the
+    same posture as the equivalence-group check right above it."""
+    terms = []
+    paren_match = re.search(r"\(([^)]*)\)", keyword)
+    parts = [keyword]
+    if paren_match:
+        parts = [keyword[: paren_match.start()], paren_match.group(1)]
+    for part in parts:
+        for piece in re.split(r"[,/&]|\band\b", part, flags=re.IGNORECASE):
+            piece = piece.strip(" ()").lower()
+            if len(piece) >= 3:
+                terms.append(piece)
+    return terms
 
 
 def _tailor_summary_skills(profile_content: dict, jd_text: str) -> dict:
