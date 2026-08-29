@@ -29,13 +29,15 @@ MAX_REFINE_PASSES = 2
 # Hard, mechanical cap on how many projects can land in a tailored
 # resume -- the LLM is told to select by relevance, not by count, but
 # this still bounds real-world resume length regardless of what it
-# returns. Enforced in code, not just prompt wording. Lowered from 6 to
-# 4 (2026-08-29): a real generation at 6 projects + full experience
-# bullets rendered to 4 physical pages, well past the 1-2 page market
-# standard for this candidate's experience level -- 6 was sized around
-# "don't hide a strong project," not around what a real resume can
-# physically hold at readable density.
-_MAX_TAILORED_PROJECTS = 4
+# returns. Enforced in code, not just prompt wording. Lowered 6 -> 4
+# -> 3 (2026-08-29): a real generation at 6 projects + full experience
+# bullets rendered to 4 physical pages, 4 projects still overflowed to
+# 3 pages by about half a page even after aggressive PDF density
+# tightening. 3 matches the user's own real reference resume (7
+# experience roles + 3 projects, confirmed to fit cleanly in 2 pages
+# with the same bullet density this pipeline already produces) --
+# genuinely the number that fits, not an arbitrary round number.
+_MAX_TAILORED_PROJECTS = 3
 
 # Tools genuinely interchangeable at a skill level, within a single
 # narrow category -- e.g. real hands-on Tableau experience is honest
@@ -102,7 +104,7 @@ def _tailor_experience_and_projects_pass(experience: list, projects: list, jd_te
             "underlying skill genuinely transfers even though the product name doesn't match. Never claim "
             "hands-on use of the JD's specific tool itself if the candidate has never touched it.\n\n"
             "For projects specifically: select based on genuine relevance to THIS job description, not a "
-            "fixed count -- include as many or as few as are actually strong matches (up to 4). A project "
+            "fixed count -- include as many or as few as are actually strong matches (up to 3). A project "
             "belongs in the selection because its real technologies or outcomes would matter to whoever "
             "reads this JD, not to hit a target number. Rewrite each selected project into 3 concise, "
             "metrics-driven bullets using the same real-evidence-only rules as experience above.\n\n"
@@ -120,12 +122,12 @@ def _tailor_experience_and_projects_pass(experience: list, projects: list, jd_te
             "}\n"
             "experience must have the same roles, same order, same dates as the input -- only bullets "
             "change. projects must each be a real project from the input (same name), selected by "
-            "relevance, at most 4. Do not wrap the output in markdown code fences."
+            "relevance, at most 3. Do not wrap the output in markdown code fences."
         ),
         temperature=0.3,
         # Default complete_json budget (2000 tokens) was sized for a
         # single section (just experience, or just summary/skills/3
-        # projects) -- this call asks for experience AND up to 4
+        # projects) -- this call asks for experience AND up to 3
         # projects together, and a real run hit real truncation (a
         # response cut off mid-string fails JSON parsing outright, not
         # a graceful partial result). Sized generously, not tightly,
