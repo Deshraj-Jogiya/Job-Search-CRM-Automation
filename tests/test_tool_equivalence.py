@@ -79,3 +79,35 @@ def test_verbose_jd_phrase_still_flagged_when_genuinely_unsupported():
 def test_exact_single_term_group_matches_still_work_after_the_substring_change():
     profile = {"skills": {"bi_tools": ["Tableau"]}}
     assert _find_unsupported_keywords(profile, ["Power BI"]) == []
+
+
+# Real false positive (2026-08-29): a JD-derived keyword bundling real
+# tool names inside descriptive wording never matched the profile's own,
+# differently-phrased skill entry, even with the exact same tools listed.
+# "Terraform (Infrastructure as Code)", "Automated agent evaluation
+# tooling (LangSmith/Opik/Langfuse)", and "CI/CD for data workflows" all
+# got flagged as unsupported for a QuantumBlack tailoring run despite the
+# real profile listing "Terraform (IaC)" and "LLMOps & Automated Agent
+# Evaluation (LangSmith, Opik, Langfuse)" verbatim elsewhere. Fixed by
+# also checking each atomic term inside the keyword (parenthetical
+# contents, comma/slash-separated pieces) against the profile, not just
+# the keyword's exact full-phrase text or a curated equivalence group.
+
+def test_keyword_with_real_tool_name_before_parenthetical_is_supported():
+    profile = {"skills": {"devops": ["Terraform (IaC)"]}}
+    result = _find_unsupported_keywords(profile, ["Terraform (Infrastructure as Code)"])
+    assert result == []
+
+
+def test_keyword_bundling_several_real_tools_in_parens_is_supported():
+    profile = {"skills": {"llmops": ["LLMOps & Automated Agent Evaluation (LangSmith, Opik, Langfuse)"]}}
+    result = _find_unsupported_keywords(
+        profile, ["Automated agent evaluation tooling (LangSmith/Opik/Langfuse)"]
+    )
+    assert result == []
+
+
+def test_keyword_with_no_real_matching_atomic_term_still_flagged():
+    profile = {"skills": {"devops": ["Docker", "Kubernetes"]}}
+    result = _find_unsupported_keywords(profile, ["Infrastructure automation (Pulumi/Chef)"])
+    assert result == ["Infrastructure automation (Pulumi/Chef)"]
