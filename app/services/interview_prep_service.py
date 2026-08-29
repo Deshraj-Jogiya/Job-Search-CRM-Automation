@@ -144,16 +144,58 @@ def _research_interview_process(db: Session, company_name: str, job_title: str) 
     if not is_tavily_configured():
         return {"summary": "", "sources": []}
     try:
-        results = tavily_search(
+        general_results = tavily_search(
             db,
-            f"{company_name} {job_title} interview process rounds format questions candidate experience",
-            max_results=5,
+            f"{company_name} {job_title} interview process rounds format questions candidate experience "
+            "Glassdoor Blind Reddit real interview experience",
+            max_results=6,
         )
     except Exception:
+        general_results = []
+    # A separate, dedicated query for the recruiter/HR screen specifically --
+    # candidates reporting on a company's overall process tend to focus on
+    # the technical/case rounds and skim past the recruiter call in one
+    # sentence, so it needs its own search to get real texture (what it
+    # actually covers, how long, what they're screening for) instead of
+    # inheriting whatever scraps the general query happens to surface.
+    try:
+        recruiter_results = tavily_search(
+            db,
+            f"{company_name} recruiter phone screen HR call what to expect questions asked real experience",
+            max_results=4,
+        )
+    except Exception:
+        recruiter_results = []
+    results = general_results + recruiter_results
+    if not results:
         return {"summary": "", "sources": []}
     snippets = [r.get("content", "")[:500] for r in results if r.get("content")]
-    sources = [r.get("url") for r in results if r.get("url")]
+    sources = list(dict.fromkeys(r.get("url") for r in results if r.get("url")))
     return {"summary": "\n\n".join(snippets), "sources": sources}
+
+
+def _research_company_reputation(db: Session, company_name: str) -> str:
+    """Best-effort, never raises. Distinct from _light_company_research
+    (what the company does) -- this hunts specifically for real public
+    criticism/controversy, so 'why this company' and values-fit answers
+    can be genuinely informed rather than naive PR-brochure enthusiasm. A
+    candidate who's never heard of a company's real controversies sounds
+    unprepared if an interviewer probes; one who can acknowledge it with
+    informed nuance (and explain their real reasons for wanting in
+    anyway) sounds like someone who did actual homework. An empty string
+    means the caller doesn't force this angle -- not every company has a
+    well-known controversy, and nothing should be invented if none was
+    found."""
+    if not is_tavily_configured():
+        return ""
+    try:
+        results = tavily_search(
+            db, f"{company_name} controversy criticism ethics reputation concerns", max_results=4
+        )
+    except Exception:
+        return ""
+    snippets = [r.get("content", "")[:400] for r in results if r.get("content")]
+    return "\n\n".join(snippets)
 
 
 def _format_confirmed_stories(confirmed_stories: list) -> str:
@@ -211,6 +253,17 @@ def _generate_round_structure(
             f"Lay out a realistic, thorough round-by-round interview process structure for a candidate "
             f"interviewing for {job_title} at {company_name}.\n\n{research_block}"
             f"Job Description:\n{jd_text}\n\n"
+            "Also identify the real ANSWERING METHOD this candidate should use, grounded in whatever real "
+            "process research is above and current (2026) market practice for this type of interview -- not "
+            "a generic \"use STAR\" platitude. If research above shows this company/round uses a distinctive "
+            "format (e.g. a consulting-style Personal Experience Interview built around ONE deep story per "
+            "session with 10-25 rapid-fire follow-ups probing exact words/reasoning/reflection, versus a "
+            "standard behavioral round where a single 90-120s STAR-shaped answer is the whole response), say "
+            "so explicitly and explain how that changes preparation (e.g. 'have 2 stories ready per core "
+            "trait this firm evaluates, not just one generic answer per question -- each must survive deep "
+            "follow-up drilling, not just sound good once'). If no distinctive format was found in research, "
+            "default to explaining standard STAR (Situation, Task, Action, Result) delivered in roughly 90-"
+            "120 seconds, which is still the 2026 market default for behavioral rounds.\n\n"
             "Respond with EXACTLY this JSON shape:\n"
             "{\n"
             '  "rounds": [\n'
@@ -221,6 +274,7 @@ def _generate_round_structure(
             '      "prep_focus": ["pointer", "..."]\n'
             "    }\n"
             "  ],\n"
+            '  "answering_method_guidance": "2-4 sentences: the real answering method/format to use, grounded as described above",\n'
             '  "grounded_in_real_research": true or false\n'
             "}\n"
             "Do not artificially limit yourself to a fixed number of rounds -- include as many as are "
@@ -236,6 +290,7 @@ def _generate_round_structure(
 def _generate_round_qa(
     round_info: dict, job_title: str, company_name: str, jd_text: str,
     profile_content: dict, confirmed_stories: list, publications: list, answer_target: int,
+    reputation_research: str = "", answering_method_guidance: str = "",
 ) -> dict:
     """Phase 2: full drafted answers + questions_to_ask_them for ONE
     round. Called once per round (in parallel -- see _generate_predicted_
@@ -282,6 +337,28 @@ def _generate_round_qa(
             "would recognize the company's technical publications -- do NOT cite specific articles here.\n"
         )
 
+    reputation_block = ""
+    if reputation_research:
+        reputation_block = (
+            "\nReal, publicly reported criticism/controversy found about this company -- if this round could "
+            "plausibly raise a \"why this company\" / values-fit / \"how do you feel about X\" question, the "
+            "draft_answer should sound like someone who did real homework, not someone naively reciting "
+            "brochure enthusiasm. That means: acknowledge awareness of the real issue if directly relevant, "
+            "then give the candidate's own genuine, specific reason for still wanting to join (not a "
+            "dismissal of the concern, and not fabricated inside knowledge of the company's remediation --  "
+            "only reference the company's actual public response if it's part of the research below). Do NOT "
+            "force this into every answer -- only where a values/motivation question would realistically "
+            "surface it:\n"
+            f"{reputation_research}\n"
+        )
+
+    method_block = ""
+    if answering_method_guidance:
+        method_block = (
+            f"\nThe real answering method/format expected for this company's process (use this to shape "
+            f"draft_answer structure and pacing, not just as a note to the candidate): {answering_method_guidance}\n"
+        )
+
     raw = llm.complete_json(
         system="You are an expert interview coach. You return only raw JSON.",
         prompt=(
@@ -290,7 +367,7 @@ def _generate_round_qa(
             f"(likely run by: {round_info.get('likely_interviewer', 'unknown')}).\n\n"
             f"Job Description:\n{jd_text}\n\n"
             f"Candidate's Real Profile:\n{json.dumps(profile_content, indent=2)}\n"
-            f"{stories_block}{publications_block}\n"
+            f"{stories_block}{publications_block}{reputation_block}{method_block}\n"
             "Draft actual ready-to-say answers, not just topics to mention -- a candidate should be able "
             "to read a draft_answer aloud as a real response, then adapt it in their own words. Keep each "
             "draft_answer realistic spoken length -- what a person would actually say in 60-90 seconds "
@@ -323,6 +400,15 @@ def _generate_round_qa(
             "genuinely deep. Cover realistic curveballs too (a gap, a tradeoff that didn't pan out, a "
             "disagreement with a teammate), not just the flattering questions. Also draft a few "
             "questions_to_ask_them appropriate to who's running this specific round.\n\n"
+            "For every qa_pair whose category is behavioral, motivation, or background: also fill "
+            "possible_follow_ups with the realistic probing/cross-questions a sharp interviewer would ask "
+            "AFTER hearing that draft_answer -- do NOT answer these, just list the questions themselves, the "
+            "way a real interviewer digs deeper (\"what exactly did you say in that moment,\" \"how did the "
+            "other person react,\" \"what would you have done differently,\" \"what did that experience "
+            "change about how you work now,\" \"walk me through the moment you realized X\"). Include enough "
+            "that the candidate can't just have one rehearsed paragraph and call it done -- a thin list here "
+            "defeats the purpose. For logistics/technical qa_pairs, possible_follow_ups can be a shorter "
+            "list or empty if the question genuinely doesn't invite probing.\n\n"
             f"First, think about every realistically distinct question this round could cover -- don't cap "
             f"that list. Then draft a full, ready-to-say answer (qa_pairs) for up to {answer_target} of the "
             f"most important/likely ones (fewer is fine if the round genuinely has less ground to cover). "
@@ -333,7 +419,7 @@ def _generate_round_qa(
             "Respond with EXACTLY this JSON shape:\n"
             "{\n"
             '  "qa_pairs": [\n'
-            '    {"question": "...", "category": "background|motivation|logistics|technical|behavioral", "draft_answer": "full ready-to-say answer", "quick_reference": "one short line -- the cue to glance at during the actual call, not the full answer"}\n'
+            '    {"question": "...", "category": "background|motivation|logistics|technical|behavioral", "draft_answer": "full ready-to-say answer", "quick_reference": "one short line -- the cue to glance at during the actual call, not the full answer", "possible_follow_ups": ["realistic follow-up question, not answered", "..."]}\n'
             "  ],\n"
             '  "other_possible_questions": ["...", "..."],\n'
             '  "questions_to_ask_them": ["...", "..."]\n'
@@ -349,9 +435,11 @@ def _generate_round_qa(
 def _generate_predicted_rounds(
     job_title: str, company_name: str, jd_text: str, process_research: dict,
     profile_content: dict, confirmed_stories: list, publications: list, answer_target: int,
+    reputation_research: str = "",
 ) -> dict:
     structure = _generate_round_structure(job_title, company_name, jd_text, process_research)
     rounds = structure.get("rounds", [])
+    answering_method_guidance = structure.get("answering_method_guidance", "")
 
     # Each round's Q&A call is independent of the others (same shared
     # inputs, no cross-round dependency), so they run concurrently
@@ -362,7 +450,7 @@ def _generate_predicted_rounds(
         qa_results = list(pool.map(
             lambda r: _generate_round_qa(
                 r, job_title, company_name, jd_text, profile_content, confirmed_stories, publications,
-                answer_target,
+                answer_target, reputation_research, answering_method_guidance,
             ),
             rounds,
         ))
@@ -405,7 +493,8 @@ def _generate_general_prep(profile_content: dict, jd_text: str) -> dict:
 
 
 def _generate_company_prep(
-    company_name: str, job_title: str, jd_text: str, research: str, publications: list
+    company_name: str, job_title: str, jd_text: str, research: str, publications: list,
+    reputation_research: str = "",
 ) -> dict:
     llm = get_llm_provider()
     if research or publications:
@@ -425,12 +514,24 @@ def _generate_company_prep(
             "description's own specific language instead of generic boilerplate, and set "
             "grounded_in_real_research to false.\n\n"
         )
+    reputation_block = ""
+    if reputation_research:
+        reputation_block = (
+            "Real, publicly reported criticism/controversy found about this company:\n"
+            f"{reputation_research}\n\n"
+            "why_this_company_talking_points should read like someone who did real homework, not brochure "
+            "enthusiasm -- it's fine and expected for one talking point to show informed awareness of the "
+            "real issue above alongside a genuine, specific reason for still wanting to join (e.g. citing "
+            "the company's own real remediation steps if they appear in the research, or the candidate's "
+            "own values-based reasoning) -- never a naive answer that reads as if the candidate has never "
+            "heard of it, and never a dismissal of the concern as unimportant.\n\n"
+        )
     raw = llm.complete_json(
         system="You are an expert interview coach. You return only raw JSON.",
         prompt=(
             f"Generate company-specific interview prep for a candidate interviewing for {job_title} at "
             f"{company_name}.\n\n"
-            f"{research_block}"
+            f"{research_block}{reputation_block}"
             f"Job Description:\n{jd_text}\n\n"
             "Respond with EXACTLY this JSON shape:\n"
             "{\n"
@@ -499,13 +600,14 @@ def generate_interview_prep(db: Session, application_id: int) -> JobApplication:
         general = _generate_general_prep(profile_content, jd_text)
         research = _light_company_research(db, posting.company_name_raw)
         publications = _research_company_publications(db, posting.company_name_raw)
+        reputation_research = _research_company_reputation(db, posting.company_name_raw)
         company = _generate_company_prep(
-            posting.company_name_raw, posting.job_title, jd_text, research, publications
+            posting.company_name_raw, posting.job_title, jd_text, research, publications, reputation_research,
         )
         process_research = _research_interview_process(db, posting.company_name_raw, posting.job_title)
         predicted_rounds = _generate_predicted_rounds(
             posting.job_title, posting.company_name_raw, jd_text, process_research,
-            profile_content, confirmed_stories, publications, answer_target,
+            profile_content, confirmed_stories, publications, answer_target, reputation_research,
         )
     except Exception as e:
         raise InterviewPrepServiceError(f"Interview prep generation failed: {e}") from e
