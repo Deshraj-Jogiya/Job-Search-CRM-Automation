@@ -75,6 +75,7 @@
             </div>
             {% if resume_doc %}
             <p class="muted-note">Resume ATS score: <strong>{{ resume_doc.ats_score }}%</strong> &middot; generated {{ resume_doc.generated_at.strftime("%Y-%m-%d %H:%M") }} UTC</p>
+            <a href="/jobs/{{ application.id }}/tailored/resume/download" class="btn-secondary">Download Resume PDF</a>
             <details class="sub-panel">
                 <summary>Tailored resume JSON</summary>
                 <pre class="json-preview">{{ resume_doc.content }}</pre>
@@ -82,6 +83,7 @@
             {% endif %}
             {% if cl_doc %}
             <p class="muted-note">Cover letter score: <strong>{{ cl_doc.ats_score }}%</strong> &middot; generated {{ cl_doc.generated_at.strftime("%Y-%m-%d %H:%M") }} UTC</p>
+            <a href="/jobs/{{ application.id }}/tailored/cover_letter/download" class="btn-secondary">Download Cover Letter PDF</a>
             <details class="sub-panel">
                 <summary>Tailored cover letter</summary>
                 <pre class="json-preview">{{ cl_doc.content }}</pre>

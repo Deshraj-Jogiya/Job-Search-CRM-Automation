@@ -529,6 +529,51 @@ def tailor_application_now(application_id: int, db: Session = Depends(get_db)):
     )
 
 
+@router.get("/{application_id}/tailored/{document_type}/download")
+def download_tailored_document(application_id: int, document_type: str, db: Session = Depends(get_db)):
+    """Renders a real PDF from the same content this app already
+    generates for the actual browser-autofill upload (see
+    autofill_service.py, which calls these same render_* functions to
+    produce the file it attaches to a real application form) -- until
+    now that rendering only ever happened invisibly mid-autofill, so a
+    candidate wanting to preview or manually attach the resume/cover
+    letter had nothing but a raw JSON dump on the page to work with."""
+    if document_type not in ("resume", "cover_letter"):
+        raise HTTPException(status_code=404, detail="Unknown document type")
+    application = (
+        db.query(JobApplication).options(joinedload(JobApplication.posting))
+        .filter(JobApplication.id == application_id).first()
+    )
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+    doc = (
+        db.query(TailoredDocument)
+        .filter(TailoredDocument.application_id == application_id, TailoredDocument.document_type == document_type)
+        .first()
+    )
+    if not doc:
+        return _redirect_detail(application_id, error="Nothing tailored yet -- generate it first.")
+
+    if document_type == "resume":
+        pdf_bytes = document_render_service.render_resume_pdf(doc.content)
+    else:
+        resume_doc = (
+            db.query(TailoredDocument)
+            .filter(TailoredDocument.application_id == application_id, TailoredDocument.document_type == "resume")
+            .first()
+        )
+        candidate_name = json.loads(resume_doc.content).get("name", "") if resume_doc else ""
+        pdf_bytes = document_render_service.render_cover_letter_pdf(doc.content, candidate_name)
+
+    name_part = "resume" if document_type == "resume" else "cover-letter"
+    filename = f"{name_part}-{application.posting.company_name_raw}-{application.posting.job_title}.pdf".replace(" ", "-")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.post("/{application_id}/interview-prep")
 def generate_interview_prep_now(application_id: int, db: Session = Depends(get_db)):
     application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
