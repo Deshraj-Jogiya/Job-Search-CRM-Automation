@@ -44,23 +44,43 @@ from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer,
 
 _styles = getSampleStyleSheet()
 
-_name_style = ParagraphStyle("NameStyle", parent=_styles["Title"], fontSize=16, spaceAfter=1)
+_name_style = ParagraphStyle("NameStyle", parent=_styles["Title"], fontSize=16, spaceAfter=0)
+# Every content style below has spaceBefore=spaceAfter=0, no exceptions.
+# Real bug (2026-08-29, second pass): the first uniform-spacing fix added
+# one consistent Spacer before every section title, but each style STILL
+# carried its own leftover spaceAfter (_body_style 3.5, _bullet_style
+# 0.3) -- and reportlab does NOT collapse an explicit Spacer with a
+# neighboring paragraph's spaceAfter the way two paragraphs' spaceBefore/
+# spaceAfter collapse with each other; it just adds on top. Measured with
+# pdfplumber (not assumed): section titles preceded by a body_style line
+# landed ~20pt below it, titles preceded by a bullet_style line landed
+# ~17pt below it, purely from that leftover 3.2pt difference in the
+# invisible style, not from anything visible in the content. Every
+# paragraph in this document now contributes exactly zero automatic
+# spacing -- render_resume_pdf's SECTION_GAP/ENTRY_GAP/LINE_GAP spacers
+# are the only source of vertical rhythm anywhere in the page, so there
+# is nothing left that can vary by which style happens to trail.
 _contact_style = ParagraphStyle(
-    "ContactStyle", parent=_styles["Normal"], fontSize=8.3, textColor=colors.grey,
-    spaceAfter=5, alignment=TA_CENTER,
+    "ContactStyle", parent=_styles["Normal"], fontSize=8.3, leading=10,
+    textColor=colors.grey, spaceAfter=0, alignment=TA_CENTER,
 )
 _section_style = ParagraphStyle(
-    # spaceBefore=0 deliberately -- see render_resume_pdf's SECTION_GAP
-    # comment for why this section relies on one explicit Spacer instead
-    # of paragraph auto-spacing.
-    "SectionStyle", parent=_styles["Heading2"], fontSize=10, spaceBefore=0, spaceAfter=0,
+    "SectionStyle", parent=_styles["Heading2"], fontSize=10, leading=12, spaceBefore=0, spaceAfter=0,
     textColor=colors.HexColor("#1a1a1a"), borderPadding=0,
 )
-_role_style = ParagraphStyle("RoleStyle", parent=_styles["Normal"], fontSize=9.7, fontName="Helvetica-Bold", spaceAfter=0)
-_role_italic_style = ParagraphStyle("RoleItalicStyle", parent=_styles["Normal"], fontSize=9.2, fontName="Helvetica-Oblique", spaceAfter=0)
-_meta_style = ParagraphStyle("MetaStyle", parent=_styles["Normal"], fontSize=8.3, textColor=colors.grey, spaceAfter=1)
+_role_style = ParagraphStyle(
+    "RoleStyle", parent=_styles["Normal"], fontSize=9.7, leading=11.5,
+    fontName="Helvetica-Bold", spaceBefore=0, spaceAfter=0,
+)
+_role_italic_style = ParagraphStyle(
+    "RoleItalicStyle", parent=_styles["Normal"], fontSize=9.2, leading=11,
+    fontName="Helvetica-Oblique", spaceBefore=0, spaceAfter=0,
+)
+_meta_style = ParagraphStyle(
+    "MetaStyle", parent=_styles["Normal"], fontSize=8.3, leading=11, textColor=colors.grey, spaceAfter=0,
+)
 _meta_right_style = ParagraphStyle("MetaRightStyle", parent=_meta_style, alignment=TA_RIGHT)
-_body_style = ParagraphStyle("BodyStyle", parent=_styles["Normal"], fontSize=8.7, leading=10.3, spaceAfter=3.5)
+_body_style = ParagraphStyle("BodyStyle", parent=_styles["Normal"], fontSize=8.7, leading=10.3, spaceAfter=0)
 # bulletIndent < leftIndent is what actually produces a hanging indent --
 # the bullet character sits at bulletIndent, the paragraph's own text
 # (first line AND every wrapped continuation line) starts at leftIndent.
@@ -75,7 +95,7 @@ _body_style = ParagraphStyle("BodyStyle", parent=_styles["Normal"], fontSize=8.7
 # unless paired with that.
 _bullet_style = ParagraphStyle(
     "BulletStyle", parent=_styles["Normal"], fontSize=8.7, leading=10.3,
-    leftIndent=13, bulletIndent=0, spaceAfter=0.3,
+    leftIndent=13, bulletIndent=0, spaceAfter=0,
 )
 
 _CONTENT_WIDTH = letter[0] - 1.1 * inch  # page width minus left+right margins (0.55in each)
@@ -170,28 +190,39 @@ def render_resume_pdf(resume_content: dict) -> bytes:
     if isinstance(resume_content, str):
         resume_content = json.loads(resume_content)
 
-    # Real bug (2026-08-29): the gap before a section title used to
-    # depend on what kind of flowable happened to precede it -- a plain
-    # Paragraph's spaceAfter collapses (reportlab takes the max of it and
-    # the next flowable's spaceBefore) but an explicit Spacer() does NOT
-    # collapse, it just adds fixed height on top. Mixing both meant
-    # "PROFESSIONAL EXPERIENCE" (preceded by a Paragraph) and "KEY
-    # PROJECTS" (preceded by a per-entry Spacer) ended up with visibly
-    # different amounts of lead-in space, and Certifications -- whose
-    # entries never had a trailing Spacer at all -- looked different
-    # again. Fixed by picking ONE mechanism and using it everywhere:
-    # every section title gets this exact same explicit gap, unconditionally,
-    # and every entry within a section gets this exact same gap between
-    # it and the one before -- no flowable anywhere else in this
-    # function carries its own spaceBefore/spaceAfter for structural
-    # spacing, so there's nothing left to combine unpredictably.
-    SECTION_GAP = Spacer(1, 6)
-    ENTRY_GAP = Spacer(1, 3)
+    # Every paragraph style used in this function has spaceBefore=
+    # spaceAfter=0 (see the style definitions above) -- ALL vertical
+    # rhythm on the page comes from exactly these three named gaps,
+    # nothing else. Second real bug on this same issue (2026-08-29):
+    # the first uniform-spacing pass added one consistent Spacer before
+    # every section title, but each style still carried its own leftover
+    # spaceAfter, and reportlab does NOT collapse an explicit Spacer with
+    # a neighboring paragraph's spaceAfter the way two paragraphs'
+    # spaceBefore/spaceAfter collapse with each other -- it just adds on
+    # top. Measured with pdfplumber (not assumed): section titles
+    # preceded by a body_style line landed ~20pt below it, titles
+    # preceded by a bullet_style line landed ~17pt below it, purely from
+    # the 3.2pt difference in each style's own invisible spaceAfter, with
+    # nothing different visible in the actual content. Zeroing every
+    # style's own spacing and inserting these three gaps explicitly,
+    # every time, is what actually makes the rhythm identical everywhere
+    # -- there's nothing left that can vary by which style happens to
+    # trail a section.
+    SECTION_GAP = Spacer(1, 8)  # before every section title, always
+    ENTRY_GAP = Spacer(1, 5)    # between entries within a section (jobs, projects, degrees)
+    LINE_GAP = Spacer(1, 2)     # between individual lines within one block (bullets, skill categories, cert lines, contact lines)
 
     def _entries(items):
         """Yields (is_first, item) -- callers prepend ENTRY_GAP for
         every item except the first, so spacing between entries within
         a section is identical everywhere this is used."""
+        for i, item in enumerate(items):
+            yield i == 0, item
+
+    def _lines(items):
+        """Same as _entries but for LINE_GAP -- a separate helper (not
+        reused) so a future change to entry vs. line spacing can't
+        accidentally couple the two."""
         for i, item in enumerate(items):
             yield i == 0, item
 
@@ -202,7 +233,10 @@ def render_resume_pdf(resume_content: dict) -> bytes:
         leftMargin=0.55 * inch, rightMargin=0.55 * inch,
     )
     flow = [Paragraph(_esc(resume_content.get("name") or ""), _name_style)]
-    flow += [Paragraph(line, _contact_style) for line in _contact_lines(resume_content.get("contact") or {})]
+    for is_first, line in _lines(_contact_lines(resume_content.get("contact") or {})):
+        if not is_first:
+            flow.append(LINE_GAP)
+        flow.append(Paragraph(line, _contact_style))
 
     if resume_content.get("summary"):
         flow.append(SECTION_GAP)
@@ -213,7 +247,9 @@ def render_resume_pdf(resume_content: dict) -> bytes:
     if skills:
         flow.append(SECTION_GAP)
         flow += _section_header("Technical Skills")
-        for category, items in skills.items():
+        for is_first, (category, items) in _lines(list(skills.items())):
+            if not is_first:
+                flow.append(LINE_GAP)
             label = _esc(_humanize_skill_category(category))
             flow.append(Paragraph(f"<b>{label}:</b> {_esc(', '.join(items))}", _body_style))
 
@@ -226,7 +262,9 @@ def render_resume_pdf(resume_content: dict) -> bytes:
                 flow.append(ENTRY_GAP)
             flow.append(_two_col_row(job.get("company"), job.get("location"), _role_style, _meta_right_style))
             flow.append(_two_col_row(job.get("role"), job.get("date"), _role_italic_style, _meta_right_style))
-            for bullet in job.get("bullets", []):
+            for is_first_bullet, bullet in _lines(job.get("bullets", [])):
+                if not is_first_bullet:
+                    flow.append(LINE_GAP)
                 flow.append(Paragraph(_esc(bullet), _bullet_style, bulletText="-"))
 
     projects = resume_content.get("projects") or []
@@ -240,7 +278,9 @@ def render_resume_pdf(resume_content: dict) -> bytes:
             flow.append(_two_col_row(
                 proj.get("name"), tech, _role_style, _meta_right_style, left_link=proj.get("github_url"),
             ))
-            for bullet in proj.get("bullets", []):
+            for is_first_bullet, bullet in _lines(proj.get("bullets", [])):
+                if not is_first_bullet:
+                    flow.append(LINE_GAP)
                 flow.append(Paragraph(_esc(bullet), _bullet_style, bulletText="-"))
 
     education = resume_content.get("education") or []
@@ -257,7 +297,9 @@ def render_resume_pdf(resume_content: dict) -> bytes:
     if certifications:
         flow.append(SECTION_GAP)
         flow += _section_header("Certifications")
-        for cert in certifications:
+        for is_first, cert in _lines(certifications):
+            if not is_first:
+                flow.append(LINE_GAP)
             flow.append(Paragraph(_esc(cert), _bullet_style, bulletText="-"))
 
     doc.build(flow)
