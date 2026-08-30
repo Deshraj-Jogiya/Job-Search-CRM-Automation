@@ -23,7 +23,8 @@ handful of tags this module inserts itself (<b>, <i>, &mdash;, &nbsp;,
 <br/>) are written directly into the f-strings below, never through
 _esc(), so they still render as real markup.
 
-Bullets are a plain ASCII "- " prefix, not a Unicode bullet character --
+Bullets use a plain ASCII "-" as the bullet character (via reportlab's
+real bulletText mechanism, not typed inline), not a Unicode bullet --
 confirmed via pdfplumber that reportlab's base-14 Helvetica font has no
 usable ToUnicode mapping for &bull;, so every bullet point extracted as
 a garbled (cid:N) glyph reference instead of real text. Renders
@@ -40,7 +41,7 @@ from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import HRFlowable, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 _styles = getSampleStyleSheet()
 
@@ -260,12 +261,25 @@ def render_resume_pdf(resume_content: dict) -> bytes:
         for is_first, job in _entries(experience):
             if not is_first:
                 flow.append(ENTRY_GAP)
-            flow.append(_two_col_row(job.get("company"), job.get("location"), _role_style, _meta_right_style))
-            flow.append(_two_col_row(job.get("role"), job.get("date"), _role_italic_style, _meta_right_style))
+            # KeepTogether -- real bug found rendering this exact resume:
+            # each row/bullet of an entry is its own flowable, so with
+            # nothing binding them together reportlab was free to break
+            # the page in the middle of one (observed: "Arizona State
+            # University" alone at the bottom of page 1, its role/dates/
+            # bullets pushed to page 2). A resume entry split across a
+            # page boundary reads as broken formatting, not as a content
+            # decision -- keep the whole entry atomic; if it doesn't fit
+            # in what's left of the page, the WHOLE entry moves down,
+            # never part of it.
+            entry_flow = [
+                _two_col_row(job.get("company"), job.get("location"), _role_style, _meta_right_style),
+                _two_col_row(job.get("role"), job.get("date"), _role_italic_style, _meta_right_style),
+            ]
             for is_first_bullet, bullet in _lines(job.get("bullets", [])):
                 if not is_first_bullet:
-                    flow.append(LINE_GAP)
-                flow.append(Paragraph(_esc(bullet), _bullet_style, bulletText="-"))
+                    entry_flow.append(LINE_GAP)
+                entry_flow.append(Paragraph(_esc(bullet), _bullet_style, bulletText="-"))
+            flow.append(KeepTogether(entry_flow))
 
     projects = resume_content.get("projects") or []
     if projects:
@@ -275,13 +289,16 @@ def render_resume_pdf(resume_content: dict) -> bytes:
             if not is_first:
                 flow.append(ENTRY_GAP)
             tech = ", ".join(proj.get("technologies") or [])
-            flow.append(_two_col_row(
-                proj.get("name"), tech, _role_style, _meta_right_style, left_link=proj.get("github_url"),
-            ))
+            entry_flow = [
+                _two_col_row(
+                    proj.get("name"), tech, _role_style, _meta_right_style, left_link=proj.get("github_url"),
+                ),
+            ]
             for is_first_bullet, bullet in _lines(proj.get("bullets", [])):
                 if not is_first_bullet:
-                    flow.append(LINE_GAP)
-                flow.append(Paragraph(_esc(bullet), _bullet_style, bulletText="-"))
+                    entry_flow.append(LINE_GAP)
+                entry_flow.append(Paragraph(_esc(bullet), _bullet_style, bulletText="-"))
+            flow.append(KeepTogether(entry_flow))
 
     education = resume_content.get("education") or []
     if education:
@@ -290,8 +307,10 @@ def render_resume_pdf(resume_content: dict) -> bytes:
         for is_first, edu in _entries(education):
             if not is_first:
                 flow.append(ENTRY_GAP)
-            flow.append(_two_col_row(edu.get("school"), edu.get("location"), _role_style, _meta_right_style))
-            flow.append(_two_col_row(edu.get("degree"), edu.get("date"), _role_italic_style, _meta_right_style))
+            flow.append(KeepTogether([
+                _two_col_row(edu.get("school"), edu.get("location"), _role_style, _meta_right_style),
+                _two_col_row(edu.get("degree"), edu.get("date"), _role_italic_style, _meta_right_style),
+            ]))
 
     certifications = resume_content.get("certifications") or []
     if certifications:
