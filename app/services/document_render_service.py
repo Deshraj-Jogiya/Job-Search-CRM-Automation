@@ -50,7 +50,10 @@ _contact_style = ParagraphStyle(
     spaceAfter=5, alignment=TA_CENTER,
 )
 _section_style = ParagraphStyle(
-    "SectionStyle", parent=_styles["Heading2"], fontSize=10, spaceBefore=5, spaceAfter=0,
+    # spaceBefore=0 deliberately -- see render_resume_pdf's SECTION_GAP
+    # comment for why this section relies on one explicit Spacer instead
+    # of paragraph auto-spacing.
+    "SectionStyle", parent=_styles["Heading2"], fontSize=10, spaceBefore=0, spaceAfter=0,
     textColor=colors.HexColor("#1a1a1a"), borderPadding=0,
 )
 _role_style = ParagraphStyle("RoleStyle", parent=_styles["Normal"], fontSize=9.7, fontName="Helvetica-Bold", spaceAfter=0)
@@ -167,6 +170,31 @@ def render_resume_pdf(resume_content: dict) -> bytes:
     if isinstance(resume_content, str):
         resume_content = json.loads(resume_content)
 
+    # Real bug (2026-08-29): the gap before a section title used to
+    # depend on what kind of flowable happened to precede it -- a plain
+    # Paragraph's spaceAfter collapses (reportlab takes the max of it and
+    # the next flowable's spaceBefore) but an explicit Spacer() does NOT
+    # collapse, it just adds fixed height on top. Mixing both meant
+    # "PROFESSIONAL EXPERIENCE" (preceded by a Paragraph) and "KEY
+    # PROJECTS" (preceded by a per-entry Spacer) ended up with visibly
+    # different amounts of lead-in space, and Certifications -- whose
+    # entries never had a trailing Spacer at all -- looked different
+    # again. Fixed by picking ONE mechanism and using it everywhere:
+    # every section title gets this exact same explicit gap, unconditionally,
+    # and every entry within a section gets this exact same gap between
+    # it and the one before -- no flowable anywhere else in this
+    # function carries its own spaceBefore/spaceAfter for structural
+    # spacing, so there's nothing left to combine unpredictably.
+    SECTION_GAP = Spacer(1, 6)
+    ENTRY_GAP = Spacer(1, 3)
+
+    def _entries(items):
+        """Yields (is_first, item) -- callers prepend ENTRY_GAP for
+        every item except the first, so spacing between entries within
+        a section is identical everywhere this is used."""
+        for i, item in enumerate(items):
+            yield i == 0, item
+
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=letter,
@@ -177,11 +205,13 @@ def render_resume_pdf(resume_content: dict) -> bytes:
     flow += [Paragraph(line, _contact_style) for line in _contact_lines(resume_content.get("contact") or {})]
 
     if resume_content.get("summary"):
+        flow.append(SECTION_GAP)
         flow += _section_header("Professional Summary")
         flow.append(Paragraph(_esc(resume_content["summary"]), _body_style))
 
     skills = resume_content.get("skills") or {}
     if skills:
+        flow.append(SECTION_GAP)
         flow += _section_header("Technical Skills")
         for category, items in skills.items():
             label = _esc(_humanize_skill_category(category))
@@ -189,38 +219,43 @@ def render_resume_pdf(resume_content: dict) -> bytes:
 
     experience = resume_content.get("experience") or []
     if experience:
+        flow.append(SECTION_GAP)
         flow += _section_header("Professional Experience")
-        for job in experience:
+        for is_first, job in _entries(experience):
+            if not is_first:
+                flow.append(ENTRY_GAP)
             flow.append(_two_col_row(job.get("company"), job.get("location"), _role_style, _meta_right_style))
             flow.append(_two_col_row(job.get("role"), job.get("date"), _role_italic_style, _meta_right_style))
-            flow.append(Spacer(1, 0.5))
             for bullet in job.get("bullets", []):
                 flow.append(Paragraph(_esc(bullet), _bullet_style, bulletText="-"))
-            flow.append(Spacer(1, 2))
 
     projects = resume_content.get("projects") or []
     if projects:
+        flow.append(SECTION_GAP)
         flow += _section_header("Key Projects")
-        for proj in projects:
+        for is_first, proj in _entries(projects):
+            if not is_first:
+                flow.append(ENTRY_GAP)
             tech = ", ".join(proj.get("technologies") or [])
             flow.append(_two_col_row(
                 proj.get("name"), tech, _role_style, _meta_right_style, left_link=proj.get("github_url"),
             ))
-            flow.append(Spacer(1, 0.5))
             for bullet in proj.get("bullets", []):
                 flow.append(Paragraph(_esc(bullet), _bullet_style, bulletText="-"))
-            flow.append(Spacer(1, 2))
 
     education = resume_content.get("education") or []
     if education:
+        flow.append(SECTION_GAP)
         flow += _section_header("Education")
-        for edu in education:
+        for is_first, edu in _entries(education):
+            if not is_first:
+                flow.append(ENTRY_GAP)
             flow.append(_two_col_row(edu.get("school"), edu.get("location"), _role_style, _meta_right_style))
             flow.append(_two_col_row(edu.get("degree"), edu.get("date"), _role_italic_style, _meta_right_style))
-            flow.append(Spacer(1, 2))
 
     certifications = resume_content.get("certifications") or []
     if certifications:
+        flow.append(SECTION_GAP)
         flow += _section_header("Certifications")
         for cert in certifications:
             flow.append(Paragraph(_esc(cert), _bullet_style, bulletText="-"))
