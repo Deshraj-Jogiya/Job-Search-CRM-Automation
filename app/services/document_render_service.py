@@ -41,7 +41,10 @@ from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
-from reportlab.platypus import HRFlowable, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import (
+    BaseDocTemplate, Frame, HRFlowable, KeepTogether, PageTemplate, Paragraph,
+    SimpleDocTemplate, Spacer, Table, TableStyle,
+)
 
 _styles = getSampleStyleSheet()
 
@@ -228,11 +231,32 @@ def render_resume_pdf(resume_content: dict) -> bytes:
             yield i == 0, item
 
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buf, pagesize=letter,
-        topMargin=0.4 * inch, bottomMargin=0.35 * inch,
-        leftMargin=0.55 * inch, rightMargin=0.55 * inch,
+    # BaseDocTemplate + an explicit zero-padding Frame, not
+    # SimpleDocTemplate -- real bug found rendering this exact resume:
+    # SimpleDocTemplate's auto-created default frame carries reportlab's
+    # built-in 6pt leftPadding/rightPadding/topPadding/bottomPadding,
+    # which every plain Paragraph flowable (section titles, summary,
+    # skills) respects, landing 6pt to the right of leftMargin. Passing
+    # leftPadding=0 etc. as SimpleDocTemplate kwargs does NOT reach that
+    # auto-created frame (confirmed empirically -- it has no effect).
+    # _CONTENT_WIDTH's Table-based rows (company/project/education
+    # entries) were sized against the raw margin-to-margin width, not
+    # that padded inner area, so they ended up positioned differently
+    # from the section titles above them -- measured with pdfplumber as
+    # a consistent 6pt horizontal offset, "space before the P" of every
+    # section title relative to the entries under it. A frame built
+    # explicitly with every padding at 0 makes leftMargin the actual,
+    # literal left edge for every flowable, Paragraph or Table alike --
+    # confirmed by measuring both land on the identical x-coordinate.
+    left_margin, right_margin = 0.55 * inch, 0.55 * inch
+    top_margin, bottom_margin = 0.4 * inch, 0.35 * inch
+    page_w, page_h = letter
+    frame = Frame(
+        left_margin, bottom_margin,
+        page_w - left_margin - right_margin, page_h - top_margin - bottom_margin,
+        leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0, id="resume",
     )
+    doc = BaseDocTemplate(buf, pagesize=letter, pageTemplates=[PageTemplate(id="resume", frames=[frame])])
     flow = [Paragraph(_esc(resume_content.get("name") or ""), _name_style)]
     for is_first, line in _lines(_contact_lines(resume_content.get("contact") or {})):
         if not is_first:
