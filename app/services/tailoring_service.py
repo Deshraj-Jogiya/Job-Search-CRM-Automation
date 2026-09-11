@@ -334,6 +334,37 @@ def _find_unsupported_keywords(original_profile_content: dict, resolved_keywords
     return [kw for kw in resolved_keywords if not _is_supported(kw)]
 
 
+def _verify_structural_fidelity(original_experience: list, tailored_experience: list) -> list[str]:
+    """Mechanically verifies the tailoring LLM actually honored its own
+    prompt contract ("same roles, same order, same dates -- only
+    bullets change", see _tailor_experience_and_projects_pass) --
+    prompt wording alone is never a guarantee, same reasoning
+    _find_unsupported_keywords already applies to keyword-level
+    fabrication. Compares by position: role/company/date for entry i
+    must match the original, any mismatch is returned as a
+    human-readable violation string.
+
+    Deliberately narrow -- this only catches an LLM inventing/altering
+    STRUCTURAL facts (a different company, role title, or date range),
+    not fabricated content embedded inside a bullet itself (an
+    invented metric, an invented outcome not in the original bullet).
+    That's a real, separate, harder-to-check-mechanically risk --
+    documented as a known gap rather than attempted here, see
+    tests/test_tailoring_adversarial.py's own findings."""
+    violations = []
+    if len(tailored_experience) != len(original_experience):
+        violations.append(f"Experience entry count changed: {len(original_experience)} -> {len(tailored_experience)}")
+        return violations  # positional comparison below would be meaningless
+
+    for i, (orig, tailored) in enumerate(zip(original_experience, tailored_experience)):
+        for field in ("company", "role", "date"):
+            orig_value = (orig.get(field) or "").strip()
+            tailored_value = (tailored.get(field) or "").strip()
+            if orig_value and tailored_value and orig_value != tailored_value:
+                violations.append(f"Entry {i}: {field} changed from '{orig_value}' to '{tailored_value}'")
+    return violations
+
+
 def _extract_candidate_terms(keyword: str) -> list:
     """Breaks a JD-derived keyword phrase into its atomic technology
     terms -- the parts most likely to be literal, checkable tool/product
@@ -500,6 +531,7 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
 
     resolved_keywords = [kw for kw in initial_missing if kw not in remaining_missing]
     unsupported = _find_unsupported_keywords(profile_content, resolved_keywords)
+    structural_violations = _verify_structural_fidelity(profile_content.get("experience", []), tailored_experience)
 
     resume_doc = {
         "name": profile_content.get("name"),
@@ -538,18 +570,34 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
     application.profile_variant_id = variant_id
     application.status = "Tailored"
 
-    if all_unsupported:
-        application.attention_reason = (
-            "Possible fabrication: the AI tailoring may have claimed experience with "
-            f"{', '.join(all_unsupported)} that doesn't appear anywhere in your real profile. "
-            "Review the tailored resume/cover letter before using them."
-        )[:250]
-        log_activity(
-            db,
-            f"FABRICATION WARNING on '{posting.job_title}' at {posting.company_name_raw}: "
-            f"unsupported keywords {all_unsupported} -- resume/cover letter need manual review.",
-            "WARNING",
-        )
+    if all_unsupported or structural_violations:
+        reason_parts = []
+        if all_unsupported:
+            reason_parts.append(
+                "Possible fabrication: the AI tailoring may have claimed experience with "
+                f"{', '.join(all_unsupported)} that doesn't appear anywhere in your real profile."
+            )
+        if structural_violations:
+            reason_parts.append(
+                "The tailored resume changed structural details that should never change: "
+                f"{'; '.join(structural_violations)}."
+            )
+        reason_parts.append("Review the tailored resume/cover letter before using them.")
+        application.attention_reason = " ".join(reason_parts)[:250]
+        if all_unsupported:
+            log_activity(
+                db,
+                f"FABRICATION WARNING on '{posting.job_title}' at {posting.company_name_raw}: "
+                f"unsupported keywords {all_unsupported} -- resume/cover letter need manual review.",
+                "WARNING",
+            )
+        if structural_violations:
+            log_activity(
+                db,
+                f"STRUCTURAL FIDELITY WARNING on '{posting.job_title}' at {posting.company_name_raw}: "
+                f"{structural_violations} -- resume/cover letter need manual review.",
+                "WARNING",
+            )
     else:
         application.attention_reason = None
 

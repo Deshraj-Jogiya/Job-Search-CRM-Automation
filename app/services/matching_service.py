@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from ..models import JobApplication, ProfileVariant, ProfileVersion
 from .activity_logger import log_activity
 from .llm import get_llm_provider, parse_json_response
+from .scoring_service import recompute_score_breakdown
 
 
 class MatchingServiceError(Exception):
@@ -153,6 +154,8 @@ def score_application(db: Session, application_id: int) -> JobApplication:
     application.visa_sponsorship = result.get("visa_sponsorship", "Unknown")
     application.profile_variant_id = variant_id
     db.commit()
+
+    recompute_score_breakdown(db, application)
 
     log_activity(
         db,

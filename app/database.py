@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import declarative_base, sessionmaker
 
+from .app_mode import assert_database_url_safe_for_mode
+
 
 def utcnow() -> datetime:
     """Drop-in replacement for the deprecated (Python 3.13+)
@@ -23,6 +25,8 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./crm.db")
 
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+assert_database_url_safe_for_mode(DATABASE_URL)
 
 IS_SQLITE = "sqlite" in DATABASE_URL
 

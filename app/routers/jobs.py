@@ -169,6 +169,8 @@ def jobs_page(request: Request, db: Session = Depends(get_db)):
             Company.ashby_slug.isnot(None),
             Company.recruitee_slug.isnot(None),
             Company.personio_slug.isnot(None),
+            Company.workable_slug.isnot(None),
+            Company.smartrecruiters_slug.isnot(None),
         ))
         .order_by(Company.name)
         .all()
@@ -714,6 +716,15 @@ def mark_applied_now(application_id: int, db: Session = Depends(get_db)):
     try:
         confirmation_service.mark_applied(db, application_id)
         return _redirect_detail(application_id, message="Marked as Applied.")
+    except ConfirmationServiceError as e:
+        return _redirect_detail(application_id, error=str(e))
+
+
+@router.post("/{application_id}/mark-replied")
+def mark_replied_now(application_id: int, db: Session = Depends(get_db)):
+    try:
+        confirmation_service.mark_replied(db, application_id)
+        return _redirect_detail(application_id, message="Marked as Replied.")
     except ConfirmationServiceError as e:
         return _redirect_detail(application_id, error=str(e))
 

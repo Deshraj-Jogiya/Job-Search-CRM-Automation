@@ -6,7 +6,9 @@
 
 {% block nav %}
 <a href="/jobs/review">Review Queue</a>
+<a href="/queue">Queue</a>
 <a href="/analytics">Analytics</a>
+<a href="/metrics">Metrics</a>
 {% endblock %}
 
 {% block content %}
@@ -184,12 +186,13 @@
 <section class="settings-panel">
     <h2>Target Companies (Direct ATS Boards)</h2>
     <p class="muted-note">
-        Greenhouse/Lever/Ashby/Recruitee/Personio board links are auto-detected from company names seen via
-        LinkedIn/Adzuna (a few each time a search runs). Add or correct one manually below if a company you care
-        about wasn't picked up -- it's the short id in that company's careers page URL, e.g.
+        Greenhouse/Lever/Ashby/Recruitee/Personio/Workable/SmartRecruiters board links are auto-detected from
+        company names seen via LinkedIn/Adzuna (a few each time a search runs). Add or correct one manually below
+        if a company you care about wasn't picked up -- it's the short id in that company's careers page URL, e.g.
         boards.greenhouse.io/<strong>stripe</strong>, jobs.lever.co/<strong>netflix</strong>,
         jobs.ashbyhq.com/<strong>notion</strong>, <strong>notion</strong>.recruitee.com,
-        <strong>notion</strong>.jobs.personio.com.
+        <strong>notion</strong>.jobs.personio.com, apply.workable.com/<strong>notion</strong>, or
+        SmartRecruiters' own company identifier (e.g. jobs.smartrecruiters.com/<strong>notion</strong>).
     </p>
     <form method="post" action="/jobs/companies/slug" class="inline-form-row">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -202,6 +205,8 @@
             <option value="ashby">Ashby</option>
             <option value="recruitee">Recruitee</option>
             <option value="personio">Personio</option>
+            <option value="workable">Workable</option>
+            <option value="smartrecruiters">SmartRecruiters</option>
         </select>
         <label class="visually-hidden" for="slug-input">Careers page id</label>
         <input type="text" id="slug-input" name="slug" placeholder="careers page id" required>
@@ -217,6 +222,8 @@
             {% if c.ashby_slug %}<span class="badge badge-active">ashby: {{ c.ashby_slug }}</span>{% endif %}
             {% if c.recruitee_slug %}<span class="badge badge-active">recruitee: {{ c.recruitee_slug }}</span>{% endif %}
             {% if c.personio_slug %}<span class="badge badge-active">personio: {{ c.personio_slug }}</span>{% endif %}
+            {% if c.workable_slug %}<span class="badge badge-active">workable: {{ c.workable_slug }}</span>{% endif %}
+            {% if c.smartrecruiters_slug %}<span class="badge badge-active">smartrecruiters: {{ c.smartrecruiters_slug }}</span>{% endif %}
         </li>
         {% endfor %}
     </ul>

@@ -329,11 +329,20 @@
         <section class="variant-block">
             <h2>Applied</h2>
             <p class="muted-note">Marked applied {{ application.applied_at.strftime("%Y-%m-%d %H:%M") }} UTC.</p>
+            {% if application.replied_at %}
+            <p class="muted-note">Marked replied {{ application.replied_at.strftime("%Y-%m-%d %H:%M") }} UTC.</p>
+            {% endif %}
             <p class="muted-note">
                 None of this is inferred automatically -- there's no inbox scanning in this build, so update it
-                yourself as things happen. It's what makes the analytics page's conversion numbers real.
+                yourself as things happen. It's what makes the analytics/metrics pages' conversion numbers real.
             </p>
             <div class="pending-actions">
+                {% if not application.replied_at %}
+                <form method="post" action="/jobs/{{ application.id }}/mark-replied" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn-secondary">Mark as Replied</button>
+                </form>
+                {% endif %}
                 <form method="post" action="/jobs/{{ application.id }}/mark-interviewing" class="inline-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <button type="submit">Mark as Interviewing</button>

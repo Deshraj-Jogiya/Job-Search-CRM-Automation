@@ -1,0 +1,31 @@
+{
+  "name_patterns": [
+    "\\buniversity\\b",
+    "\\bcollege\\b",
+    "institute of technology",
+    "\\bpolytechnic\\b",
+    "\\bschool of medicine\\b"
+  ],
+  "curated_employers": [
+    {"name": "Lawrence Berkeley National Laboratory", "category": "national_lab"},
+    {"name": "Oak Ridge National Laboratory", "category": "national_lab"},
+    {"name": "Argonne National Laboratory", "category": "national_lab"},
+    {"name": "Los Alamos National Laboratory", "category": "national_lab"},
+    {"name": "Sandia National Laboratories", "category": "national_lab"},
+    {"name": "Pacific Northwest National Laboratory", "category": "national_lab"},
+    {"name": "Brookhaven National Laboratory", "category": "national_lab"},
+    {"name": "Fermi National Accelerator Laboratory", "category": "national_lab"},
+    {"name": "NASA Jet Propulsion Laboratory", "category": "national_lab"},
+    {"name": "National Institutes of Health", "category": "government_research"},
+    {"name": "Howard Hughes Medical Institute", "category": "nonprofit_research"},
+    {"name": "Broad Institute", "category": "nonprofit_research"},
+    {"name": "Mayo Clinic", "category": "nonprofit_research"},
+    {"name": "Cleveland Clinic", "category": "nonprofit_research"},
+    {"name": "Memorial Sloan Kettering Cancer Center", "category": "nonprofit_research"},
+    {"name": "MITRE Corporation", "category": "nonprofit_research"},
+    {"name": "RAND Corporation", "category": "nonprofit_research"},
+    {"name": "Battelle Memorial Institute", "category": "nonprofit_research"},
+    {"name": "SRI International", "category": "nonprofit_research"},
+    {"name": "Allen Institute", "category": "nonprofit_research"}
+  ]
+}

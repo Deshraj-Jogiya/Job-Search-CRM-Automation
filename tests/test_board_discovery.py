@@ -164,3 +164,73 @@ def test_probe_lever_uses_the_still_public_v0_endpoint_not_the_auth_walled_v1():
         assert board_discovery._probe_lever("some-real-board") is True
 
     assert captured_urls == ["https://api.lever.co/v0/postings/some-real-board"]
+
+
+class TestProbeWorkable:
+    """Confirmed live (2026-09-10): a "notion" Workable slug belongs to a
+    small unrelated UK events agency, not the productivity company -- a
+    200 with a real jobs list is NOT enough on its own, the response's
+    own `name` field must cross-check against the target. (Two real
+    companies that happen to share the exact same short name can't be
+    disambiguated by name alone -- same accepted limitation
+    _probe_recruitee already has; the case covered here is the more
+    common one, an unrelated company with a different real name that
+    simply guessed the same slug.)"""
+
+    def test_accepts_matching_company_name(self):
+        resp = _fake_response(json_data={"name": "Stripe", "jobs": []})
+        with patch.object(board_discovery.requests, "get", return_value=resp):
+            assert board_discovery._probe_workable("stripe", "Stripe") is True
+
+    def test_rejects_same_slug_different_company(self):
+        resp = _fake_response(json_data={"name": "Notion Events Agency", "jobs": []})
+        with patch.object(board_discovery.requests, "get", return_value=resp):
+            assert board_discovery._probe_workable("notion", "Stripe") is False
+
+    def test_rejects_non_200(self):
+        resp = _fake_response(status_code=404)
+        with patch.object(board_discovery.requests, "get", return_value=resp):
+            assert board_discovery._probe_workable("nope", "Stripe") is False
+
+
+class TestProbeSmartRecruiters:
+    """Confirmed live (2026-09-10): the Postings API returns 200 +
+    totalFound: 0 for a completely nonexistent company identifier -- a
+    200 status alone proves nothing here, unlike every other ATS probe
+    in this module. Only a nonzero totalFound plus a company.name
+    cross-check counts as a real match."""
+
+    def test_rejects_200_with_zero_postings_even_for_a_fake_identifier(self):
+        resp = _fake_response(json_data={"offset": 0, "limit": 1, "totalFound": 0, "content": []})
+        with patch.object(board_discovery.requests, "get", return_value=resp):
+            assert board_discovery._probe_smartrecruiters("totally-fake-co", "Stripe") is False
+
+    def test_accepts_matching_company_name_with_postings(self):
+        resp = _fake_response(
+            json_data={
+                "totalFound": 1,
+                "content": [{"company": {"identifier": "stripe", "name": "Stripe"}}],
+            }
+        )
+        with patch.object(board_discovery.requests, "get", return_value=resp):
+            assert board_discovery._probe_smartrecruiters("stripe", "Stripe") is True
+
+    def test_rejects_same_identifier_different_company(self):
+        resp = _fake_response(
+            json_data={
+                "totalFound": 1,
+                "content": [{"company": {"identifier": "acme", "name": "Some Unrelated Acme"}}],
+            }
+        )
+        with patch.object(board_discovery.requests, "get", return_value=resp):
+            assert board_discovery._probe_smartrecruiters("acme", "Acme Corp Totally Different") is False
+
+
+class TestDiscoverSlugsIncludesNewPlatforms:
+    def test_result_dict_has_all_seven_platforms(self):
+        resp = _fake_response(status_code=404)
+        with patch.object(board_discovery.requests, "get", return_value=resp):
+            result = board_discovery.discover_slugs("Some Company")
+        assert set(result.keys()) == {
+            "greenhouse", "lever", "ashby", "recruitee", "personio", "workable", "smartrecruiters",
+        }
