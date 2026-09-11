@@ -26,13 +26,12 @@ via mark_sent_manually().
 
 import re
 import threading
-from datetime import timedelta
 
 import dns.resolver
 from sqlalchemy.orm import Session
 
 from ..database import utcnow
-from ..models import JobApplication, OutreachMessage, get_or_create_settings
+from ..models import JobApplication, OutreachMessage
 from .activity_logger import log_activity
 from .email_utils import is_smtp_configured, send_email
 from .llm import get_llm_provider
@@ -43,12 +42,12 @@ _EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
 
 _VALID_CHANNELS = ("email", "linkedin_connection", "linkedin_inmail")
 
-# Guards the daily-cap check-then-send-then-commit sequence in
-# send_outreach() -- without it, two concurrent requests in this
-# process could both read the same under-cap count and both send,
-# exceeding daily_outreach_cap. A single-process in-memory lock is
-# sufficient here since this app runs as one process (see README/
-# ARCHITECTURE for the local-first deployment model).
+# Guards send_outreach()'s check-then-send-then-commit sequence --
+# without it, two concurrent requests (e.g. a double-click) could both
+# read the same "still Approved" status and both actually send the
+# email. A single-process in-memory lock is sufficient here since this
+# app runs as one process (see README/ARCHITECTURE for the local-first
+# deployment model).
 _send_lock = threading.Lock()
 
 
@@ -211,19 +210,15 @@ def reject_outreach(db: Session, message_id: int) -> OutreachMessage:
     return message
 
 
-def sent_count_last_24h(db: Session) -> int:
-    cutoff = utcnow() - timedelta(hours=24)
-    return (
-        db.query(OutreachMessage)
-        .filter(OutreachMessage.status == "Sent", OutreachMessage.sent_at >= cutoff)
-        .count()
-    )
-
-
 def send_outreach(db: Session, message_id: int) -> OutreachMessage:
     """The only place a real email actually goes out. Only ever called
     from a live request triggered by an explicit user click -- never
-    from the scheduler, never on a timer. See module docstring."""
+    from the scheduler, never on a timer. See module docstring. No
+    daily volume ceiling here by design -- this platform counts what
+    happened, it doesn't set or enforce a target number of messages
+    per day (see models.py's GlobalSettings outreach docstring); the
+    per-person/per-company hygiene caps in outreach_hygiene.py are the
+    only outreach guardrails, checked at draft time, not here."""
     message = db.query(OutreachMessage).filter(OutreachMessage.id == message_id).first()
     if not message:
         raise OutreachServiceError(f"Outreach message {message_id} not found.")
@@ -239,10 +234,9 @@ def send_outreach(db: Session, message_id: int) -> OutreachMessage:
         raise OutreachServiceError("SMTP is not configured -- add SMTP_USER/SMTP_PASSWORD to .env first.")
 
     with _send_lock:
-        settings = get_or_create_settings(db)
-        sent_today = sent_count_last_24h(db)
-        if sent_today >= settings.daily_outreach_cap:
-            raise OutreachServiceError(f"Daily outreach cap ({settings.daily_outreach_cap}) already reached today.")
+        db.refresh(message)
+        if message.status != "Approved":
+            raise OutreachServiceError(f"Message is '{message.status}', not Approved.")
 
         try:
             send_email(message.recipient_address, message.subject, message.body)

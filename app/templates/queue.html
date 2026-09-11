@@ -19,17 +19,6 @@
 <div class="flash flash-error" role="alert">{{ error }}</div>
 {% endif %}
 
-<section class="summary-cards">
-    <div class="card">
-        <span class="card-label">Applications Today</span>
-        <span class="card-value">{{ counters.applications_today }} / {{ counters.applications_target_min }}-{{ counters.applications_target_max }}</span>
-    </div>
-    <div class="card">
-        <span class="card-label">Outreach Touches Today</span>
-        <span class="card-value">{{ counters.outreach_today }} / {{ counters.outreach_target }}</span>
-    </div>
-</section>
-
 {% macro queue_table(applications, empty_message) %}
 {% if applications %}
 <div class="table-scroll">
