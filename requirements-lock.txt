@@ -29,6 +29,12 @@
 # newer Python where pip resolved numpy==2.5.3, which doesn't exist for
 # 3.11 (real PyPI: numpy>=2.5.0 requires Python>=3.12) and failed outright
 # on the VM. Caught by actually running the install there, not assumed.
+#
+# pyyaml/python-docx/lxml added same day for the Part C config system +
+# .docx generation -- these three resolved to identical versions on both
+# the dev sandbox and the real VM, confirmed by actually installing on
+# both rather than assumed from the sandbox alone (see the numpy note
+# above for why that check matters).
 
 alembic==1.19.1
 annotated-doc==0.0.4
@@ -59,6 +65,7 @@ idna==3.18
 iniconfig==2.3.0
 Jinja2==3.1.6
 jiter==0.15.0
+lxml==6.1.3
 Mako==1.4.1
 MarkupSafe==3.0.3
 numpy==2.4.6
@@ -77,8 +84,10 @@ pyee==13.0.1
 Pygments==2.21.0
 pytest==9.1.1
 python-dateutil==2.9.0.post0
+python-docx==1.2.0
 python-dotenv==1.2.2
 python-multipart==0.0.32
+PyYAML==6.0.3
 reportlab==5.0.0
 requests==2.34.2
 six==1.17.0
