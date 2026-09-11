@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from ..database import utcnow
 from ..models import OewsWage
 from ..services.activity_logger import log_activity
-from .column_utils import resolve_column
+from .column_utils import resolve_column_learned
 
 _SOC_CODE_ALIASES = ["OCC_CODE", "SOC_CODE", "SOC Code", "Occupation Code"]
 _SOC_TITLE_ALIASES = ["OCC_TITLE", "SOC_TITLE", "Occupation Title"]
@@ -50,13 +50,14 @@ def load_oews_wage_data(db: Session, file_path: str, source_year: int) -> dict:
     else:
         df = pd.read_csv(file_path, dtype=str)
 
-    soc_col = resolve_column(df.columns, _SOC_CODE_ALIASES)
-    soc_title_col = resolve_column(df.columns, _SOC_TITLE_ALIASES, required=False)
-    area_col = resolve_column(df.columns, _AREA_TITLE_ALIASES)
-    level1_col = resolve_column(df.columns, _LEVEL_1_ALIASES)
-    level2_col = resolve_column(df.columns, _LEVEL_2_ALIASES)
-    level3_col = resolve_column(df.columns, _LEVEL_3_ALIASES)
-    level4_col = resolve_column(df.columns, _LEVEL_4_ALIASES)
+    _S = "oews_wages"
+    soc_col = resolve_column_learned(db, df.columns, _SOC_CODE_ALIASES, _S, "soc_code")
+    soc_title_col = resolve_column_learned(db, df.columns, _SOC_TITLE_ALIASES, _S, "soc_title", required=False)
+    area_col = resolve_column_learned(db, df.columns, _AREA_TITLE_ALIASES, _S, "area_title")
+    level1_col = resolve_column_learned(db, df.columns, _LEVEL_1_ALIASES, _S, "level_1")
+    level2_col = resolve_column_learned(db, df.columns, _LEVEL_2_ALIASES, _S, "level_2")
+    level3_col = resolve_column_learned(db, df.columns, _LEVEL_3_ALIASES, _S, "level_3")
+    level4_col = resolve_column_learned(db, df.columns, _LEVEL_4_ALIASES, _S, "level_4")
 
     now = utcnow()
     upserted = 0

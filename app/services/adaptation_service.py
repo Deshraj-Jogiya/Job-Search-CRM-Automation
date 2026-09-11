@@ -43,6 +43,7 @@ def _validate(data: dict) -> None:
     require(dt, "min", float, min=0.0, max=1.0)
     require(dt, "max", float, min=0.0, max=1.0)
     require(dt, "default", float, min=0.0, max=1.0)
+    require(t1, "column_mapping_fuzzy_threshold", float, min=0.0, max=1.0)
 
     t2 = require(data, "tier2", dict)
     require(t2, "min_samples_resume_variant", int, min=1)
@@ -230,6 +231,50 @@ def record_dedupe_correction(db: Session, was_false_merge: bool, config: dict | 
             triggering_evidence={"was_false_merge": was_false_merge}, status="applied",
         )
     return new_value
+
+
+# ---------------------------------------------------------------------------
+# B1.3 -- schema header-mapping learning (USCIS/DOL LCA/OEWS loaders)
+# ---------------------------------------------------------------------------
+
+_COLUMN_MAPPING_SUBSYSTEM = "column_mapping"
+
+
+def current_column_mapping_fuzzy_threshold(db: Session, config: dict | None = None) -> float:
+    config = config or get_config()
+    return get_current_value(
+        db, "column_mapping_fuzzy_threshold", config["tier1"]["column_mapping_fuzzy_threshold"]
+    )
+
+
+def record_column_mapping_correction(db: Session, source: str, field: str, wrong_guess, correct_column: str) -> AdaptationLog:
+    """A user edited data/column_mappings.yaml (see
+    app/ingest/column_utils.py) to correct a fuzzy-guessed header --
+    logged so future fuzzy matches for this same (source, field) weight
+    toward the now-confirmed real column string (see
+    confirmed_column_names). wrong_guess may be None the first time a
+    field is ever set manually with no prior guess on record."""
+    return log_adaptation(
+        db, "tier1", _COLUMN_MAPPING_SUBSYSTEM, f"{source}:{field}", wrong_guess, correct_column,
+        triggering_evidence={"source": source, "field": field}, status="applied",
+    )
+
+
+def confirmed_column_names(db: Session, source: str, field: str) -> list[str]:
+    """Every real column string ever confirmed correct for this
+    (source, field) pair -- extra fuzzy-match candidates for a brand
+    new file whose exact header text this app hasn't seen before, on
+    top of the loader's own hardcoded alias list."""
+    rows = (
+        db.query(AdaptationLog)
+        .filter(
+            AdaptationLog.subsystem == _COLUMN_MAPPING_SUBSYSTEM,
+            AdaptationLog.parameter == f"{source}:{field}",
+            AdaptationLog.status == "applied",
+        )
+        .all()
+    )
+    return sorted({row.new_value for row in rows if row.new_value})
 
 
 # ---------------------------------------------------------------------------

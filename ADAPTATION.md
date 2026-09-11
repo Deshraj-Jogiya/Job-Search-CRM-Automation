@@ -34,6 +34,8 @@ math looks.
 | b1.8 | Queue supply counts | Postings already in the DB | Pure counting, no judgment involved at all |
 | b1.2 | ATS slug guess-order (`board_discovery.py`) | Which candidate form actually resolved | Reordering a guess sequence, never skipping a guess |
 | b1.5 | Sponsorship regex misfire *tracking* | User flags "this flag was wrong" | The counting is automatic; the actual regex edit is a code change, so it can only ever be **proposed**, never applied by this app |
+| b1.3 | Government-data column header mapping (`column_utils.py`) | A user edits `data/column_mappings.yaml` to correct a fuzzy-guessed header | The edit IS the ground truth for that exact (source, field) pair; a wrong guess a user hasn't corrected yet still requires their edit before anything changes |
+| b1.1 | Resume PDF page-fit reductions (`document_render_service.py`) | Reportlab's own deterministic page/height measurement, same run | Only fires when the page genuinely overflows target; each reduction is reversible and floor-bounded, never silently drops content beyond what the catalog explicitly allows |
 
 b1.5 is the one item in this list that looks like Tier 1 (continuous,
 no approval to *accumulate* evidence) but never reaches "applied" --
@@ -41,6 +43,37 @@ see `adaptation_service.record_sponsorship_misfire`/
 `sponsorship_misfire_report`. Narrowing a regex pattern is source code,
 not a bounded float; there's no honest way to auto-apply that the way
 a numeric threshold can be.
+
+### b1.3 in detail: government-data column mapping
+
+`app/ingest/column_utils.py`'s `resolve_column` (exact, normalized
+alias matching) is unchanged and still tried first -- the common case,
+since a header rarely drifts release to release. `resolve_column_learned`
+wraps it with a fuzzy fallback for the USCIS/DOL LCA/OEWS loaders only:
+on an exact-match miss, it fuzzy-matches (stdlib `difflib`, same
+technique as b1.4) against the loader's own alias list PLUS every
+column string ever confirmed correct for that exact (source, field)
+pair, guessing whichever real column scores highest above
+`column_mapping_fuzzy_threshold` (config, self-tunable within
+[0, 1] the same way b1.4's dedupe threshold is).
+
+Every guess is written to `data/column_mappings.yaml` -- gitignored,
+per-deployment state, not shared config -- as `{column, guessed_column,
+confidence}`. A user reviewing that file and editing `column` to the
+real correct header (leaving `guessed_column` alone) is what b1.3
+detects as a correction: the next load sees `column != guessed_column`,
+logs it via `record_column_mapping_correction`, and reconciles the two
+fields so the same correction isn't logged twice. Confirmed corrections
+accumulate in `confirmed_column_names` and join the candidate pool for
+every future fuzzy guess on that field -- a header a past release
+already proved correct scores at least as well against a similarly-
+worded new one as the generic alias list would, no artificial score
+bonus needed.
+
+No match above threshold, on a required field, is a loud
+`ColumnResolutionError` naming the real columns found -- never a
+silent guess below the confidence bar, per this module's own standing
+rule from before b1.3 existed.
 
 ## Tier 2: the one generic engine
 
