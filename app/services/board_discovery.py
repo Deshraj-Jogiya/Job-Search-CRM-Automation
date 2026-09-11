@@ -44,16 +44,35 @@ from .company_utils import normalize_company_name
 _TIMEOUT = 5
 
 
-def _slug_candidates(company_name: str) -> list[str]:
+def _slug_candidates(company_name: str) -> list[tuple[str, str]]:
+    """Returns [(form_name, candidate_slug), ...] in the default guess
+    order (no_space, then hyphenated). form_name is what
+    adaptation_service's b1.2 tracking keys on -- see discover_slugs's
+    slug_form_order param."""
     normalized = normalize_company_name(company_name)  # lowercased, suffixes stripped, spaces collapsed
     if not normalized:
         return []
     no_space = normalized.replace(" ", "")
     hyphenated = re.sub(r"\s+", "-", normalized)
-    candidates = [no_space]
+    candidates = [("no_space", no_space)]
     if hyphenated != no_space:
-        candidates.append(hyphenated)
+        candidates.append(("hyphenated", hyphenated))
     return candidates
+
+
+def _ordered_candidates_for_ats(base_candidates: list[tuple[str, str]], ats: str, form_order: dict | None) -> list[str]:
+    """Reorders base_candidates' slugs by ats's preferred form order,
+    when one was supplied. Forms absent from the preference list (cold
+    start, or a form this company name doesn't produce) keep their
+    original relative order at the end -- byte-identical to the
+    unordered default when form_order is None or has no entry for ats."""
+    if not form_order or ats not in form_order:
+        return [slug for _form, slug in base_candidates]
+    preferred = form_order[ats]
+    by_form = dict(base_candidates)
+    ordered = [by_form[form] for form in preferred if form in by_form]
+    ordered += [slug for form, slug in base_candidates if form not in preferred]
+    return ordered
 
 
 def _probe_greenhouse(slug: str) -> bool:
@@ -276,7 +295,19 @@ def probe_known_slug(ats_type: str, slug: str, company_name: str = "") -> bool:
     return probe(slug, company_name)
 
 
-def discover_slugs(company_name: str) -> dict:
+def _resolve_one_ats(ats: str, probe, ordered_slugs: list[str], company_name: str) -> tuple[str | None, str | None]:
+    """Tries ordered_slugs in sequence for one ATS, stopping at the
+    first hit. Returns (slug_or_None, form_or_None) -- form lets the
+    caller record which guess order won, for b1.2's tracking."""
+    base_candidates = _slug_candidates(company_name)
+    form_by_slug = {slug: form for form, slug in base_candidates}
+    for slug in ordered_slugs:
+        if probe(slug, company_name):
+            return slug, form_by_slug.get(slug)
+    return None, None
+
+
+def discover_slugs(company_name: str, slug_form_order: dict | None = None) -> dict:
     """Best-effort probe across a couple of slug candidates per ATS.
     Returns one {ats_name: slug_or_None} entry per platform in _PROBES
     (currently greenhouse/lever/ashby/recruitee/personio/workable/
@@ -286,23 +317,32 @@ def discover_slugs(company_name: str) -> dict:
     one, since a real search API would be needed to do this properly
     for the rest.
 
-    The ATS probes for a given candidate slug are independent network
-    calls, so they run concurrently (worst case ~1 timeout instead of
-    N stacked) -- this function is called synchronously from a few
-    call sites (manual entry, capped backfill batch), so keeping a
-    single call fast matters more than keeping this module dependency-
-    free."""
-    candidates = _slug_candidates(company_name)
-    result = {ats: None for ats in _PROBES}
+    slug_form_order (b1.2) optionally maps ats_name -> ordered list of
+    form names ("no_space"/"hyphenated") to try first for that
+    platform, learned from adaptation_service's observed hit rates.
+    None (the default, and cold start) tries the fixed default order --
+    byte-identical to pre-b1.2 behavior. Use discover_slugs_with_forms
+    if the caller needs to know which form actually won, to log it.
 
-    for slug in candidates:
-        pending = {ats: probe for ats, probe in _PROBES.items() if result[ats] is None}
-        if not pending:
-            break
-        with ThreadPoolExecutor(max_workers=len(pending)) as pool:
-            futures = {ats: pool.submit(probe, slug, company_name) for ats, probe in pending.items()}
-            for ats, future in futures.items():
-                if future.result():
-                    result[ats] = slug
+    Each ATS's own candidate sequence runs in its own thread, all
+    platforms in parallel -- this function is called synchronously from
+    a few call sites (manual entry, capped backfill batch), so keeping
+    a single call fast matters more than keeping this module
+    dependency-free."""
+    return {ats: slug for ats, (slug, _form) in discover_slugs_with_forms(company_name, slug_form_order).items()}
 
-    return result
+
+def discover_slugs_with_forms(company_name: str, slug_form_order: dict | None = None) -> dict:
+    """Same probing as discover_slugs, but returns {ats: (slug_or_None,
+    form_or_None)} so a caller with a db session can log which guess
+    order won (adaptation_service.record_slug_strategy_hit)."""
+    base_candidates = _slug_candidates(company_name)
+    with ThreadPoolExecutor(max_workers=len(_PROBES)) as pool:
+        futures = {
+            ats: pool.submit(
+                _resolve_one_ats, ats, probe,
+                _ordered_candidates_for_ats(base_candidates, ats, slug_form_order), company_name,
+            )
+            for ats, probe in _PROBES.items()
+        }
+        return {ats: future.result() for ats, future in futures.items()}
