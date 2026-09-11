@@ -259,7 +259,13 @@
             {% if app.posting.staleness_flag or app.posting.scam_flag_reason or app.posting.eligibility_flag_reason or app.posting.repost_count > 0 %}
             <div class="flag-row">
                 {% if app.posting.staleness_flag %}<span class="flag-warning">stale listing</span>{% endif %}
-                {% if app.posting.repost_count > 0 %}<span class="flag-warning">repost x{{ app.posting.repost_count }}</span>{% endif %}
+                {% if app.posting.repost_count > 0 %}
+                <span class="flag-warning">repost x{{ app.posting.repost_count }}</span>
+                <form method="post" action="/jobs/postings/{{ app.posting.id }}/not-a-duplicate" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn-link">not actually a duplicate</button>
+                </form>
+                {% endif %}
                 {% if app.posting.scam_flag_reason %}<span class="flag-warning">scam pattern: {{ app.posting.scam_flag_reason }}</span>{% endif %}
                 {% if app.posting.eligibility_flag_reason %}<span class="flag-warning">eligibility: {{ app.posting.eligibility_flag_reason }}</span>{% endif %}
             </div>

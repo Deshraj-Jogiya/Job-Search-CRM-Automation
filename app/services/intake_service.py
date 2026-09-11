@@ -32,7 +32,7 @@ from ..models import (
     SeniorityExclusion,
     get_or_create_settings,
 )
-from . import ats_dataset_discovery, board_discovery, job_board_aggregator_discovery, jobright_discovery, yc_directory_discovery
+from . import adaptation_service, ats_dataset_discovery, board_discovery, job_board_aggregator_discovery, jobright_discovery, yc_directory_discovery
 from .activity_logger import log_activity
 from .company_utils import normalize_company_name, normalize_title
 from .llm import get_llm_provider, parse_json_response
@@ -663,7 +663,11 @@ def _discover_companies_from_yc_directory(db: Session, settings: GlobalSettings,
 
 def _find_matching_posting(db: Session, company_id: int, raw) -> tuple[JobPosting | None, bool]:
     """Returns (matched_posting, is_repost). matched_posting is None if
-    nothing matches at all."""
+    nothing matches at all. Title matching is fuzzy (b1.4,
+    adaptation_service.fuzzy_title_match) at a self-tuning threshold --
+    replaces the exact-normalized-title check this used to be, so
+    "Data Engineer" and "Data Engineer II" (the same repost, retitled
+    slightly) match without needing an identical string."""
     if raw.external_id:
         exact = (
             db.query(JobPosting)
@@ -678,9 +682,10 @@ def _find_matching_posting(db: Session, company_id: int, raw) -> tuple[JobPostin
         return exact_url, False
 
     normalized_title = normalize_title(raw.job_title)
+    threshold = adaptation_service.current_dedupe_threshold(db)
     candidates = db.query(JobPosting).filter(JobPosting.company_id == company_id).all()
     for candidate in candidates:
-        if normalize_title(candidate.job_title) == normalized_title:
+        if adaptation_service.fuzzy_title_match(normalize_title(candidate.job_title), normalized_title, threshold):
             gap = utcnow() - candidate.last_seen_at
             return candidate, gap > timedelta(days=_REPOST_GAP_DAYS)
 

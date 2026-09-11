@@ -1,0 +1,33 @@
+# Adaptive-layer thresholds (Part B). Consumed by
+# app/services/adaptation_service.py. Validated on load, hot-reloadable
+# -- see app/config_loader.py. Every number here is a real, live-tuned
+# threshold, never hardcoded in Python.
+
+tier1:
+  # b1.4 -- fuzzy repost/duplicate-posting detection (intake_service.py).
+  # Self-tunes within [min, max] from corrected false merges/splits;
+  # never outside this range regardless of what the learning suggests.
+  dedupe_threshold:
+    min: 0.82
+    max: 0.95
+    default: 0.88
+
+tier2:
+  # Statistical trustworthiness thresholds for the DATA -- never
+  # rendered as goals/quotas/expectations of the user, see
+  # adaptation_service.py's readiness-state rendering.
+  min_samples_resume_variant: 30
+  min_samples_source_comparison: 50
+  min_samples_tier_comparison: 40
+  min_replies_for_any_outcome_claim: 10
+  # Any proposed weight change (e.g. a scoring_service.py component
+  # weight) is clamped to +/- this percent of its current value per
+  # approval -- see adaptation_service.clamp_weight_change.
+  weight_change_clamp_pct: 20
+
+guardrails:
+  # b3.1 -- at least this share of /queue is sampled from OUTSIDE
+  # whatever the current tier/score ranking favors, so an early belief
+  # can't starve itself of counter-evidence. Applies at all times,
+  # including cold start.
+  exploration_pct: 15
