@@ -93,6 +93,67 @@ def test_discover_slugs_passes_company_name_through_to_recruitee_probe():
     assert result["greenhouse"] is None
 
 
+def test_slug_candidates_labels_no_space_and_hyphenated_forms():
+    assert board_discovery._slug_candidates("Data Robotics") == [("no_space", "datarobotics"), ("hyphenated", "data-robotics")]
+
+
+def test_slug_candidates_single_word_has_only_no_space_form():
+    assert board_discovery._slug_candidates("Stripe") == [("no_space", "stripe")]
+
+
+def test_ordered_candidates_no_form_order_keeps_default():
+    base = [("no_space", "datarobotics"), ("hyphenated", "data-robotics")]
+    assert board_discovery._ordered_candidates_for_ats(base, "greenhouse", None) == ["datarobotics", "data-robotics"]
+
+
+def test_ordered_candidates_respects_preferred_form():
+    base = [("no_space", "datarobotics"), ("hyphenated", "data-robotics")]
+    order = {"greenhouse": ["hyphenated", "no_space"]}
+    assert board_discovery._ordered_candidates_for_ats(base, "greenhouse", order) == ["data-robotics", "datarobotics"]
+
+
+def test_ordered_candidates_ignores_preference_for_a_different_ats():
+    base = [("no_space", "datarobotics"), ("hyphenated", "data-robotics")]
+    order = {"lever": ["hyphenated", "no_space"]}
+    assert board_discovery._ordered_candidates_for_ats(base, "greenhouse", order) == ["datarobotics", "data-robotics"]
+
+
+def test_discover_slugs_with_forms_reports_the_winning_form():
+    def fake_get(url, timeout):
+        if "boards-api.greenhouse.io/v1/boards/data-robotics/jobs" in url:
+            return _fake_response(json_data={"jobs": []})
+        return _fake_response(status_code=404)
+
+    order = {"greenhouse": ["hyphenated", "no_space"]}
+    with patch.object(board_discovery.requests, "get", side_effect=fake_get):
+        results = board_discovery.discover_slugs_with_forms("Data Robotics", order)
+    assert results["greenhouse"] == ("data-robotics", "hyphenated")
+
+
+def test_discover_slugs_with_forms_tries_only_the_preferred_form_first():
+    # with hyphenated preferred and it hitting immediately, the
+    # no_space candidate should never even be requested.
+    calls = []
+
+    def fake_get(url, timeout):
+        calls.append(url)
+        if "data-robotics" in url:
+            return _fake_response(json_data={"jobs": []})
+        return _fake_response(status_code=404)
+
+    order = {"greenhouse": ["hyphenated", "no_space"]}
+    with patch.object(board_discovery.requests, "get", side_effect=fake_get):
+        board_discovery.discover_slugs_with_forms("Data Robotics", order)
+    assert not any("datarobotics" in url for url in calls if "greenhouse" in url or "boards-api" in url)
+
+
+def test_discover_slugs_still_returns_plain_slug_shape():
+    resp = _fake_response(json_data={"jobs": []})
+    with patch.object(board_discovery.requests, "get", return_value=resp):
+        result = board_discovery.discover_slugs("Stripe")
+    assert result["greenhouse"] == "stripe"
+
+
 def test_probe_known_slug_verifies_an_externally_sourced_slug():
     resp = _fake_response(json_data={"jobs": []})
     with patch.object(board_discovery.requests, "get", return_value=resp):

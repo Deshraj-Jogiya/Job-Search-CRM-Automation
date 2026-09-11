@@ -156,6 +156,32 @@ class TestDedupeThresholdTuning:
         assert entries[0].tier == "tier1"
 
 
+class TestSlugStrategyOrder:
+    def test_cold_start_returns_empty(self, db):
+        assert adaptation_service.recommend_slug_form_order(db) == {}
+
+    def test_single_hit_puts_that_form_first(self, db):
+        adaptation_service.record_slug_strategy_hit(db, "greenhouse", "hyphenated")
+        assert adaptation_service.recommend_slug_form_order(db) == {"greenhouse": ["hyphenated"]}
+
+    def test_more_frequent_form_ranks_first(self, db):
+        for _ in range(3):
+            adaptation_service.record_slug_strategy_hit(db, "greenhouse", "no_space")
+        adaptation_service.record_slug_strategy_hit(db, "greenhouse", "hyphenated")
+        assert adaptation_service.recommend_slug_form_order(db) == {"greenhouse": ["no_space", "hyphenated"]}
+
+    def test_platforms_tracked_independently(self, db):
+        adaptation_service.record_slug_strategy_hit(db, "greenhouse", "hyphenated")
+        adaptation_service.record_slug_strategy_hit(db, "lever", "no_space")
+        order = adaptation_service.recommend_slug_form_order(db)
+        assert order == {"greenhouse": ["hyphenated"], "lever": ["no_space"]}
+
+    def test_each_hit_is_logged_applied_not_proposed(self, db):
+        adaptation_service.record_slug_strategy_hit(db, "greenhouse", "hyphenated")
+        entry = db.query(AdaptationLog).filter(AdaptationLog.subsystem == "ats_slug_strategy").one()
+        assert entry.status == "applied"
+
+
 class TestSponsorshipMisfireReport:
     def test_below_threshold_not_surfaced(self, db):
         adaptation_service.record_sponsorship_misfire(db, posting_id=1, label="US citizens only")
