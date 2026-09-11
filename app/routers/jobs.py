@@ -56,6 +56,7 @@ from ..services import (
     outreach_service,
     page_fit_service,
     tailoring_service,
+    wage_level_service,
 )
 from ..services.activity_logger import log_activity, log_exception
 from ..services.confirmation_service import ConfirmationServiceError
@@ -245,6 +246,22 @@ def mark_sponsorship_flag_wrong(posting_id: int, label: str = Form(...), db: Ses
         return _redirect(error="This posting isn't sponsorship-blocked.")
     adaptation_service.record_sponsorship_misfire(db, posting.id, label)
     return _redirect(message="Noted -- thanks, this helps tune the sponsorship pattern list.")
+
+
+@router.post("/postings/{posting_id}/salary")
+def set_posting_salary(posting_id: int, salary_min: int = Form(...), salary_max: int = Form(...), db: Session = Depends(get_db)):
+    """Manual override for this posting's offered salary -- see
+    wage_level_service.py. Always wins over salary_parser.py's own
+    regex extraction from the JD text, and is never silently
+    overwritten by a later re-parse."""
+    posting = db.query(JobPosting).filter(JobPosting.id == posting_id).first()
+    if not posting:
+        return _redirect(error=f"Posting {posting_id} not found.")
+    if salary_min <= 0 or salary_max <= 0 or salary_min > salary_max:
+        return _redirect(error="Enter a valid salary range (min > 0, min <= max).")
+    settings = get_or_create_settings(db)
+    wage_level_service.set_manual_salary(db, posting, settings, salary_min, salary_max)
+    return _redirect(message=f"Set offered salary for '{posting.job_title}' to ${salary_min:,}-${salary_max:,}.")
 
 
 @router.post("/companies/slug")

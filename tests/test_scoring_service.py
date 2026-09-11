@@ -122,6 +122,26 @@ class TestWageLevelFitComponent:
         application = _application(db, posting)
         assert compute_score_breakdown(application)["components"]["wage_level_fit"]["contribution"] == 6
 
+    def test_per_posting_wage_level_preferred_over_company_level(self, db):
+        # Company-level says III, but THIS posting's own parsed/manual
+        # salary classified as IV -- the posting-specific signal wins.
+        company = _company(db, max_wage_level_15xx="III")
+        posting = _posting(db, company, wage_level_per_posting="IV")
+        application = _application(db, posting)
+        assert compute_score_breakdown(application)["components"]["wage_level_fit"]["contribution"] == 20
+
+    def test_falls_back_to_company_level_when_no_per_posting_value(self, db):
+        company = _company(db, max_wage_level_15xx="III")
+        posting = _posting(db, company, wage_level_per_posting=None)
+        application = _application(db, posting)
+        assert compute_score_breakdown(application)["components"]["wage_level_fit"]["contribution"] == 15
+
+    def test_below_level_i_scores_zero(self, db):
+        company = _company(db, max_wage_level_15xx="IV")
+        posting = _posting(db, company, wage_level_per_posting="Below Level I")
+        application = _application(db, posting)
+        assert compute_score_breakdown(application)["components"]["wage_level_fit"]["contribution"] == 0
+
 
 class TestWorksiteClarityComponent:
     def test_ambiguous_flag_scores_zero(self, db):

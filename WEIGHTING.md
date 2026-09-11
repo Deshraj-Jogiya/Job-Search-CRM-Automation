@@ -39,16 +39,20 @@ from the other four flat weights.
 
 ## Two things the spec assumed that don't exist in this schema
 
-1. **`wage_level_fit` is company-level, not per-posting.** The spec's
-   own description ("company max pw_wage_level for SOC 15-*") already
-   says this -- it is NOT the same thing as Phase 1's
-   `wage_level_for()` helper (which classifies one offered salary
-   against OEWS benchmarks). This app has no per-posting offered-salary
-   field to compare against anyway, so there was nothing to build here
-   beyond what the spec literally asked for: `Company.max_wage_level_15xx`,
-   the highest DOL-filed prevailing-wage level this employer has ever
-   used for a Computer/Mathematical (SOC 15-*) role, now tracked by
-   `ingest/sponsors.py`'s `load_dol_lca_data()`.
+1. **`wage_level_fit` was originally company-level only.** The spec's
+   own description ("company max pw_wage_level for SOC 15-*") is
+   `Company.max_wage_level_15xx`, the highest DOL-filed prevailing-wage
+   level this employer has ever used for a Computer/Mathematical
+   (SOC 15-*) role, tracked by `ingest/sponsors.py`'s
+   `load_dol_lca_data()` -- still the fallback signal. A real per-
+   posting signal was added later (2026-09-11, see FUTURE.md): when
+   `salary_parser.py` finds an unambiguous salary in the JD (or a user
+   manually enters/corrects one) and the posting's location matches a
+   loaded OEWS area, `wage_level_service.py` classifies that specific
+   offer via Phase 1's `wage_level_for()` helper, and
+   `_wage_level_fit_component` prefers it over the company-level
+   figure. Most JDs still don't state a salary, so the company-level
+   fallback remains the common case in practice.
 
 2. **"Filings across FY24-26" isn't stored as a per-year series.**
    `Company.lca_filings_total` and `h1b_approvals_total` are both
