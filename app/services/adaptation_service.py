@@ -223,6 +223,48 @@ def record_dedupe_correction(db: Session, was_false_merge: bool, config: dict | 
 
 
 # ---------------------------------------------------------------------------
+# B1.2 -- ATS slug guessing strategy (reordered by observed hit rate)
+# ---------------------------------------------------------------------------
+
+_SLUG_STRATEGY_SUBSYSTEM = "ats_slug_strategy"
+
+
+def record_slug_strategy_hit(db: Session, ats_type: str, form: str) -> AdaptationLog:
+    """A discover_slugs() probe just confirmed ats_type's real board
+    slug came from candidate form `form` ("no_space"/"hyphenated").
+    Logged as an 'applied' Tier 1 event -- this only ever reorders
+    which guess is tried FIRST next time, it never removes a guess or
+    stops trying the other form, so it's safe to auto-apply
+    continuously like b1.4's threshold."""
+    return log_adaptation(
+        db, "tier1", _SLUG_STRATEGY_SUBSYSTEM, f"{ats_type}:{form}", None, None,
+        triggering_evidence={"ats_type": ats_type, "form": form}, status="applied",
+    )
+
+
+def recommend_slug_form_order(db: Session) -> dict:
+    """{ats_type: [form, ...]} ordered by observed hit count, most
+    successful form first -- feeds discover_slugs's slug_form_order
+    param. Cold start (no hits recorded yet) returns {}, which makes
+    discover_slugs try its own fixed default order -- byte-identical
+    to pre-b1.2 behavior (b3.4)."""
+    rows = (
+        db.query(AdaptationLog)
+        .filter(AdaptationLog.subsystem == _SLUG_STRATEGY_SUBSYSTEM, AdaptationLog.status == "applied")
+        .all()
+    )
+    counts: dict[str, dict[str, int]] = {}
+    for row in rows:
+        ats_type, _, form = row.parameter.partition(":")
+        counts.setdefault(ats_type, {})
+        counts[ats_type][form] = counts[ats_type].get(form, 0) + 1
+    return {
+        ats_type: sorted(forms_counts, key=lambda form: -forms_counts[form])
+        for ats_type, forms_counts in counts.items()
+    }
+
+
+# ---------------------------------------------------------------------------
 # B1.5 -- sponsorship regex misfires (accumulated, never auto-applied)
 # ---------------------------------------------------------------------------
 

@@ -261,7 +261,13 @@ def _detect_scam_patterns(jd_text: str) -> str | None:
     return "; ".join(hits) if hits else None
 
 
-def _apply_discovered_slugs(db: Session, company: Company, slugs: dict) -> None:
+def _apply_discovered_slugs(db: Session, company: Company, results: dict) -> None:
+    """results is {ats: (slug_or_None, form_or_None)} from
+    board_discovery.discover_slugs_with_forms. form is logged via
+    adaptation_service.record_slug_strategy_hit (b1.2) so future
+    backfill batches try the historically-winning guess order first
+    per ATS -- see _backfill_board_slugs."""
+    slugs = {ats: slug for ats, (slug, _form) in results.items()}
     company.greenhouse_slug = slugs.get("greenhouse")
     company.lever_slug = slugs.get("lever")
     company.ashby_slug = slugs.get("ashby")
@@ -273,6 +279,9 @@ def _apply_discovered_slugs(db: Session, company: Company, slugs: dict) -> None:
     found = [ats for ats, slug in slugs.items() if slug]
     if found:
         log_activity(db, f"Detected {', '.join(found)} board(s) for {company.name}.", "INFO")
+    for ats, (slug, form) in results.items():
+        if slug and form:
+            adaptation_service.record_slug_strategy_hit(db, ats, form)
 
 
 def _get_or_create_company(db: Session, raw_name: str) -> Company:
@@ -332,10 +341,14 @@ def _backfill_board_slugs(db: Session) -> None:
     this is the ONLY place board slugs get probed (new companies from
     this cycle's ingestion included; see _get_or_create_company's
     docstring for why probing isn't inline there). The network fetch
-    (discover_slugs, several requests per company) runs concurrently
-    across the batch -- SQLAlchemy Sessions aren't thread-safe, so the
-    actual DB writes happen back on this thread, sequentially, once all
-    fetches return."""
+    (discover_slugs_with_forms, several requests per company) runs
+    concurrently across the batch -- SQLAlchemy Sessions aren't
+    thread-safe, so the actual DB writes happen back on this thread,
+    sequentially, once all fetches return.
+
+    form_order (b1.2) is read once, on this thread, before probing
+    starts -- a plain read-only dict handed into the worker threads,
+    never a live db access from inside them."""
     unchecked = (
         db.query(Company)
         .filter(Company.board_slugs_checked_at.is_(None))
@@ -345,11 +358,12 @@ def _backfill_board_slugs(db: Session) -> None:
     if not unchecked:
         return
 
+    form_order = adaptation_service.recommend_slug_form_order(db)
     with ThreadPoolExecutor(max_workers=min(len(unchecked), 5)) as pool:
-        results = list(pool.map(lambda c: board_discovery.discover_slugs(c.name), unchecked))
+        results = list(pool.map(lambda c: board_discovery.discover_slugs_with_forms(c.name, form_order), unchecked))
 
-    for company, slugs in zip(unchecked, results):
-        _apply_discovered_slugs(db, company, slugs)
+    for company, company_results in zip(unchecked, results):
+        _apply_discovered_slugs(db, company, company_results)
     db.commit()
 
 
