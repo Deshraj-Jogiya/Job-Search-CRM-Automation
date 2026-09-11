@@ -1,0 +1,121 @@
+{% extends "_base.html" %}
+
+{% block title %}Career Pilot -- Metrics{% endblock %}
+
+{% block header_title %}<a href="/" class="plain-link">Career Pilot</a> / Metrics{% endblock %}
+
+{% block nav %}
+<a href="/jobs">Jobs</a>
+<a href="/queue">Queue</a>
+<a href="/analytics">Analytics</a>
+{% endblock %}
+
+{% block content %}
+<div class="empty-state">
+    Weekly rollups for the week-4/week-8 go/no-go review -- distinct from the general /analytics snapshot.
+    Same honesty limit applies: replies/interviews/offers only count when self-reported via the buttons on
+    each application's detail page, there's no inbox scanning here.
+</div>
+
+<section class="summary-cards">
+    <div class="card">
+        <span class="card-label">Median Days to First Reply</span>
+        <span class="card-value">{{ median_days_to_first_reply.median_days ~ "d" if median_days_to_first_reply.median_days is not none else "--" }}</span>
+    </div>
+</section>
+
+{% if underperforming %}
+<section class="variant-block">
+    <h2>Underperforming Resume Versions</h2>
+    <p class="muted-note">Reply rate below half the best-performing version (min. 3 sends to qualify).</p>
+    <ul class="version-history">
+        {% for row in underperforming %}
+        <li>{{ row.segment }} -- {{ row.reply_rate }}% reply rate ({{ row.replied }}/{{ row.sent }})</li>
+        {% endfor %}
+    </ul>
+</section>
+{% endif %}
+
+<section class="variant-block">
+    <h2>Weekly Funnel</h2>
+    {% if weekly_funnel %}
+    <div class="table-scroll">
+        <table class="review-table">
+            <thead>
+                <tr><th>Week Of</th><th>Sent</th><th>Replied</th><th>Reply Rate</th><th>Interviewing</th><th>Interview Rate</th><th>Offers</th><th>Offer Rate</th></tr>
+            </thead>
+            <tbody>
+                {% for row in weekly_funnel %}
+                <tr>
+                    <td>{{ row.week }}</td>
+                    <td>{{ row.sent }}</td>
+                    <td>{{ row.replied }}</td>
+                    <td>{{ row.reply_rate ~ "%" if row.reply_rate is not none else "--" }}</td>
+                    <td>{{ row.interviewing }}</td>
+                    <td>{{ row.interview_rate ~ "%" if row.interview_rate is not none else "--" }}</td>
+                    <td>{{ row.offers }}</td>
+                    <td>{{ row.offer_rate ~ "%" if row.offer_rate is not none else "--" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="muted-note">No applications sent yet.</p>
+    {% endif %}
+</section>
+
+<section class="variant-block">
+    <h2>Applications per Week</h2>
+    <p class="muted-note">
+        Target: {{ time_series.target_applications_per_week_min }}-{{ time_series.target_applications_per_week_max }}/week
+        (5x the daily /queue target).
+    </p>
+    {% if time_series.weeks %}
+    {% set max_apps = time_series.applications_per_week | max %}
+    <div class="bar-chart">
+        {% for week in time_series.weeks %}
+        <div class="bar-row">
+            <span class="bar-row-label">{{ week }}</span>
+            <span class="bar-track">
+                <span class="bar-fill bar-fill-primary" style="width: {{ (time_series.applications_per_week[loop.index0] / max_apps * 100) if max_apps else 0 }}%"></span>
+            </span>
+            <span class="bar-row-value">{{ time_series.applications_per_week[loop.index0] }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted-note">No applications sent yet.</p>
+    {% endif %}
+</section>
+
+{% macro segment_table(title, note, rows) %}
+<section class="variant-block">
+    <h2>{{ title }}</h2>
+    {% if note %}<p class="muted-note">{{ note }}</p>{% endif %}
+    {% if rows %}
+    {% set max_sent = rows | map(attribute='sent') | max %}
+    <div class="bar-chart">
+        {% for row in rows %}
+        <div class="bar-row">
+            <span class="bar-row-label">{{ row.segment }}</span>
+            <span class="bar-track">
+                <span class="bar-fill-total" style="width: {{ (row.sent / max_sent * 100) if max_sent else 0 }}%"></span>
+                <span class="bar-fill{{ ' bar-fill-zero' if not row.replied }}" style="width: {{ (row.replied / max_sent * 100) if max_sent else 0 }}%"></span>
+            </span>
+            <span class="bar-row-value">{{ row.replied }}/{{ row.sent }} replied ({{ row.reply_rate ~ "%" if row.reply_rate is not none else "--" }})</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted-note">No data yet.</p>
+    {% endif %}
+</section>
+{% endmacro %}
+
+{{ segment_table("By Resume Version", None, by_resume_version) }}
+{{ segment_table("By Company Tier", None, by_company_tier) }}
+{{ segment_table("By Source", None, by_source) }}
+{{ segment_table("Cap-Exempt vs. Cap-Subject", None, by_cap_exempt) }}
+{{ segment_table("By Wage Level", None, by_wage_level) }}
+{% endblock %}

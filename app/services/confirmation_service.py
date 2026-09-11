@@ -239,6 +239,26 @@ def mark_applied(db: Session, application_id: int) -> JobApplication:
     return application
 
 
+def mark_replied(db: Session, application_id: int) -> JobApplication:
+    """Explicit self-report that the employer/recruiter replied --
+    same trust model as mark_interviewing/mark_applied, feeds the
+    /metrics weekly funnel's "sent -> replied" step (metrics_service.py).
+    Deliberately doesn't change `status` -- a reply is a sub-event
+    within "Applied", not its own pipeline stage, so re-marking after
+    the fact (e.g. once Interviewing) is still allowed rather than
+    guarded to one specific prior status."""
+    application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+    if not application:
+        raise ConfirmationServiceError(f"Application {application_id} not found.")
+    if application.applied_at is None:
+        raise ConfirmationServiceError("Application hasn't been marked as Applied yet.")
+
+    application.replied_at = utcnow()
+    db.commit()
+    log_activity(db, f"Marked a reply from {application.posting.company_name_raw} on '{application.posting.job_title}'.", "INFO")
+    return application
+
+
 def mark_interviewing(db: Session, application_id: int) -> JobApplication:
     """Explicit self-report that an interview is happening --
     same trust model as mark_applied. Feeds the outcome-analytics
