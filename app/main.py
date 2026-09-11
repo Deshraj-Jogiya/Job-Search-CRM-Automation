@@ -30,6 +30,7 @@ from .routers import outreach as outreach_router
 from .routers import analytics as analytics_router
 from .routers import queue as queue_router
 from .routers import metrics as metrics_router
+from .routers import adaptation as adaptation_router
 from .services import auth_service, backup_service, profile_service
 from .services import scheduler as bg_scheduler
 from .services.activity_logger import log_activity
@@ -132,6 +133,7 @@ app.include_router(outreach_router.router, dependencies=app_dependencies)
 app.include_router(analytics_router.router, dependencies=app_dependencies)
 app.include_router(queue_router.router, dependencies=app_dependencies)
 app.include_router(metrics_router.router, dependencies=app_dependencies)
+app.include_router(adaptation_router.router, dependencies=app_dependencies)
 
 
 def _seed_demo_profile_if_needed() -> None:

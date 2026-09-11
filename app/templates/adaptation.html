@@ -1,0 +1,141 @@
+{% extends "_base.html" %}
+
+{% block title %}Career Pilot -- Adaptation{% endblock %}
+
+{% block header_title %}<a href="/" class="plain-link">Career Pilot</a> / Adaptation{% endblock %}
+
+{% block nav %}
+<a href="/jobs">Jobs</a>
+<a href="/queue">Queue</a>
+<a href="/analytics">Analytics</a>
+<a href="/metrics">Metrics</a>
+{% endblock %}
+
+{% block content %}
+{% if message %}
+<div class="flash flash-ok" role="status">{{ message }}</div>
+{% endif %}
+{% if error %}
+<div class="flash flash-error" role="alert">{{ error }}</div>
+{% endif %}
+
+<div class="empty-state">
+    Part B's adaptive layer. Tier 1 (dedupe threshold, ATS slug guess order, sponsorship-flag corrections,
+    source/queue visibility) self-tunes continuously with no approval needed -- see each feature's own
+    correction control on /jobs. Below is Tier 2: outcome-based comparisons that are slow, sparse, and easy
+    to confound, so nothing here ever applies itself. A NOT_REPORTABLE number is not yet meaningful, never a
+    ranking or a recommendation.
+</div>
+
+<section class="variant-block">
+    <h2>Tier 2 Comparisons</h2>
+    {% for c in comparisons %}
+    <div class="card" style="margin-bottom: 16px;">
+        <h3>
+            {{ c.label }}
+            <span class="badge {{ 'badge-active' if c.state == 'REPORTABLE' else '' }}">{{ c.state }}</span>
+        </h3>
+
+        {% if c.state == "NOT_REPORTABLE" %}
+        <p class="muted-note">
+            NOT YET MEANINGFUL -- {{ c.total_sent }}/{{ c.min_samples_required }} sent,
+            {{ c.total_replied }}/{{ c.min_replies_required }} replies needed before any comparison is drawn.
+        </p>
+        {% endif %}
+
+        {% if c.state == "CONFOUNDED" %}
+        <p class="flash-error-inline">
+            Enough evidence exists ({{ c.total_sent }} sent, {{ c.total_replied }} replies), but
+            '{{ c.confounded_segments[0] }}' and '{{ c.confounded_segments[1] }}' differ too much on another
+            tracked dimension to trust the comparison -- proposal withheld.
+        </p>
+        {% endif %}
+
+        {% if c.state == "REPORTABLE" %}
+        <p class="muted-note">
+            '{{ c.best_segment }}' outperforms '{{ c.worst_segment }}' -- reply-rate difference
+            {{ (c.confidence_interval.diff * 100) | round(1) }}pp (95% CI
+            [{{ (c.confidence_interval.low * 100) | round(1) }}, {{ (c.confidence_interval.high * 100) | round(1) }}]),
+            {{ c.total_sent }} sent / {{ c.total_replied }} replies.
+        </p>
+        {% if c.proposed_adjustment %}
+        <p class="muted-note">
+            Proposed: <strong>{{ c.proposed_adjustment.parameter }}</strong>
+            {{ c.proposed_adjustment.current_value }} &rarr; {{ c.proposed_adjustment.proposed_value }}
+            -- {{ c.proposed_adjustment.reason }}
+        </p>
+        <div class="row-actions">
+            <form method="post" action="/adaptation/comparisons/{{ c.type }}/approve" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit">Approve</button>
+            </form>
+            <form method="post" action="/adaptation/comparisons/{{ c.type }}/reject" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn-secondary">Reject</button>
+            </form>
+            <form method="post" action="/adaptation/comparisons/{{ c.type }}/snooze" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn-link">Snooze</button>
+            </form>
+        </div>
+        {% else %}
+        <p class="muted-note">Informational only -- no single bounded parameter this comparison safely auto-proposes against.</p>
+        {% endif %}
+        {% endif %}
+
+        <div class="table-scroll">
+            <table class="review-table">
+                <thead><tr><th>Segment</th><th>Sent</th><th>Replied</th><th>Reply Rate</th></tr></thead>
+                <tbody>
+                    {% for s in c.segments %}
+                    <tr><td>{{ s.segment }}</td><td>{{ s.sent }}</td><td>{{ s.replied }}</td><td>{{ s.reply_rate ~ "%" if s.reply_rate is not none else "--" }}</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endfor %}
+</section>
+
+<section class="variant-block">
+    <h2>Audit Trail</h2>
+    <p class="muted-note">Every self-tuned or approved change, append-only. Revert restores the prior value and logs the restoration as a new row -- history itself is never edited.</p>
+
+    <form method="post" action="/adaptation/revert-all-since" class="inline-form-row">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label for="revert-since">Revert all applied/approved changes since</label>
+        <input type="date" id="revert-since" name="since" required>
+        <button type="submit" class="btn-danger">Revert All Since</button>
+    </form>
+
+    {% if log_entries %}
+    <div class="table-scroll">
+        <table class="review-table">
+            <thead><tr><th>When</th><th>Tier</th><th>Subsystem</th><th>Parameter</th><th>Old &rarr; New</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+                {% for entry in log_entries %}
+                <tr>
+                    <td>{{ entry.created_at.strftime("%Y-%m-%d %H:%M") if entry.created_at else "--" }}</td>
+                    <td>{{ entry.tier }}</td>
+                    <td>{{ entry.subsystem }}</td>
+                    <td>{{ entry.parameter }}</td>
+                    <td>{{ entry.old_value }} &rarr; {{ entry.new_value }}</td>
+                    <td><span class="badge {{ 'badge-active' if entry.status in ('applied', 'approved') else '' }}">{{ entry.status }}</span></td>
+                    <td>
+                        {% if entry.status in ("applied", "approved") and entry.old_value is not none %}
+                        <form method="post" action="/adaptation/{{ entry.id }}/revert" class="inline-form">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" class="btn-link">Revert</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="muted-note">No adaptive changes yet.</p>
+    {% endif %}
+</section>
+{% endblock %}
