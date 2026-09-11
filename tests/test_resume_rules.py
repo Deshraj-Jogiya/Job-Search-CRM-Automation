@@ -168,7 +168,25 @@ class TestCheckBarePercentage:
         assert check_bare_percentage("Cut runtime by roughly 40%.") == []
 
 
+_PROJECT_SELECTION_TEST_CONFIG = {
+    "projects_by_variant": {
+        "max_projects": 3,
+        "bullets_per_project_min": 1,
+        "bullets_per_project_max": 2,
+        "variants": {
+            "data_engineering": ["career_pilot", "talentvenue_eventintel", "ai_model_observability"],
+        },
+    },
+}
+
+
 class TestSelectProjectsForVariant:
+    # A self-contained config, deliberately NOT the real
+    # config/resume_rules.yaml default -- that file's real slug list is
+    # derived from the live profile's actual (long, descriptive)
+    # project titles and legitimately changes whenever those titles do
+    # (see that file's own comment), so these tests shouldn't be
+    # coupled to whatever it currently says.
     def test_selects_real_projects_in_configured_order(self):
         projects = [
             {"name": "Career Pilot"},
@@ -176,17 +194,20 @@ class TestSelectProjectsForVariant:
             {"name": "TalentVenue EventIntel"},
             {"name": "AI Model Observability"},
         ]
-        selected = select_projects_for_variant(projects, "data_engineering")
+        selected = select_projects_for_variant(projects, "data_engineering", config=_PROJECT_SELECTION_TEST_CONFIG)
         names = [p["name"] for p in selected]
         assert names == ["Career Pilot", "TalentVenue EventIntel", "AI Model Observability"]
 
     def test_missing_project_is_skipped_not_invented(self):
         projects = [{"name": "Career Pilot"}]
-        selected = select_projects_for_variant(projects, "data_engineering")
+        selected = select_projects_for_variant(projects, "data_engineering", config=_PROJECT_SELECTION_TEST_CONFIG)
         assert [p["name"] for p in selected] == ["Career Pilot"]
 
     def test_unknown_variant_returns_empty(self):
-        assert select_projects_for_variant([{"name": "Career Pilot"}], "nonexistent_variant") == []
+        result = select_projects_for_variant(
+            [{"name": "Career Pilot"}], "nonexistent_variant", config=_PROJECT_SELECTION_TEST_CONFIG
+        )
+        assert result == []
 
 
 class TestWorkAuthorizationLine:

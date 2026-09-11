@@ -73,8 +73,29 @@ def _application_for_variant(db, variant_name):
     return application
 
 
+def _config_with_test_project_slugs():
+    """The real config, deep-copied, with data_engineering/analytics's
+    project slugs swapped for this test's short fixture names -- see
+    test_tailor_application_resume_rules.py's identical helper for why
+    (the real config's slugs are derived from the live profile's actual
+    project titles and legitimately change whenever those do)."""
+    import copy
+
+    from app.services import resume_rules
+
+    config = copy.deepcopy(resume_rules.get_config())
+    config["projects_by_variant"]["variants"]["data_engineering"] = [
+        "career_pilot", "talentvenue_eventintel", "ai_model_observability",
+    ]
+    config["projects_by_variant"]["variants"]["analytics"] = [
+        "sales_rfm_segmentation", "tax_anomaly_audit", "talentvenue_eventintel",
+    ]
+    return config
+
+
 def _tailor_and_get_resume_doc(db, application):
     with (
+        patch("app.services.resume_rules.get_config", return_value=_config_with_test_project_slugs()),
         patch(
             "app.services.tailoring_service.run_multi_pass_tailoring",
             side_effect=lambda experience, projects, jd_text: (

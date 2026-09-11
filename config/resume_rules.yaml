@@ -48,19 +48,29 @@ projects_by_variant:
   max_projects: 3
   bullets_per_project_min: 1
   bullets_per_project_max: 2
+  # Each slug is resume_rules._slugify() applied to the real project's
+  # "name" field in the live profile (config/resume_rules.yaml has no
+  # way to reference a project except by its own slugified title --
+  # select_projects_for_variant never invents a project, a slug with no
+  # matching real project is simply skipped). Corrected 2026-09-11 to
+  # match the real, current profile project titles (verified against a
+  # golden-fixture pull from production, see tests/fixtures/golden/) --
+  # the shorter slugs this held before assumed project names that had
+  # since changed. If a project's name changes again, its slug here
+  # needs to change with it, or it silently drops out of that variant.
   variants:
     data_engineering:
-      - career_pilot
-      - talentvenue_eventintel
-      - ai_model_observability
+      - job_search_crm_ai_application_tailoring_center
+      - talentvenue_eventintel_enterprise_data_platform_predictive_intelligence
+      - ai_model_observability_fairness_audits
     ml_ai:
-      - ai_model_observability
-      - career_pilot
-      - ml_apprentice_mtl
+      - ai_model_observability_fairness_audits
+      - job_search_crm_ai_application_tailoring_center
+      - ml_apprentice_take_home_exercise_sentence_transformer_multi_task_learning
     analytics:
-      - sales_rfm_segmentation
-      - tax_anomaly_audit
-      - talentvenue_eventintel
+      - sales_analytics_rfm_customer_segmentation_pipeline
+      - tax_anomaly_audit_compliance_engine
+      - talentvenue_eventintel_enterprise_data_platform_predictive_intelligence
 
 work_authorization:
   include_work_auth_line: false
