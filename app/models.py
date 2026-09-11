@@ -254,6 +254,26 @@ class JobPosting(Base):
     worksite_ambiguous = Column(Boolean, default=False)
     signal_matches = Column(JSON, nullable=True)
 
+    # Per-posting wage-level fit (see salary_parser.py/wage_level_service.py)
+    # -- fills the gap Company.max_wage_level_15xx alone leaves open: that
+    # field is an employer's HISTORICAL highest DOL-filed wage level
+    # across every Computer/Mathematical filing they've ever made, not
+    # the actual offer for THIS posting. offered_salary_min/max are
+    # populated either by salary_parser.py's regex extraction against
+    # job_description (offered_salary_source="parsed") or by the user
+    # correcting/entering one manually (offered_salary_source="manual",
+    # which parsing never overwrites -- see wage_level_service.py).
+    # wage_level_per_posting is the OEWS classification of that salary
+    # (I/II/III/IV/"Below Level I"), cached at intake/update time rather
+    # than recomputed on every score -- None when no salary was ever
+    # found/entered, or no OEWS area match exists for this posting's
+    # location, in which case scoring falls back to the company-level
+    # signal exactly as it always has.
+    offered_salary_min = Column(Integer, nullable=True)
+    offered_salary_max = Column(Integer, nullable=True)
+    offered_salary_source = Column(String, nullable=True)  # 'parsed' | 'manual'
+    wage_level_per_posting = Column(String, nullable=True)
+
     created_at = Column(DateTime, default=utcnow)
 
     company = relationship("Company", back_populates="postings")
@@ -749,6 +769,16 @@ class GlobalSettings(Base):
     outreach_per_person_lifetime = Column(Integer, default=1)  # cold messages to the same person, ever
     outreach_per_company_max = Column(Integer, default=10)  # messages to the same company...
     outreach_per_company_window_days = Column(Integer, default=14)  # ...within this many rolling days
+
+    # Per-posting wage-level fit (see wage_level_service.py) needs a SOC
+    # code to look up OEWS wage data by -- this app is a personal tool
+    # for one candidate's job search, not a general multi-occupation
+    # platform, so rather than classifying each posting's exact SOC code
+    # individually (its own real, unbuilt problem), every lookup uses
+    # this one configured target occupation. Default 15-1252 (Software
+    # Developers) is the closest OEWS bucket most Data Engineer postings
+    # get filed under; live-editable if that's ever not the right fit.
+    target_soc_code = Column(String, default="15-1252")
 
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 

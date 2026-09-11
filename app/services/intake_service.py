@@ -32,8 +32,8 @@ from ..models import (
     SeniorityExclusion,
     get_or_create_settings,
 )
-from . import adaptation_service, ats_dataset_discovery, board_discovery, job_board_aggregator_discovery, jobright_discovery, yc_directory_discovery
-from .activity_logger import log_activity
+from . import adaptation_service, ats_dataset_discovery, board_discovery, job_board_aggregator_discovery, jobright_discovery, wage_level_service, yc_directory_discovery
+from .activity_logger import log_activity, log_exception
 from .company_utils import normalize_company_name, normalize_title
 from .llm import get_llm_provider, parse_json_response
 from .profile_service import get_default_profile_content
@@ -725,6 +725,7 @@ def _ingest_raw_posting(db: Session, module, raw) -> JobPosting | None:
         company_name_raw=raw.company_name_raw,
         job_title=raw.job_title,
         job_url=raw.job_url,
+        location=raw.location,
         job_description=job_description,
         source=raw.source,
         external_id=raw.external_id,
@@ -741,6 +742,16 @@ def _ingest_raw_posting(db: Session, module, raw) -> JobPosting | None:
     db.add(posting)
     db.commit()
     db.refresh(posting)
+
+    # Per-posting wage-level fit (see wage_level_service.py) -- honest,
+    # narrow, no-op the common case (most JDs state no salary, most
+    # locations have no loaded OEWS area match), so a failure here is
+    # never fatal to ingesting the posting itself.
+    try:
+        wage_level_service.apply_wage_level_to_posting(db, posting, get_or_create_settings(db))
+        db.commit()
+    except Exception as e:
+        log_exception(f"Per-posting wage-level computation failed for posting {posting.id}: {e}")
 
     db.add(JobApplication(posting_id=posting.id, status="Ingested"))
     db.commit()
