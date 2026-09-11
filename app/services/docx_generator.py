@@ -40,17 +40,17 @@ from .document_render_service import _humanize_skill_category
 # paragraph style's own spacing" history) -- applied here explicitly,
 # every paragraph style below sets space_before/space_after/line_spacing
 # itself rather than leaving anything to inherit.
-_MARGIN_TOP_IN = 0.4
-_MARGIN_BOTTOM_IN = 0.35
+_MARGIN_TOP_IN = 0.35
+_MARGIN_BOTTOM_IN = 0.3
 _MARGIN_SIDE_IN = 0.55
 
 _BODY_FONT_PT = 10
 _NAME_FONT_PT = 16
 _HEADING_FONT_PT = 12
 
-_HEADING_SPACE_BEFORE_PT = 8
+_HEADING_SPACE_BEFORE_PT = 6
 _HEADING_SPACE_AFTER_PT = 2
-_ENTRY_SPACE_AFTER_PT = 4  # after a role/project's meta line and after its last bullet
+_ENTRY_SPACE_AFTER_PT = 3  # after a role/project's meta line and after its last bullet
 _BULLET_SPACE_AFTER_PT = 0
 
 
