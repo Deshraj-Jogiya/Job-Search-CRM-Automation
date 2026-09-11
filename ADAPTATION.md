@@ -201,28 +201,58 @@ and `tests/test_scoring_service.py::test_cold_start_matches_the_module_default_e
 
 **b3.5 (confound detection)** is covered above, under Tier 2.
 
-## Deferred, on purpose
+## b1.1 in detail: the resume PDF page-fit loop
 
-**b1.1 (one-page resume-fit reduction loop)** and **b1.3 (schema
-header-mapping learning for the USCIS/DOL LCA/OEWS loaders)** were
-scoped for this pass and not built. Both have a real infrastructure
-gap underneath them that this pass didn't create and shouldn't paper
-over:
+`page_fit_service.py` is the loop; `document_render_service.py`'s
+`render_resume_pdf` was split into `build_resume_flow` (pure flow
+construction) plus a thin wrapper, so the loop can measure a candidate
+render without ever producing a throwaway multi-page PDF just to
+answer "how much taller than one page is this" -- `_measure_flow_height_pt`
+builds the identical flow against one arbitrarily tall reportlab frame
+and reads back its real consumed height, a standard, exact technique
+(verified empirically against real rendered output, not assumed from
+reportlab's docs).
 
-- b1.1 needs the PDF renderer to report an actual measured page count
-  and line-savings-per-reduction back to the caller, which
-  `document_render_service.py` doesn't currently expose -- building
-  the self-tuning loop on top of a page-count signal that doesn't
-  exist yet would mean faking the "measured_lines_saved" input the
-  spec explicitly requires.
-- b1.3 needs a fuzzy-matching foundation in `column_utils.py` to learn
-  wrong-guess→correct-column pairs against -- there's no existing
-  column-matching code to extend, only exact-name lookups in the
-  ingest loaders.
+Two reduction kinds, both declared in `config/resume_rules.yaml`'s
+`page_fit.reduction_catalog`: CONTENT reductions
+(`drop_weakest_bullet_per_role`, `shorten_summary`, `drop_third_project`)
+mutate a copy of the resume content before rendering; VISUAL reductions
+(`tighten_line_spacing`, `shrink_margins_one_step`,
+`shrink_body_font_one_step`) are render parameters, each floor-bounded
+by config (`min_body_font_pt`, `min_margin_in`) so no amount of
+"learning" can ever cross them. `drop_weakest_bullet_per_role` never
+touches an entry's first bullet; nothing in the catalog ever touches
+Education.
 
-Both are real, buildable features -- they're deferred because building
-them honestly means building their prerequisite first, which is its
-own separate piece of work, not a corner to cut inside this pass.
+Every application of a reduction records a REAL measured lines-saved
+delta (before/after height, converted via the current line-leading)
+into a running average per reduction id (`page_fit_avg_lines_saved:*`
+/ `page_fit_sample_count:*`, the same `AdaptiveParameterValue`
+mechanism every other Tier 1 parameter uses) and logs an `AdaptationLog`
+row. Cold start -- no reduction anywhere has a learned average yet --
+falls back to the catalog's own literal YAML order, exactly as that
+file's comment says; once any candidate has history, the loop picks by
+lowest `content_value_weight / predicted_lines_saved` among reductions
+that still have room to give.
+
+If every reduction is exhausted (all at their floor, or already
+single-shot-applied) and the resume still overflows `max_pages`,
+`render_resume_pdf_with_fit` raises `PageFitExhaustedError` -- never
+returns a silently-2-page PDF. The error carries the real overflow in
+lines, the target, every reduction already tried, and the longest
+source bullets ranked, so a human has an obvious next cut. Wired into
+both real production paths that generate a downloadable/attachable
+resume PDF: `/jobs/{id}/tailored/resume/download` and the real
+autofill flow (`autofill_service.run_autofill`) -- both surface the
+exhaustion message as a normal user-facing error rather than a 500 or
+an unhandled exception.
+
+While building this, `config/resume_rules.yaml`'s `min_body_font_pt`
+was corrected from `9.0` to `8.0`: the value had been transcribed from
+the spec without checking it against the PDF renderer's real,
+already-shipped starting font (`8.7pt`, tuned over prior sessions of
+real density work) -- a floor ABOVE the current value would have made
+`shrink_body_font_one_step` a no-op from the very first render.
 
 ## Not in this pass
 

@@ -77,9 +77,24 @@ work_authorization:
   work_auth_text: ""
 
 page_fit:
-  min_body_font_pt: 9.0
+  # Corrected 2026-09-11 when b1.1 was actually built: the PDF
+  # renderer's real, already-shipped body font (document_render_service.py's
+  # _body_style/_bullet_style) is 8.7pt, tuned over many prior sessions
+  # of real density debugging -- a 9.0pt "floor" written before that was
+  # ever checked would be ABOVE the current starting value, making
+  # shrink_body_font_one_step a no-op from the first render. The floor
+  # now sits genuinely below the real starting font.
+  min_body_font_pt: 8.0
   min_margin_in: 0.35
   max_pages: 1
+  # Step sizes for the three visual reductions (b1.1) -- how much one
+  # application of each moves the corresponding render parameter.
+  line_spacing_step_pt: 0.3
+  margin_step_in: 0.05
+  font_step_pt: 0.3
+  # shorten_summary's budget when the summary has no clear sentence
+  # break to trim to instead (see page_fit_service._shorten_summary_text).
+  summary_shorten_max_chars: 160
   # Ordered by ascending aggressiveness -- b1.1's fit loop tries them in
   # this order the FIRST time it ever runs (before it has any learned
   # history), picking whichever untried reduction currently has the

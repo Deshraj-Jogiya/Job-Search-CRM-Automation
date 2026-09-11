@@ -124,7 +124,7 @@ def _section_header(title: str) -> list:
     ]
 
 
-def _two_col_row(left, right, left_style, right_style, left_link: str = None) -> Table:
+def _two_col_row(left, right, left_style, right_style, left_link: str = None, content_width: float = None) -> Table:
     """A left-aligned cell and a right-aligned cell sharing one line
     (company + location, role + dates, degree + GPA) -- the reference
     format's defining structural trait, and something a plain
@@ -136,13 +136,18 @@ def _two_col_row(left, right, left_style, right_style, left_link: str = None) ->
     the actually-dangerous tag, not this one), so this is a real
     clickable link in the rendered PDF, not just text. The URL itself
     still goes through _esc() before being interpolated into the href
-    attribute, same discipline as every other dynamic string here."""
+    attribute, same discipline as every other dynamic string here.
+
+    content_width defaults to _CONTENT_WIDTH (the fixed 0.55in-margin
+    layout) -- render_resume_pdf passes its own current width instead
+    once b1.1's margin-shrinking reduction has changed it."""
+    content_width = content_width if content_width is not None else _CONTENT_WIDTH
     left_text = _esc(left or "")
     if left_link:
         left_text += f' &nbsp;|&nbsp; <a href="{_esc(left_link)}"><font color="#2563eb"><u>GitHub</u></font></a>'
     table = Table(
         [[Paragraph(left_text, left_style), Paragraph(_esc(right or ""), right_style)]],
-        colWidths=[_CONTENT_WIDTH * 0.65, _CONTENT_WIDTH * 0.35],
+        colWidths=[content_width * 0.65, content_width * 0.35],
     )
     table.setStyle(_TWO_COL_TABLE_STYLE)
     return table
@@ -190,9 +195,31 @@ def _contact_lines(contact: dict) -> list[str]:
     return [sep.join(_esc(v) for v in group) for group in (info, links) if group]
 
 
-def render_resume_pdf(resume_content: dict) -> bytes:
+def build_resume_flow(
+    resume_content: dict,
+    body_font_pt: float = 8.7,
+    line_leading_pt: float = 10.3,
+    content_width: float | None = None,
+) -> list:
+    """Everything render_resume_pdf draws, as a plain reportlab flow
+    list, WITHOUT building a real multi-page document -- split out so
+    page_fit_service.py's b1.1 fit loop can measure exactly how tall a
+    candidate resume_content/font/leading combination would render
+    (see its _measure_flow_height_pt) without duplicating this ~90
+    lines of section-building logic, and without ever producing a real
+    multi-page PDF just to answer "how much taller than one page is
+    this." content_width defaults to the standard 0.55in-margin width."""
     if isinstance(resume_content, str):
         resume_content = json.loads(resume_content)
+    content_width = content_width if content_width is not None else _CONTENT_WIDTH
+
+    body_style = ParagraphStyle(
+        "BodyStyleVariable", parent=_styles["Normal"], fontSize=body_font_pt, leading=line_leading_pt, spaceAfter=0,
+    )
+    bullet_style = ParagraphStyle(
+        "BulletStyleVariable", parent=_styles["Normal"], fontSize=body_font_pt, leading=line_leading_pt,
+        leftIndent=13, bulletIndent=0, spaceAfter=0,
+    )
 
     # Every paragraph style used in this function has spaceBefore=
     # spaceAfter=0 (see the style definitions above) -- ALL vertical
@@ -230,33 +257,6 @@ def render_resume_pdf(resume_content: dict) -> bytes:
         for i, item in enumerate(items):
             yield i == 0, item
 
-    buf = io.BytesIO()
-    # BaseDocTemplate + an explicit zero-padding Frame, not
-    # SimpleDocTemplate -- real bug found rendering this exact resume:
-    # SimpleDocTemplate's auto-created default frame carries reportlab's
-    # built-in 6pt leftPadding/rightPadding/topPadding/bottomPadding,
-    # which every plain Paragraph flowable (section titles, summary,
-    # skills) respects, landing 6pt to the right of leftMargin. Passing
-    # leftPadding=0 etc. as SimpleDocTemplate kwargs does NOT reach that
-    # auto-created frame (confirmed empirically -- it has no effect).
-    # _CONTENT_WIDTH's Table-based rows (company/project/education
-    # entries) were sized against the raw margin-to-margin width, not
-    # that padded inner area, so they ended up positioned differently
-    # from the section titles above them -- measured with pdfplumber as
-    # a consistent 6pt horizontal offset, "space before the P" of every
-    # section title relative to the entries under it. A frame built
-    # explicitly with every padding at 0 makes leftMargin the actual,
-    # literal left edge for every flowable, Paragraph or Table alike --
-    # confirmed by measuring both land on the identical x-coordinate.
-    left_margin, right_margin = 0.55 * inch, 0.55 * inch
-    top_margin, bottom_margin = 0.4 * inch, 0.35 * inch
-    page_w, page_h = letter
-    frame = Frame(
-        left_margin, bottom_margin,
-        page_w - left_margin - right_margin, page_h - top_margin - bottom_margin,
-        leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0, id="resume",
-    )
-    doc = BaseDocTemplate(buf, pagesize=letter, pageTemplates=[PageTemplate(id="resume", frames=[frame])])
     flow = [Paragraph(_esc(resume_content.get("name") or ""), _name_style)]
     for is_first, line in _lines(_contact_lines(resume_content.get("contact") or {})):
         if not is_first:
@@ -266,7 +266,7 @@ def render_resume_pdf(resume_content: dict) -> bytes:
     if resume_content.get("summary"):
         flow.append(SECTION_GAP)
         flow += _section_header("Professional Summary")
-        flow.append(Paragraph(_esc(resume_content["summary"]), _body_style))
+        flow.append(Paragraph(_esc(resume_content["summary"]), body_style))
 
     skills = resume_content.get("skills") or {}
     if skills:
@@ -276,7 +276,7 @@ def render_resume_pdf(resume_content: dict) -> bytes:
             if not is_first:
                 flow.append(LINE_GAP)
             label = _esc(_humanize_skill_category(category))
-            flow.append(Paragraph(f"<b>{label}:</b> {_esc(', '.join(items))}", _body_style))
+            flow.append(Paragraph(f"<b>{label}:</b> {_esc(', '.join(items))}", body_style))
 
     experience = resume_content.get("experience") or []
     if experience:
@@ -296,13 +296,13 @@ def render_resume_pdf(resume_content: dict) -> bytes:
             # in what's left of the page, the WHOLE entry moves down,
             # never part of it.
             entry_flow = [
-                _two_col_row(job.get("company"), job.get("location"), _role_style, _meta_right_style),
-                _two_col_row(job.get("role"), job.get("date"), _role_italic_style, _meta_right_style),
+                _two_col_row(job.get("company"), job.get("location"), _role_style, _meta_right_style, content_width=content_width),
+                _two_col_row(job.get("role"), job.get("date"), _role_italic_style, _meta_right_style, content_width=content_width),
             ]
             for is_first_bullet, bullet in _lines(job.get("bullets", [])):
                 if not is_first_bullet:
                     entry_flow.append(LINE_GAP)
-                entry_flow.append(Paragraph(_esc(bullet), _bullet_style, bulletText="-"))
+                entry_flow.append(Paragraph(_esc(bullet), bullet_style, bulletText="-"))
             flow.append(KeepTogether(entry_flow))
 
     projects = resume_content.get("projects") or []
@@ -315,13 +315,14 @@ def render_resume_pdf(resume_content: dict) -> bytes:
             tech = ", ".join(proj.get("technologies") or [])
             entry_flow = [
                 _two_col_row(
-                    proj.get("name"), tech, _role_style, _meta_right_style, left_link=proj.get("github_url"),
+                    proj.get("name"), tech, _role_style, _meta_right_style,
+                    left_link=proj.get("github_url"), content_width=content_width,
                 ),
             ]
             for is_first_bullet, bullet in _lines(proj.get("bullets", [])):
                 if not is_first_bullet:
                     entry_flow.append(LINE_GAP)
-                entry_flow.append(Paragraph(_esc(bullet), _bullet_style, bulletText="-"))
+                entry_flow.append(Paragraph(_esc(bullet), bullet_style, bulletText="-"))
             flow.append(KeepTogether(entry_flow))
 
     education = resume_content.get("education") or []
@@ -332,8 +333,8 @@ def render_resume_pdf(resume_content: dict) -> bytes:
             if not is_first:
                 flow.append(ENTRY_GAP)
             flow.append(KeepTogether([
-                _two_col_row(edu.get("school"), edu.get("location"), _role_style, _meta_right_style),
-                _two_col_row(edu.get("degree"), edu.get("date"), _role_italic_style, _meta_right_style),
+                _two_col_row(edu.get("school"), edu.get("location"), _role_style, _meta_right_style, content_width=content_width),
+                _two_col_row(edu.get("degree"), edu.get("date"), _role_italic_style, _meta_right_style, content_width=content_width),
             ]))
 
     certifications = resume_content.get("certifications") or []
@@ -343,8 +344,57 @@ def render_resume_pdf(resume_content: dict) -> bytes:
         for is_first, cert in _lines(certifications):
             if not is_first:
                 flow.append(LINE_GAP)
-            flow.append(Paragraph(_esc(cert), _bullet_style, bulletText="-"))
+            flow.append(Paragraph(_esc(cert), bullet_style, bulletText="-"))
 
+    return flow
+
+
+def render_resume_pdf(
+    resume_content: dict,
+    body_font_pt: float = 8.7,
+    line_leading_pt: float = 10.3,
+    margin_top_in: float = 0.4,
+    margin_bottom_in: float = 0.35,
+    margin_side_in: float = 0.55,
+) -> bytes:
+    """The five keyword params default to this renderer's own real,
+    already-tuned values -- an unparameterized call renders byte-
+    identical output to before these existed. page_fit_service.py's
+    b1.1 fit loop is the only real caller that ever overrides them,
+    progressively shrinking font/leading/margins one step at a time
+    when a resume would otherwise overflow max_pages."""
+    content_width = letter[0] - 2 * margin_side_in * inch
+    flow = build_resume_flow(
+        resume_content, body_font_pt=body_font_pt, line_leading_pt=line_leading_pt, content_width=content_width,
+    )
+
+    buf = io.BytesIO()
+    # BaseDocTemplate + an explicit zero-padding Frame, not
+    # SimpleDocTemplate -- real bug found rendering this exact resume:
+    # SimpleDocTemplate's auto-created default frame carries reportlab's
+    # built-in 6pt leftPadding/rightPadding/topPadding/bottomPadding,
+    # which every plain Paragraph flowable (section titles, summary,
+    # skills) respects, landing 6pt to the right of leftMargin. Passing
+    # leftPadding=0 etc. as SimpleDocTemplate kwargs does NOT reach that
+    # auto-created frame (confirmed empirically -- it has no effect).
+    # content_width's Table-based rows (company/project/education
+    # entries) were sized against the raw margin-to-margin width, not
+    # that padded inner area, so they ended up positioned differently
+    # from the section titles above them -- measured with pdfplumber as
+    # a consistent 6pt horizontal offset, "space before the P" of every
+    # section title relative to the entries under it. A frame built
+    # explicitly with every padding at 0 makes leftMargin the actual,
+    # literal left edge for every flowable, Paragraph or Table alike --
+    # confirmed by measuring both land on the identical x-coordinate.
+    left_margin, right_margin = margin_side_in * inch, margin_side_in * inch
+    top_margin, bottom_margin = margin_top_in * inch, margin_bottom_in * inch
+    page_w, page_h = letter
+    frame = Frame(
+        left_margin, bottom_margin,
+        page_w - left_margin - right_margin, page_h - top_margin - bottom_margin,
+        leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0, id="resume",
+    )
+    doc = BaseDocTemplate(buf, pagesize=letter, pageTemplates=[PageTemplate(id="resume", frames=[frame])])
     doc.build(flow)
     return buf.getvalue()
 
