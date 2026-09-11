@@ -21,21 +21,78 @@ ATS-safety is enforced, not just intended:
 """
 
 from docx import Document
-from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
+from docx.shared import Inches, Pt, RGBColor
 
 from . import resume_rules
 from .document_render_service import _humanize_skill_category
 
+# python-docx's default template carries real, non-zero spacing on
+# EVERY paragraph (w:docDefaults -- 10pt space-after, 1.15x line
+# spacing) plus a 24pt space-before on Heading 1 and 1in/1.25in page
+# margins, none of which build_resume_docx ever overrode -- so every
+# one of a real resume's ~35-50 paragraphs silently added its own
+# extra vertical gap, compounding into a document that ran to 2 pages
+# on content that reads as under a page's worth of text. Found by
+# actually opening a generated file, not just checking extracted text
+# (which never surfaces layout). Same lesson document_render_service.py's
+# PDF renderer already learned the hard way (see its own "zero every
+# paragraph style's own spacing" history) -- applied here explicitly,
+# every paragraph style below sets space_before/space_after/line_spacing
+# itself rather than leaving anything to inherit.
+_MARGIN_TOP_IN = 0.4
+_MARGIN_BOTTOM_IN = 0.35
+_MARGIN_SIDE_IN = 0.55
+
+_BODY_FONT_PT = 10
+_NAME_FONT_PT = 16
+_HEADING_FONT_PT = 12
+
+_HEADING_SPACE_BEFORE_PT = 8
+_HEADING_SPACE_AFTER_PT = 2
+_ENTRY_SPACE_AFTER_PT = 4  # after a role/project's meta line and after its last bullet
+_BULLET_SPACE_AFTER_PT = 0
+
+
+def _zero_spacing(paragraph_format, space_after_pt: float = 0) -> None:
+    paragraph_format.space_before = Pt(0)
+    paragraph_format.space_after = Pt(space_after_pt)
+    paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+
+
+def _configure_base_styles(doc: Document) -> None:
+    normal = doc.styles["Normal"]
+    normal.font.name = "Calibri"
+    normal.font.size = Pt(_BODY_FONT_PT)
+    _zero_spacing(normal.paragraph_format, _ENTRY_SPACE_AFTER_PT)
+
+    heading = doc.styles["Heading 1"]
+    heading.font.size = Pt(_HEADING_FONT_PT)
+    heading.font.color.rgb = RGBColor(0, 0, 0)  # plain black -- Word's default Heading 1 is a themed blue
+    _zero_spacing(heading.paragraph_format, _HEADING_SPACE_AFTER_PT)
+    heading.paragraph_format.space_before = Pt(_HEADING_SPACE_BEFORE_PT)
+
+    bullet = doc.styles["List Bullet"]
+    _zero_spacing(bullet.paragraph_format, _BULLET_SPACE_AFTER_PT)
+
+    section = doc.sections[0]
+    section.top_margin = Inches(_MARGIN_TOP_IN)
+    section.bottom_margin = Inches(_MARGIN_BOTTOM_IN)
+    section.left_margin = Inches(_MARGIN_SIDE_IN)
+    section.right_margin = Inches(_MARGIN_SIDE_IN)
+
 
 def _add_name_and_contact(doc: Document, resume_doc: dict) -> None:
     name_p = doc.add_paragraph()
+    name_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     name_run = name_p.add_run(resume_doc.get("name") or "")
     name_run.bold = True
-    name_run.font.size = Pt(16)
+    name_run.font.size = Pt(_NAME_FONT_PT)
 
     title = resume_doc.get("title")
     if title:
-        doc.add_paragraph(title)
+        title_p = doc.add_paragraph(title)
+        title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     contact = resume_doc.get("contact") or {}
     contact_parts = [
@@ -43,7 +100,9 @@ def _add_name_and_contact(doc: Document, resume_doc: dict) -> None:
         if contact.get(k)
     ]
     if contact_parts:
-        doc.add_paragraph(" | ".join(contact_parts))
+        contact_p = doc.add_paragraph(" | ".join(contact_parts))
+        contact_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        contact_p.paragraph_format.space_after = Pt(_HEADING_SPACE_AFTER_PT)
 
 
 def _add_bullets(doc: Document, bullets: list[str]) -> None:
@@ -162,9 +221,7 @@ def build_resume_docx(resume_doc: dict, config: dict | None = None) -> Document:
     resume_doc = dict(resume_doc)  # shallow copy -- _add_experience_section stashes a scratch key on it
 
     doc = Document()
-    style = doc.styles["Normal"]
-    style.font.name = "Calibri"
-    style.font.size = Pt(10.5)
+    _configure_base_styles(doc)
 
     _add_name_and_contact(doc, resume_doc)
 

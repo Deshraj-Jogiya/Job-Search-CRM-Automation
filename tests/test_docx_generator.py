@@ -102,6 +102,51 @@ class TestAtsSafety:
         assert len(doc.sections) == 1
 
 
+class TestPageDensity:
+    """A real bug (found by actually opening a generated file, not
+    just checking extracted text): python-docx's default template
+    carries 10pt space-after + 1.15x line spacing on every paragraph,
+    a 24pt space-before on headings, and 1in/1.25in page margins --
+    none of which the generator explicitly overrode, so a real resume
+    silently ran to 2 pages on well under a page's worth of content.
+    These assertions pin the fix structurally; test_golden_resume.py's
+    text-only comparison can't catch a spacing regression like this one
+    on its own."""
+
+    def test_margins_are_tight_not_word_defaults(self):
+        doc = build_resume_docx(_RESUME_DOC)
+        section = doc.sections[0]
+        assert section.top_margin.inches < 0.6
+        assert section.bottom_margin.inches < 0.6
+        assert section.left_margin.inches < 0.75
+        assert section.right_margin.inches < 0.75
+
+    def test_normal_style_has_no_leftover_space_after(self):
+        doc = build_resume_docx(_RESUME_DOC)
+        space_after = doc.styles["Normal"].paragraph_format.space_after
+        assert space_after is not None
+        assert space_after.pt <= 6
+
+    def test_normal_style_is_single_spaced_not_115x(self):
+        from docx.enum.text import WD_LINE_SPACING
+
+        doc = build_resume_docx(_RESUME_DOC)
+        assert doc.styles["Normal"].paragraph_format.line_spacing_rule == WD_LINE_SPACING.SINGLE
+
+    def test_heading_space_before_is_modest_not_24pt(self):
+        doc = build_resume_docx(_RESUME_DOC)
+        space_before = doc.styles["Heading 1"].paragraph_format.space_before
+        assert space_before is not None
+        assert space_before.pt <= 12
+
+    def test_bullet_style_inherits_zero_leftover_spacing(self):
+        doc = build_resume_docx(_RESUME_DOC)
+        bullet_style = doc.styles["List Bullet"]
+        space_after = bullet_style.paragraph_format.space_after
+        assert space_after is not None
+        assert space_after.pt <= 6
+
+
 class TestWorkAuthorizationNeverGenerated:
     def test_no_work_auth_line_by_default(self):
         doc = build_resume_docx(_RESUME_DOC)
