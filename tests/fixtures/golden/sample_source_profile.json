@@ -1,0 +1,110 @@
+{
+  "name": "Jordan Rivera",
+  "title": "Data Engineer",
+  "summary": "Data engineer building batch and streaming pipelines, focused on reliability and cost-aware infrastructure.",
+  "contact": {
+    "email": "jordan.rivera.sample@example.com",
+    "phone": "555-0100",
+    "location": "Austin, TX",
+    "linkedin": "https://www.linkedin.com/in/jordan-rivera-sample",
+    "github": "https://github.com/jordan-rivera-sample"
+  },
+  "skills": {
+    "languages": ["Python", "SQL", "Scala", "Rust"],
+    "data_engineering": ["Apache Airflow", "dbt", "Kafka", "Spark"],
+    "cloud_warehouses": ["Snowflake", "AWS", "Redshift", "GCP"],
+    "ml_analytics": ["Pandas", "scikit-learn", "Tableau"],
+    "platform": ["Docker", "Kubernetes", "Terraform"]
+  },
+  "experience": [
+    {
+      "role": "Senior Data Engineer",
+      "company": "Northwind Analytics",
+      "location": "Austin, TX",
+      "date": "Jun 2024 - Present",
+      "bullets": [
+        "Rebuilt the nightly ingestion pipeline on Airflow, cutting failed-run incidents by roughly 40%.",
+        "Migrated a legacy warehouse to Snowflake, reducing query latency by roughly 3x for analytics dashboards.",
+        "Introduced dbt-based data quality tests, catching schema drift before it reached (-15% downstream reporting errors).",
+        "Containerized the team's batch jobs with Docker and moved orchestration to Kubernetes, cutting deployment time by roughly 35%."
+      ]
+    },
+    {
+      "role": "Data Engineer",
+      "company": "Contoso Data Systems",
+      "location": "Remote",
+      "date": "Jan 2024 - Sep 2024",
+      "bullets": [
+        "Built a Kafka-based streaming pipeline processing 500GB/day across 12 sources.",
+        "Wrote Terraform modules to provision the team's AWS data infrastructure.",
+        "Tuned SQL queries against Redshift, cutting the daily reporting job's runtime by roughly 30%."
+      ]
+    },
+    {
+      "role": "Data Platform Engineer",
+      "company": "Beacon Retail Co",
+      "location": "Chicago, IL",
+      "date": "Mar 2023 - Dec 2023",
+      "bullets": [
+        "Wrote Scala Spark jobs on GCP Dataproc to process point-of-sale data across 300+ stores.",
+        "Built scikit-learn based anomaly detection for inventory counts, catching roughly 90% of known discrepancy cases in backtesting.",
+        "Created Tableau dashboards summarizing weekly inventory drift for regional operations managers."
+      ]
+    },
+    {
+      "role": "Data Engineering Intern",
+      "company": "Fabrikam Labs",
+      "location": "Denver, CO",
+      "date": "May 2016 - Aug 2016",
+      "bullets": [
+        "Wrote ETL scripts moving CSV exports into a Postgres warehouse."
+      ]
+    },
+    {
+      "role": "Data Engineering Fellow",
+      "company": "Insight Data Bootcamp",
+      "location": "Remote",
+      "date": "Jan 2024 - Mar 2024",
+      "entry_type": "credential",
+      "bullets": [
+        "Completed a 12-week intensive fellowship building an end-to-end streaming pipeline capstone project."
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "name": "Pipeline Cost Monitor",
+      "bullets": [
+        "Built a Streamlit dashboard tracking daily Snowflake compute spend, flagging anomalies roughly 24 hours faster than manual review.",
+        "Automated weekly cost reports using Python and the Snowflake API."
+      ]
+    },
+    {
+      "name": "Retail Demand Forecasting Pipeline",
+      "bullets": [
+        "Built a Spark-based feature pipeline feeding a demand forecasting model across 200+ store locations.",
+        "Reduced feature computation time by roughly 50% by rewriting a Pandas job in PySpark."
+      ]
+    },
+    {
+      "name": "Open Data Quality Toolkit",
+      "bullets": [
+        "Published an open-source dbt package for common data quality checks, adopted by roughly a dozen internal teams.",
+        "Wrote a Rust CLI companion tool for fast local validation before a dbt run, cutting local test time by roughly 60%."
+      ]
+    },
+    {
+      "name": "Home Energy Usage Tracker",
+      "bullets": [
+        "Built a personal IoT dashboard for home energy usage, unrelated to the data_engineering variant's configured project list."
+      ]
+    }
+  ],
+  "education": [
+    {"degree": "B.S. Computer Science", "school": "University of Texas at Austin", "date": "2017"}
+  ],
+  "certifications": [
+    "AWS Certified Data Analytics - Specialty",
+    "Snowflake SnowPro Core Certification"
+  ]
+}
