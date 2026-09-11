@@ -12,6 +12,15 @@ Alembic migration notes on staying dialect-generic) -- a personal job
 search's queue is realistically dozens to a few hundred rows, small
 enough that sorting after a bounded query costs nothing worth a
 dialect-specific JSON-path query for.
+
+b3.1/b3.2 (adaptation_service.py's anti-runaway guardrails): build_queue
+NEVER truncates or filters by score -- every non-terminal, non-skipped,
+non-blocked application is always in its tab, low scorers included.
+Score only controls ORDER within a tab, never inclusion. This is what
+makes the exploration floor trivially satisfied by construction: 100%
+of the queue is visible regardless of what any adaptive ranking
+favors, so there's nothing for a 15% floor to guarantee on top of.
+See tests/test_adaptation_guardrails.py.
 """
 
 from sqlalchemy.orm import Session, joinedload
