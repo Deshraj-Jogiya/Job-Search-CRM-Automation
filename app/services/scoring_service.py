@@ -43,7 +43,7 @@ _AI_PROFILE_FIT_WEIGHT = 30  # the folded-in original match_score, see module do
 # relative standing intact when that happens. At the default weight
 # (30/20) these ratios reproduce the exact original point values
 # (30/18/8/0/4 and 20/15/8/3/6) -- see WEIGHTING.md.
-_WAGE_LEVEL_FIT_RATIO = {"IV": 1.0, "III": 0.75, "II": 0.4, "I": 0.15}
+_WAGE_LEVEL_FIT_RATIO = {"IV": 1.0, "III": 0.75, "II": 0.4, "I": 0.15, "Below Level I": 0.0}
 _WAGE_LEVEL_FIT_UNKNOWN_RATIO = 0.3
 
 _SPONSORSHIP_HISTORY_RATIO_BY_TIER = {"A": 1.0, "B": 0.6, "C": 8 / 30, "X": 0.0}
@@ -65,8 +65,19 @@ def _sponsorship_history_component(company: Company | None, weight: float = _SPO
     return {"raw": raw, "weight": weight, "contribution": contribution}
 
 
-def _wage_level_fit_component(company: Company | None, weight: float = _WAGE_LEVEL_FIT_WEIGHT) -> dict:
-    level = company.max_wage_level_15xx if company else None
+def _wage_level_fit_component(
+    company: Company | None, weight: float = _WAGE_LEVEL_FIT_WEIGHT, posting: JobPosting | None = None,
+) -> dict:
+    """Prefers posting.wage_level_per_posting (see wage_level_service.py
+    -- this specific posting's actual offered/parsed salary classified
+    against real OEWS data for its own location) over
+    company.max_wage_level_15xx (that employer's HISTORICAL highest
+    DOL-filed wage level across every Computer/Mathematical filing they
+    have ever made) whenever a per-posting value was actually computed.
+    Falls back to the company-level signal otherwise -- the common
+    case, since most JDs don't state a salary at all (see
+    salary_parser.py's own docstring)."""
+    level = (posting.wage_level_per_posting if posting else None) or (company.max_wage_level_15xx if company else None)
     ratio = _WAGE_LEVEL_FIT_RATIO.get(level, _WAGE_LEVEL_FIT_UNKNOWN_RATIO)
     return {"raw": level, "weight": weight, "contribution": round(weight * ratio)}
 
@@ -145,7 +156,7 @@ def compute_score_breakdown(
     components = {
         "ai_profile_fit": _ai_profile_fit_component(application),
         "sponsorship_history": _sponsorship_history_component(company, sponsorship_history_weight),
-        "wage_level_fit": _wage_level_fit_component(company, wage_level_fit_weight),
+        "wage_level_fit": _wage_level_fit_component(company, wage_level_fit_weight, posting),
         "worksite_clarity": _worksite_clarity_component(posting),
         "sponsorship_signal_bonus": _sponsorship_signal_bonus_component(posting),
     }

@@ -281,6 +281,19 @@
                 {% endif %}
             </div>
             {% endif %}
+            <p class="muted-note">
+                {% if app.posting.offered_salary_min %}
+                Salary: ${{ "{:,}".format(app.posting.offered_salary_min) }}{% if app.posting.offered_salary_max != app.posting.offered_salary_min %} - ${{ "{:,}".format(app.posting.offered_salary_max) }}{% endif %}
+                {% if app.posting.wage_level_per_posting %}(Level {{ app.posting.wage_level_per_posting }}){% endif %}
+                ({{ app.posting.offered_salary_source }})
+                {% endif %}
+                <form method="post" action="/jobs/postings/{{ app.posting.id }}/salary" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="number" name="salary_min" placeholder="min $" min="1" style="width:90px;display:inline-block;">
+                    <input type="number" name="salary_max" placeholder="max $" min="1" style="width:90px;display:inline-block;">
+                    <button type="submit" class="btn-link">{{ "correct salary" if app.posting.offered_salary_min else "set salary" }}</button>
+                </form>
+            </p>
         </li>
         {% endfor %}
     </ul>

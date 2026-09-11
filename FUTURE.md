@@ -68,15 +68,46 @@ scope, and `tests/test_bullet_fabrication_check.py` for the wiring
 tests (mocked LLM -- verifying the LLM's own judgment quality isn't
 something an offline unit test can do).
 
-## Wage-level fit is company-level, not per-posting
+## Wage-level fit is company-level, not per-posting -- DONE (2026-09-11)
 
 `Company.max_wage_level_15xx` (the wage_level_fit score component)
-reflects an employer's historical DOL-filed wage level for
+reflects an employer's HISTORICAL highest DOL-filed wage level for
 Computer/Mathematical roles, not the specific offered salary for a
-given posting -- this app has no per-posting offered-salary field to
-compare against Phase 1's `wage_level_for()` helper. Adding one would
-mean parsing salary ranges out of raw JD text (unreliable, most JDs
-don't state one) or a manual entry field -- neither attempted here.
+given posting. Closed by `salary_parser.py` (mechanical, no LLM,
+same posture as `sponsorship_signals.py` -- only extracts a salary
+range when the JD states one in an unambiguous format: an explicit
+range, a single figure marked per-year/annually, or an hourly rate
+converted via a standard 2080-hour year; never inferred from title/
+seniority/company size) plus `wage_level_service.py`, which matches
+the posting's location to a loaded OEWS area (a plain substring match
+against the areas loaded for `GlobalSettings.target_soc_code` --
+default `15-1252` Software Developers, since this app tracks one
+candidate's job search, not a general multi-occupation platform, so
+classifying each posting's exact SOC code individually was never
+attempted either) and classifies the parsed (or manually-entered,
+which always wins and is never overwritten by a later re-parse)
+salary via the existing `wage_level_for()` helper.
+`scoring_service._wage_level_fit_component` now prefers this
+per-posting value over the company-level one whenever it resolved.
+
+Two real, stated limitations, not silently smoothed over: most JDs
+state no salary at all (parsing returns None, the honest common case,
+not a failure), and the location match is a plain substring check
+against whatever OEWS areas are actually loaded for the target SOC
+code -- "Remote" or an area with no loaded data resolves to no match,
+falling back to the company-level signal exactly as scoring already
+did before this existed. A manual "set/correct salary" form on the
+Jobs page covers the gap parsing can't (see
+`app/routers/jobs.py:set_posting_salary`).
+
+While building this, found and fixed a separate, real, pre-existing
+bug: `intake_service._ingest_raw_posting` never copied `raw.location`
+onto the created `JobPosting` at all -- every posting's `location`
+column was silently `None` regardless of what the source actually
+provided, which also meant `scoring_service._worksite_clarity_component`
+had never been able to see a real location for ANY posting since it
+was built. Fixed alongside this pass since the new wage-level matching
+needed a real location to work at all.
 
 ## Everything else the H-1B spec's own scope freeze already named
 
