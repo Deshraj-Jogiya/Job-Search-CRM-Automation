@@ -423,7 +423,6 @@ def _build_detail_context(application_id: int, request: Request, db: Session, di
         .order_by(OutreachMessage.created_at.desc())
         .all()
     )
-    settings = get_or_create_settings(db)
 
     active_prep = application.active_interview_prep
     general_prep = json.loads(active_prep.general_prep_json) if (
@@ -462,8 +461,6 @@ def _build_detail_context(application_id: int, request: Request, db: Session, di
         "interview_prep": active_prep,
         "prep_versions": prep_versions,
         "outreach_messages": outreach_messages,
-        "daily_outreach_cap": settings.daily_outreach_cap,
-        "outreach_sent_today": outreach_service.sent_count_last_24h(db),
         "discovery_available": contact_discovery_service.is_tavily_configured(),
         "discovered_contacts": discovered_contacts,
         "autofill_supported": autofill_service.is_supported(application.posting.source),

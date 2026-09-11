@@ -168,10 +168,6 @@
             <input type="number" name="interview_prep_answer_target" value="{{ settings.interview_prep_answer_target }}" min="1">
         </label>
 
-        <label>Daily outreach limit
-            <input type="number" name="daily_outreach_cap" value="{{ settings.daily_outreach_cap }}" min="0">
-        </label>
-
         {% if backup_configured %}
         <label class="checkbox-label">
             <input type="checkbox" name="automated_backups_enabled" value="true" {{ "checked" if settings.automated_backups_enabled }}>

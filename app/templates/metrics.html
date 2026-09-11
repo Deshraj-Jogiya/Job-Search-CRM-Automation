@@ -67,10 +67,6 @@
 
 <section class="variant-block">
     <h2>Applications per Week</h2>
-    <p class="muted-note">
-        Target: {{ time_series.target_applications_per_week_min }}-{{ time_series.target_applications_per_week_max }}/week
-        (5x the daily /queue target).
-    </p>
     {% if time_series.weeks %}
     {% set max_apps = time_series.applications_per_week | max %}
     <div class="bar-chart">

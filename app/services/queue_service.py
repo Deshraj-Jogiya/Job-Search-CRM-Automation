@@ -17,7 +17,7 @@ dialect-specific JSON-path query for.
 from sqlalchemy.orm import Session, joinedload
 
 from ..database import utcnow
-from ..models import Company, GlobalSettings, JobApplication, JobPosting, OutreachMessage, get_or_create_settings
+from ..models import Company, JobApplication, JobPosting, get_or_create_settings
 from .activity_logger import log_activity
 from .company_tier import derive_tier
 from .scoring_service import recompute_score_breakdown
@@ -68,25 +68,6 @@ def build_queue(db: Session) -> dict:
         "cap_exempt": _sorted_by_score(cap_exempt),
         "tier_ab": _sorted_by_score(tier_ab),
         "everything_else": _sorted_by_score(everything_else),
-    }
-
-
-def daily_counters(db: Session, settings: GlobalSettings | None = None) -> dict:
-    settings = settings or get_or_create_settings(db)
-    since = utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-
-    applications_today = (
-        db.query(JobApplication).filter(JobApplication.applied_at.isnot(None), JobApplication.applied_at >= since).count()
-    )
-    outreach_today = (
-        db.query(OutreachMessage).filter(OutreachMessage.sent_at.isnot(None), OutreachMessage.sent_at >= since).count()
-    )
-    return {
-        "applications_today": applications_today,
-        "applications_target_min": settings.daily_application_target_min,
-        "applications_target_max": settings.daily_application_target_max,
-        "outreach_today": outreach_today,
-        "outreach_target": settings.daily_outreach_touch_target,
     }
 
 

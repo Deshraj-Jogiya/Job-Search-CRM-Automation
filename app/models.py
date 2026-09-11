@@ -692,9 +692,6 @@ class GlobalSettings(Base):
     notification_digest_interval_minutes = Column(Integer, default=30)
     last_digest_sent_at = Column(DateTime, nullable=True)
 
-    # Outreach
-    daily_outreach_cap = Column(Integer, default=10)
-
     # Automated backups -- export used to be manual-only, so a gap
     # unattended for weeks meant zero recent recovery point. Runs once a
     # day (see scheduler.py) straight to local disk (backups/scheduled/,
@@ -741,20 +738,17 @@ class GlobalSettings(Base):
     tier_a_min_wage_level = Column(Integer, default=3)
     tier_b_min_filings = Column(Integer, default=3)
 
-    # Outreach hygiene caps (outreach_hygiene.py) -- distinct from
-    # daily_outreach_cap above (a raw daily volume ceiling): these guard
-    # against re-contacting the same person/company too often, checked
-    # at draft time, not send time.
-    outreach_person_lifetime_cap = Column(Integer, default=1)  # cold messages to the same person, ever
-    outreach_company_cap_count = Column(Integer, default=3)  # messages to the same company...
-    outreach_company_cap_days = Column(Integer, default=14)  # ...within this many rolling days
-
-    # Daily go/no-go targets shown on /queue -- purely informational
-    # counters against the user's own personal targets, no automation
-    # gates on these.
-    daily_application_target_min = Column(Integer, default=8)
-    daily_application_target_max = Column(Integer, default=12)
-    daily_outreach_touch_target = Column(Integer, default=15)
+    # Outreach hygiene caps (outreach_hygiene.py) -- these guard against
+    # re-contacting the same person/company too often, checked at draft
+    # time, not send time (no daily send-volume ceiling exists anywhere
+    # in this app, deliberately). This app never sets, displays, or
+    # implies a target number of applications/messages per day or week
+    # -- it counts what happened, it doesn't tell the user what they
+    # should do (see queue_service.py/metrics_service.py -- no daily/
+    # weekly target fields exist anywhere in this schema, deliberately).
+    outreach_per_person_lifetime = Column(Integer, default=1)  # cold messages to the same person, ever
+    outreach_per_company_max = Column(Integer, default=10)  # messages to the same company...
+    outreach_per_company_window_days = Column(Integer, default=14)  # ...within this many rolling days
 
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 

@@ -4,8 +4,10 @@ same person, and never more than a few to the same company within a
 rolling window. Checked at DRAFT time (not send time) -- the whole
 point is to stop a duplicate message from ever being written, not to
 catch it after the fact. Both caps are config-driven
-(GlobalSettings.outreach_person_lifetime_cap /
-outreach_company_cap_count / outreach_company_cap_days), not hardcoded.
+(GlobalSettings.outreach_per_person_lifetime / outreach_per_company_max /
+outreach_per_company_window_days), not hardcoded. No send-day/holiday/
+"light day" gating exists anywhere in this module or this app -- caps
+are the only outreach guardrail, checked continuously, not scheduled.
 
 Only counts messages that actually reached "Sent" -- a Draft that was
 never approved/was rejected shouldn't count against a real-world cap
@@ -66,16 +68,16 @@ def check_caps(
     settings = settings or get_or_create_settings(db)
 
     person_count = _person_sent_count(db, recipient_address)
-    if person_count >= settings.outreach_person_lifetime_cap:
+    if person_count >= settings.outreach_per_person_lifetime:
         raise OutreachCapViolation(
             f"Already sent {person_count} message(s) to {recipient_address} -- "
-            f"lifetime cap is {settings.outreach_person_lifetime_cap}."
+            f"lifetime cap is {settings.outreach_per_person_lifetime}."
         )
 
     if company_id:
-        company_count = _company_sent_count_in_window(db, company_id, settings.outreach_company_cap_days)
-        if company_count >= settings.outreach_company_cap_count:
+        company_count = _company_sent_count_in_window(db, company_id, settings.outreach_per_company_window_days)
+        if company_count >= settings.outreach_per_company_max:
             raise OutreachCapViolation(
                 f"Already sent {company_count} message(s) to this company in the last "
-                f"{settings.outreach_company_cap_days} days -- cap is {settings.outreach_company_cap_count}."
+                f"{settings.outreach_per_company_window_days} days -- cap is {settings.outreach_per_company_max}."
             )

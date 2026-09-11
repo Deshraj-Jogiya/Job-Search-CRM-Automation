@@ -23,13 +23,11 @@ router = APIRouter(prefix="/queue", tags=["queue"])
 @router.get("", response_class=HTMLResponse)
 def queue_page(request: Request, db: Session = Depends(get_db)):
     tabs = queue_service.build_queue(db)
-    counters = queue_service.daily_counters(db)
     return render(
         request,
         "queue.html",
         {
             "tabs": tabs,
-            "counters": counters,
             "skip_reasons": queue_service.SKIP_REASONS,
             "message": request.query_params.get("message"),
             "error": request.query_params.get("error"),
