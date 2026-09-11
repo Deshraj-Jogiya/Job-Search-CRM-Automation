@@ -223,6 +223,47 @@ def record_dedupe_correction(db: Session, was_false_merge: bool, config: dict | 
 
 
 # ---------------------------------------------------------------------------
+# B1.5 -- sponsorship regex misfires (accumulated, never auto-applied)
+# ---------------------------------------------------------------------------
+
+_SPONSORSHIP_MISFIRE_SUBSYSTEM = "sponsorship_regex"
+
+
+def record_sponsorship_misfire(db: Session, posting_id: int, label: str) -> AdaptationLog:
+    """One-click 'this flag was wrong' on a sponsorship-blocked posting.
+    Unlike b1.4's threshold, a regex PATTERN isn't a bounded float --
+    narrowing it is a code change, so this can only ever accumulate
+    evidence and surface it (status='proposed'), never write a new
+    current_value or flip status to 'applied' by itself."""
+    return log_adaptation(
+        db, "tier1", _SPONSORSHIP_MISFIRE_SUBSYSTEM, label, None, None,
+        triggering_evidence={"posting_id": posting_id}, status="proposed",
+    )
+
+
+def sponsorship_misfire_report(db: Session, min_misfires: int = 3) -> list[dict]:
+    """Groups accumulated corrections by pattern label -- the 'surface
+    responsible pattern' half of b1.5. Only labels at or above
+    min_misfires are returned; one stray correction shouldn't flag a
+    pattern as broken. Worst-offender first."""
+    rows = (
+        db.query(AdaptationLog)
+        .filter(
+            AdaptationLog.subsystem == _SPONSORSHIP_MISFIRE_SUBSYSTEM,
+            AdaptationLog.status == "proposed",
+        )
+        .all()
+    )
+    counts: dict[str, int] = {}
+    for row in rows:
+        counts[row.parameter] = counts.get(row.parameter, 0) + 1
+    return sorted(
+        ({"label": label, "misfire_count": count} for label, count in counts.items() if count >= min_misfires),
+        key=lambda r: -r["misfire_count"],
+    )
+
+
+# ---------------------------------------------------------------------------
 # B1.8 -- queue supply visibility (plain counts, no target)
 # ---------------------------------------------------------------------------
 

@@ -231,6 +231,21 @@ def mark_posting_not_a_duplicate(posting_id: int, db: Session = Depends(get_db))
     return _redirect(message=f"Noted -- dedupe threshold adjusted to {new_threshold:.2f}.")
 
 
+@router.post("/postings/{posting_id}/sponsorship-flag-wrong")
+def mark_sponsorship_flag_wrong(posting_id: int, label: str = Form(...), db: Session = Depends(get_db)):
+    """b1.5 correction feedback: one blocked-sponsorship regex label
+    misfired on a real posting. Accumulates toward
+    adaptation_service.sponsorship_misfire_report's proposed-narrowing
+    surface -- never edits or disables the pattern itself."""
+    posting = db.query(JobPosting).filter(JobPosting.id == posting_id).first()
+    if not posting:
+        return _redirect(error=f"Posting {posting_id} not found.")
+    if not posting.sponsorship_blocked:
+        return _redirect(error="This posting isn't sponsorship-blocked.")
+    adaptation_service.record_sponsorship_misfire(db, posting.id, label)
+    return _redirect(message="Noted -- thanks, this helps tune the sponsorship pattern list.")
+
+
 @router.post("/companies/slug")
 def set_company_board_slug(
     company_name: str = Form(...),
