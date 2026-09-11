@@ -24,7 +24,7 @@ import re
 from sqlalchemy.orm import Session
 
 from ..models import JobApplication, ProfileVariant, TailoredDocument
-from .activity_logger import log_activity
+from .activity_logger import log_activity, log_exception
 from .llm import get_llm_provider, parse_json_response
 from .matching_service import MatchingServiceError, get_profile_content_for_application
 from . import resume_rules
@@ -371,6 +371,61 @@ def _verify_structural_fidelity(original_experience: list, tailored_experience: 
     return violations
 
 
+def check_bullet_fabrication(
+    original_experience: list, tailored_experience: list, original_projects: list, tailored_projects: list, jd_text: str,
+) -> list[str]:
+    """The general bullet-prose fabrication check FUTURE.md documented
+    as a real, open gap: _verify_structural_fidelity only catches an
+    invented company/role/date; resume_rules.py's D1/D2 only catch an
+    over-claimed years figure or an unverified bare percentage. Neither
+    catches a fabricated metric, scope, or outcome written directly
+    into a bullet's prose (e.g. an invented "led a team of 12").
+
+    One dedicated LLM verification call, run ONCE per tailoring against
+    the FINAL tailored bullets vs. the FINAL originals -- not woven into
+    run_multi_pass_tailoring's own tailor/verify/refine loop, which
+    would mean paying for this check on every intermediate refine pass
+    instead of once at the end. Valid ONLY when entry order/company/
+    role/date didn't change (see _verify_structural_fidelity) -- the
+    positional original-to-tailored comparison this relies on is
+    meaningless otherwise; callers should skip this check when
+    structural_violations is non-empty.
+
+    Returns human-readable fabrication descriptions, empty when the LLM
+    finds none. This is a real judgment call by the LLM, same posture
+    as _verify_ats_score's scoring -- surfaced for human review via the
+    same attention_reason mechanism as every other check here, never
+    auto-rewritten."""
+    llm = get_llm_provider()
+    raw = llm.complete_json(
+        system=(
+            "You are a meticulous fact-checker reviewing a tailored resume against the candidate's own "
+            "original, unedited resume. You return only raw JSON."
+        ),
+        prompt=(
+            "Compare each TAILORED bullet below against its ORIGINAL counterpart at the same position. "
+            "Flag a tailored bullet ONLY if it introduces a specific claim -- a metric, number, scope "
+            "(team size, budget, user count, data volume), outcome, responsibility, or the name of a "
+            "company/organization/client/tool the original bullet never mentions -- that is not "
+            "present, implied, or a reasonable paraphrase of something already in the original bullet. "
+            "A tailored bullet that rephrases, reorders, or shifts emphasis on REAL content from the "
+            "original is not a fabrication, even when the wording changes substantially. Only flag a "
+            "genuinely NEW factual claim that appears nowhere in the original.\n\n"
+            f"Original Experience:\n{json.dumps(original_experience, indent=2)}\n\n"
+            f"Tailored Experience:\n{json.dumps(tailored_experience, indent=2)}\n\n"
+            f"Original Projects:\n{json.dumps(original_projects, indent=2)}\n\n"
+            f"Tailored Projects:\n{json.dumps(tailored_projects, indent=2)}\n\n"
+            f"Job Description (context only, never a source of facts about the candidate):\n{jd_text}\n\n"
+            'Respond with EXACTLY this JSON shape: {"fabrications": ["Entry 0 bullet 1: claims X, not '
+            'supported by the original"]}\n'
+            "Return an empty list if nothing was fabricated. Do not wrap the output in markdown code fences."
+        ),
+        temperature=0.1,
+    )
+    result = parse_json_response(raw)
+    return result.get("fabrications", [])
+
+
 def _extract_candidate_terms(keyword: str) -> list:
     """Breaks a JD-derived keyword phrase into its atomic technology
     terms -- the parts most likely to be literal, checkable tool/product
@@ -553,6 +608,21 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
     unsupported = _find_unsupported_keywords(profile_content, resolved_keywords)
     structural_violations = _verify_structural_fidelity(profile_content.get("experience", []), tailored_experience)
 
+    # General bullet-prose fabrication check (FUTURE.md's previously-open
+    # gap) -- only meaningful when entry order/company/role/date are
+    # already confirmed unchanged (positional original-to-tailored
+    # comparison), so this is skipped, not run wastefully, whenever
+    # structural_violations already caught a bigger problem.
+    bullet_fabrications = []
+    if not structural_violations:
+        try:
+            bullet_fabrications = check_bullet_fabrication(
+                profile_content.get("experience", []), tailored_experience,
+                candidate_projects, tailored_projects, jd_text,
+            )
+        except Exception:
+            log_exception(f"Bullet fabrication check failed for application {application_id} -- skipped, not blocking tailoring.")
+
     final_summary = extras.get("summary", profile_content.get("summary"))
 
     # D1/D2/inverse (Part C1/C4's prose-level extension) -- detected
@@ -634,7 +704,7 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
 
     any_violation = (
         all_unsupported or structural_violations or years_claim_violations
-        or unverified_percentage_violations or self_deprecating_hits
+        or unverified_percentage_violations or self_deprecating_hits or bullet_fabrications
     )
     if any_violation:
         reason_parts = []
@@ -662,6 +732,10 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
             reason_parts.append(
                 f"Volunteered self-deprecating phrasing not asked for by the JD: {', '.join(self_deprecating_hits)}."
             )
+        if bullet_fabrications:
+            reason_parts.append(
+                f"Possible bullet-level fabrication: {'; '.join(bullet_fabrications)}."
+            )
         reason_parts.append("Review the tailored resume/cover letter before using them.")
         application.attention_reason = " ".join(reason_parts)[:250]
         if all_unsupported:
@@ -684,6 +758,13 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
                 f"PROSE-LEVEL WARNING (D1/D2/inverse) on '{posting.job_title}' at {posting.company_name_raw}: "
                 f"years={years_claim_violations}, unverified%={unverified_percentage_violations}, "
                 f"self-deprecating={self_deprecating_hits} -- resume needs manual review.",
+                "WARNING",
+            )
+        if bullet_fabrications:
+            log_activity(
+                db,
+                f"BULLET FABRICATION WARNING on '{posting.job_title}' at {posting.company_name_raw}: "
+                f"{bullet_fabrications} -- resume needs manual review.",
                 "WARNING",
             )
     else:

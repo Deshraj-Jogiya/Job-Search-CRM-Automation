@@ -32,33 +32,41 @@ tracking (which round, reached when) -- a real feature, not a
 one-line addition, deliberately not built as a side effect of the
 metrics dashboard.
 
-## Bullet-level fabrication detection
+## Bullet-level fabrication detection -- DONE (2026-09-11)
 
 `tailoring_service._verify_structural_fidelity()` catches an LLM
 inventing/altering a company name, role title, or date range. The
-Adaptive Layer + Resume Rules pass (2026-09-11) narrowed this gap by
-exactly two checks, deliberately not more: `resume_rules.check_years_claim`
-(D1) rejects a generated years-of-experience figure exceeding what
+Adaptive Layer + Resume Rules pass (2026-09-11) added two narrow,
+non-LLM checks: `resume_rules.check_years_claim` (D1) rejects a
+generated years-of-experience figure exceeding what
 `total_experience_months` actually computes, and
 `check_unverified_bare_percentage` (D2) rejects a bare percentage not
 marked `verified: true`. Both run against the raw tailored bullets
 BEFORE C4's hedging mutates them, so a real violation survives for
 human review even though the saved document always renders safely
-hedged regardless.
+hedged regardless. That pass deliberately scoped out general prose
+fabrication detection (its own Part D: "Do NOT attempt general prose
+fabrication detection").
 
-Neither catches a fabricated metric or outcome embedded directly in
-bullet prose that ISN'T a bare percentage (e.g. an invented "cut
-latency by 40%" phrased as prose rather than a standalone number), or
-an invented employer name mentioned only inside a bullet's text rather
-than the structural `company` field. See
-`tests/test_tailoring_adversarial.py`'s own findings section for the
-exact adversarial cases that currently pass through undetected.
-Building a real detector here means distinguishing "genuinely
-rephrased from a real bullet" from "invented from nothing," which is
-a harder problem than a quick mechanical patch can solve honestly --
-worth a dedicated design pass, not a rushed fix. Deliberately scoped
-out of the Adaptive Layer pass too (see that spec's Part D: "Do NOT
-attempt general prose fabrication detection").
+The general gap those left open -- a fabricated metric/outcome/
+organization name embedded directly in bullet prose, not just a bare
+percentage -- is now closed by `tailoring_service.check_bullet_fabrication`,
+a dedicated LLM verification pass added the same day once the pass
+above finished: for each tailored bullet, compares it against its
+ORIGINAL counterpart (valid only when `_verify_structural_fidelity`
+already confirmed entry order/company/role/date didn't change) and
+flags a genuinely new claim -- metric, scope, outcome, responsibility,
+or a company/organization/client/tool name -- not supported by the
+original. Run ONCE per tailoring against the final tailored bullets,
+not woven into every intermediate refine pass, to keep the added LLM
+cost to exactly one extra call. Surfaced through the same
+`attention_reason` mechanism as every other check, never
+auto-rewritten. This is a real LLM judgment call, not a mechanical
+guarantee the way `_verify_structural_fidelity` is -- see
+`tests/test_tailoring_adversarial.py`'s findings #2/#3 for the honest
+scope, and `tests/test_bullet_fabrication_check.py` for the wiring
+tests (mocked LLM -- verifying the LLM's own judgment quality isn't
+something an offline unit test can do).
 
 ## Wage-level fit is company-level, not per-posting
 

@@ -102,3 +102,43 @@ class TestInverseSelfDeprecatingCheck:
         result = _run_tailor_application(db, application, "Data engineer.", ["Only 3 months on this, but shipped it."])
         assert result.attention_reason is not None
         assert "only 3 months" in result.attention_reason.lower()
+
+
+class TestBulletFabricationCheck:
+    """Integration coverage for check_bullet_fabrication wired into
+    tailor_application() -- the general prose-fabrication gap FUTURE.md
+    documented as previously open. Its own LLM-call/parsing logic is
+    unit-tested directly in test_bullet_fabrication_check.py; this
+    confirms a flagged fabrication actually reaches attention_reason."""
+
+    def test_fabrication_flag_reaches_attention_reason(self, db):
+        application = _application(db, _BASE_PROFILE)
+        with patch(
+            "app.services.tailoring_service.check_bullet_fabrication",
+            return_value=["Entry 0 bullet 0: claims a 'team of 12', not in the original"],
+        ):
+            result = _run_tailor_application(db, application, "Data engineer.", ["Led a team of 12 engineers."])
+        assert result.attention_reason is not None
+        assert "team of 12" in result.attention_reason
+
+    def test_no_fabrication_does_not_flag(self, db):
+        application = _application(db, _BASE_PROFILE)
+        with patch("app.services.tailoring_service.check_bullet_fabrication", return_value=[]):
+            result = _run_tailor_application(db, application, "Data engineer.", ["Built pipelines."])
+        assert result.attention_reason is None
+
+    def test_skipped_entirely_when_structural_violations_already_found(self, db):
+        application = _application(db, _BASE_PROFILE)
+        with (
+            patch(
+                "app.services.tailoring_service.run_multi_pass_tailoring",
+                # company changed from "Real Co" -> a structural violation
+                return_value=([{"role": "Data Engineer", "company": "Fake Co", "date": "Jan 2024 - Jun 2024", "bullets": ["Built pipelines."]}], [], 90, [], []),
+            ),
+            patch("app.services.tailoring_service._tailor_summary_skills", return_value={"summary": "Data engineer.", "skills": {}}),
+            patch("app.services.tailoring_service.generate_cover_letter", return_value="A cover letter."),
+            patch("app.services.tailoring_service.score_cover_letter", return_value=80),
+            patch("app.services.tailoring_service.check_bullet_fabrication") as mock_fab,
+        ):
+            tailoring_service.tailor_application(db, application.id)
+        mock_fab.assert_not_called()

@@ -14,24 +14,29 @@ FINDINGS (see each test class's docstring for the specific scenario):
    range would have sailed through unnoticed. Fixed by adding
    _verify_structural_fidelity(), wired into tailor_application()
    alongside the existing keyword check.
-2. KNOWN GAP, NOT FIXED: an invented metric or outcome embedded
-   directly inside a bullet's prose (e.g. "reduced latency by 40%"
-   where the real bullet said nothing about a specific number) is NOT
-   caught by either check. _find_unsupported_keywords only checks
-   JD-extracted keywords that moved from "missing" to "resolved" --
-   a fabricated number inside an otherwise-plausible bullet was never
-   a "keyword" in that list to begin with, and _verify_structural_
-   fidelity only checks company/role/date fields, not bullet prose.
-   Building a real detector for this (distinguishing "genuinely
-   rephrased from a real bullet" from "invented from nothing") is a
-   harder problem than a quick mechanical patch can solve honestly --
-   flagged here rather than attempted, per the instruction to fix only
-   what these tests actually catch.
-3. KNOWN GAP, NOT FIXED (same root cause as #2): an invented employer
-   NAME appearing only inside bullet prose (not the structural
-   `company` field) -- e.g. a bullet that says "collaborated with
-   Google's infra team" when the candidate never worked with Google --
-   isn't checked at all. Same reasoning as #2.
+2. CONFIRMED, FIXED (2026-09-11): an invented metric or outcome
+   embedded directly inside a bullet's prose (e.g. "reduced latency by
+   40%" where the real bullet said nothing about a specific number) was
+   NOT caught by either check above. _find_unsupported_keywords only
+   checks JD-extracted keywords that moved from "missing" to
+   "resolved" -- a fabricated number inside an otherwise-plausible
+   bullet was never a "keyword" in that list to begin with, and
+   _verify_structural_fidelity only checks company/role/date fields,
+   not bullet prose. Fixed by adding a dedicated LLM verification pass,
+   tailoring_service.check_bullet_fabrication -- compares each tailored
+   bullet against its original counterpart and flags a genuinely new
+   claim (metric/scope/outcome/responsibility/organization name) not
+   supported by the original. This is a real LLM judgment call, not a
+   mechanical guarantee the way _verify_structural_fidelity is -- see
+   that function's own docstring, and treat it as a real but imperfect
+   safeguard, not a claim of 100% detection.
+3. CONFIRMED, FIXED (same fix as #2): an invented employer NAME
+   appearing only inside bullet prose (not the structural `company`
+   field) -- e.g. a bullet that says "collaborated with Google's infra
+   team" when the candidate never worked with Google -- is now in
+   check_bullet_fabrication's scope too (its prompt explicitly asks
+   about an invented company/organization/client/tool name, not just
+   metrics).
 4. NOT A GAP: invented degree/certification claims are structurally
    impossible via this pipeline today -- tailor_application() copies
    `education`/`certifications` directly from profile_content with no
