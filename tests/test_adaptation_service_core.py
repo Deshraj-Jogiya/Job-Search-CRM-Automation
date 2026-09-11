@@ -156,6 +156,33 @@ class TestDedupeThresholdTuning:
         assert entries[0].tier == "tier1"
 
 
+class TestSponsorshipMisfireReport:
+    def test_below_threshold_not_surfaced(self, db):
+        adaptation_service.record_sponsorship_misfire(db, posting_id=1, label="US citizens only")
+        adaptation_service.record_sponsorship_misfire(db, posting_id=2, label="US citizens only")
+        assert adaptation_service.sponsorship_misfire_report(db, min_misfires=3) == []
+
+    def test_at_threshold_is_surfaced(self, db):
+        for posting_id in (1, 2, 3):
+            adaptation_service.record_sponsorship_misfire(db, posting_id=posting_id, label="US citizens only")
+        report = adaptation_service.sponsorship_misfire_report(db, min_misfires=3)
+        assert report == [{"label": "US citizens only", "misfire_count": 3}]
+
+    def test_never_writes_a_current_value_or_applies(self, db):
+        adaptation_service.record_sponsorship_misfire(db, posting_id=1, label="ITAR")
+        entry = db.query(AdaptationLog).filter(AdaptationLog.subsystem == "sponsorship_regex").one()
+        assert entry.status == "proposed"
+        assert adaptation_service.get_current_value(db, "ITAR", default=None) is None
+
+    def test_worst_offender_first(self, db):
+        for posting_id in (1, 2, 3):
+            adaptation_service.record_sponsorship_misfire(db, posting_id=posting_id, label="ITAR")
+        for posting_id in (4, 5, 6, 7):
+            adaptation_service.record_sponsorship_misfire(db, posting_id=posting_id, label="C2C")
+        report = adaptation_service.sponsorship_misfire_report(db, min_misfires=3)
+        assert [r["label"] for r in report] == ["C2C", "ITAR"]
+
+
 class TestQueueSupplyReport:
     def test_zero_data_returns_zero_counts(self, db):
         report = adaptation_service.queue_supply_report(db)
