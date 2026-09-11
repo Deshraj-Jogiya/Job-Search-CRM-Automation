@@ -4,9 +4,14 @@ pass with a hardcoded/faked confidence score, this runs a genuine
 tailor -> verify -> refine loop against experience AND projects
 together and reports whatever score the LAST verify pass actually
 produced, capped at max_refine_passes so a stubborn JD can't loop
-forever. Project selection is relevance-driven, not a fixed count --
-a JD keyword can be genuinely resolved by either an experience bullet
-or a project bullet.
+forever.
+
+Project selection is config-driven per variant (see resume_rules.py's
+C6, config/resume_rules.yaml's projects_by_variant) -- this REPLACED an
+earlier relevance-driven "whichever of the candidate's real projects
+best fit this JD, up to 3" selection. The LLM still rewrites bullets
+for whichever projects are selected; it no longer chooses WHICH
+projects those are.
 
 Cover letter scoring is a separate, independent LLM pass -- it is not
 derived from the resume's ATS score, since a resume can be a strong
@@ -18,10 +23,11 @@ import re
 
 from sqlalchemy.orm import Session
 
-from ..models import JobApplication, TailoredDocument
+from ..models import JobApplication, ProfileVariant, TailoredDocument
 from .activity_logger import log_activity
 from .llm import get_llm_provider, parse_json_response
 from .matching_service import MatchingServiceError, get_profile_content_for_application
+from . import resume_rules
 
 TARGET_ATS_SCORE = 90
 MAX_REFINE_PASSES = 2
@@ -521,9 +527,23 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
     posting = application.posting
     jd_text = posting.job_description
 
+    config = resume_rules.get_config()
+    variant = db.query(ProfileVariant).filter(ProfileVariant.id == variant_id).first()
+    variant_slug = resume_rules.variant_slug_for_name(variant.name if variant else "")
+    # C6: which real projects this variant tailors, in config's order --
+    # replaces the LLM's own earlier relevance-based selection. Falls
+    # back to the LLM's full candidate pool if the variant isn't
+    # recognized in config at all, rather than silently tailoring zero
+    # projects for an unmapped variant.
+    candidate_projects = resume_rules.select_projects_for_variant(
+        profile_content.get("projects", []), variant_slug, config
+    )
+    if not candidate_projects:
+        candidate_projects = profile_content.get("projects", [])[: config["projects_by_variant"]["max_projects"]]
+
     try:
         tailored_experience, tailored_projects, final_score, initial_missing, remaining_missing = run_multi_pass_tailoring(
-            profile_content.get("experience", []), profile_content.get("projects", []), jd_text
+            profile_content.get("experience", []), candidate_projects, jd_text
         )
         extras = _tailor_summary_skills(profile_content, jd_text)
     except Exception as e:
@@ -533,17 +553,59 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
     unsupported = _find_unsupported_keywords(profile_content, resolved_keywords)
     structural_violations = _verify_structural_fidelity(profile_content.get("experience", []), tailored_experience)
 
+    final_summary = extras.get("summary", profile_content.get("summary"))
+
+    # D1/D2/inverse (Part C1/C4's prose-level extension) -- detected
+    # against the RAW tailored bullets, before C4's hedging below ever
+    # touches them, so a fabricated number is still flagged for human
+    # review even though the rendered document itself comes out safely
+    # hedged either way. Both narrowly scoped, both surfaced through the
+    # same attention_reason mechanism as unsupported/structural_violations,
+    # never auto-rewritten.
+    total_months = resume_rules.total_experience_months(profile_content.get("experience", []))
+    years_claim_violations = resume_rules.check_years_claim(final_summary, total_months)
+
+    raw_bullets = [b for e in tailored_experience for b in e.get("bullets", [])]
+    raw_bullets += [b for p in tailored_projects for b in p.get("bullets", [])]
+    unverified_percentage_violations = sorted(
+        {claim for bullet in raw_bullets for claim in resume_rules.check_unverified_bare_percentage(bullet, config)}
+    )
+    self_deprecating_hits = sorted(
+        {hit for bullet in raw_bullets for hit in resume_rules.check_self_deprecating_content(bullet)}
+    )
+
+    # C3/C4: filter skills to only what's backed by a real bullet/summary,
+    # and hedge any not-yet-verified %/multiplier claim -- applied to the
+    # SAVED content so every renderer (PDF, DOCX) gets it for free
+    # without needing its own copy of these rules.
+    raw_skills = extras.get("skills", profile_content.get("skills"))
+    filtered_skills, dropped_skills = resume_rules.filter_skills(
+        raw_skills, tailored_experience, tailored_projects, final_summary, config
+    )
+    for entry in tailored_experience:
+        entry["bullets"] = [resume_rules.hedge_unverified_metrics(b, config) for b in entry.get("bullets", [])]
+    for project in tailored_projects:
+        project["bullets"] = [resume_rules.hedge_unverified_metrics(b, config) for b in project.get("bullets", [])]
+
     resume_doc = {
         "name": profile_content.get("name"),
         "title": profile_content.get("title"),
         "contact": profile_content.get("contact"),
-        "summary": extras.get("summary", profile_content.get("summary")),
-        "skills": extras.get("skills", profile_content.get("skills")),
+        "summary": final_summary,
+        "skills": filtered_skills,
         "experience": tailored_experience,
         "projects": tailored_projects,
         "education": profile_content.get("education", []),
         "certifications": profile_content.get("certifications", []),
     }
+    if dropped_skills:
+        log_activity(
+            db,
+            f"Dropped {len(dropped_skills)} skill(s) not backed by any bullet/summary for "
+            f"'{posting.job_title}' at {posting.company_name_raw}: {dropped_skills}",
+            "INFO",
+        )
+
     _upsert_document(db, application.id, "resume", json.dumps(resume_doc, indent=2), ats_score=final_score)
 
     try:
@@ -570,7 +632,11 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
     application.profile_variant_id = variant_id
     application.status = "Tailored"
 
-    if all_unsupported or structural_violations:
+    any_violation = (
+        all_unsupported or structural_violations or years_claim_violations
+        or unverified_percentage_violations or self_deprecating_hits
+    )
+    if any_violation:
         reason_parts = []
         if all_unsupported:
             reason_parts.append(
@@ -581,6 +647,20 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
             reason_parts.append(
                 "The tailored resume changed structural details that should never change: "
                 f"{'; '.join(structural_violations)}."
+            )
+        if years_claim_violations:
+            reason_parts.append(
+                f"The summary claims {', '.join(years_claim_violations)}, which exceeds your real "
+                f"computed experience of {total_months // 12} year(s) ({total_months} months)."
+            )
+        if unverified_percentage_violations:
+            reason_parts.append(
+                f"Unverified metric claim(s) in a bullet: {', '.join(unverified_percentage_violations)} -- "
+                "confirm these are real or add them to verified_metrics in config/resume_rules.yaml."
+            )
+        if self_deprecating_hits:
+            reason_parts.append(
+                f"Volunteered self-deprecating phrasing not asked for by the JD: {', '.join(self_deprecating_hits)}."
             )
         reason_parts.append("Review the tailored resume/cover letter before using them.")
         application.attention_reason = " ".join(reason_parts)[:250]
@@ -596,6 +676,14 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
                 db,
                 f"STRUCTURAL FIDELITY WARNING on '{posting.job_title}' at {posting.company_name_raw}: "
                 f"{structural_violations} -- resume/cover letter need manual review.",
+                "WARNING",
+            )
+        if years_claim_violations or unverified_percentage_violations or self_deprecating_hits:
+            log_activity(
+                db,
+                f"PROSE-LEVEL WARNING (D1/D2/inverse) on '{posting.job_title}' at {posting.company_name_raw}: "
+                f"years={years_claim_violations}, unverified%={unverified_percentage_violations}, "
+                f"self-deprecating={self_deprecating_hits} -- resume needs manual review.",
                 "WARNING",
             )
     else:

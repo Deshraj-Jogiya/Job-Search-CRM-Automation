@@ -1,0 +1,405 @@
+"""
+Part C: declarative resume-generation rules, consumed by the EXISTING
+tailoring pipeline (tailoring_service.py) and the existing profile-
+variant system (profile_service.py) -- this module has no generator of
+its own. Every threshold/list here comes from config/resume_rules.yaml
+(app/config_loader.py), validated on load, hot-reloadable, never
+hardcoded.
+
+C1: real total-experience-months math (UNION of date ranges, overlaps
+counted once), never a bare "N+ years" derived from elapsed calendar
+time.
+C2: classifies each experience entry as EXPERIENCE / EARLIER /
+CREDENTIAL based on config thresholds, and flags concurrent overlaps.
+C3: drops any skill that doesn't appear in an actual bullet/summary
+(unsupported-skill filtering, same "only claim what's backed by real
+evidence" posture as tailoring_service.py's existing fabrication
+safeguard).
+C4: hedges any percentage/multiplier not in the config's verified
+allowlist ("roughly"/"approximately"/"about"/"~"); exact scope figures
+(counts, volumes, uptime) are never hedged.
+C6: picks the right project set per profile variant from config.
+C8: work-authorization text is never generated or inferred -- config
+says whether to include a line at all, and supplies the exact text
+verbatim if so.
+"""
+
+import re
+from datetime import date
+
+from ..config_loader import HotReloadableYaml, require
+
+_MONTH_NAMES = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+
+_CREDENTIAL_KEYWORDS = ("fellowship", "bootcamp", "boot camp", "certificate program", "training program")
+
+_YEARS_CLAIM_RE = re.compile(r"\b(\d+)\+?\s*years?\b", re.IGNORECASE)
+_PERCENT_RE = re.compile(r"\b\d+(?:\.\d+)?\s*%|\b\d+(?:\.\d+)?x\b", re.IGNORECASE)
+
+
+def _validate(data: dict) -> None:
+    ec = require(data, "experience_classification", dict)
+    require(ec, "experience_min_months", int, min=0)
+    require(ec, "experience_recency_months", int, min=1)
+    require(ec, "concurrent_overlap_days", int, min=0)
+
+    sk = require(data, "skills", dict)
+    require(sk, "max_skill_items_total", int, min=1)
+    require(sk, "max_skill_lines", int, min=1)
+    require(sk, "groups", list)
+
+    m = require(data, "metrics", dict)
+    require(m, "max_bare_percentages_per_page", int, min=0)
+    require(m, "verified_metrics", list)
+
+    pv = require(data, "projects_by_variant", dict)
+    require(pv, "max_projects", int, min=0)
+    require(pv, "bullets_per_project_min", int, min=0)
+    require(pv, "bullets_per_project_max", int, min=0)
+    require(pv, "variants", dict)
+
+    wa = require(data, "work_authorization", dict)
+    require(wa, "include_work_auth_line", bool)
+    require(wa, "work_auth_text", str, required=False)
+
+    pf = require(data, "page_fit", dict)
+    require(pf, "min_body_font_pt", float, min=1.0)
+    require(pf, "min_margin_in", float, min=0.0)
+    require(pf, "max_pages", int, min=1)
+    require(pf, "reduction_catalog", list)
+
+
+_STORE = HotReloadableYaml("resume_rules.yaml", validate_fn=_validate)
+
+
+def get_config() -> dict:
+    return _STORE.get()
+
+
+# ---------------------------------------------------------------------------
+# C1 -- real experience-months math
+# ---------------------------------------------------------------------------
+
+def _parse_single_date(text: str) -> date | None:
+    text = text.strip().rstrip(".")
+    match = re.match(r"^([A-Za-z]{3,9})\.?\s+(\d{4})$", text)
+    if match:
+        month = _MONTH_NAMES.get(match.group(1)[:3].lower())
+        if month:
+            return date(int(match.group(2)), month, 1)
+        return None
+    match = re.match(r"^(\d{4})$", text)
+    if match:
+        return date(int(match.group(1)), 1, 1)
+    return None
+
+
+def parse_date_range(date_str: str, now: date | None = None) -> tuple[date, date] | None:
+    """Parses "Jun 2020 - Dec 2021", "2022 - Present", "2022 - 2023" --
+    each endpoint to the first of its month. Returns None (never a
+    guessed fallback) for anything else, so callers can tell "genuinely
+    no experience" apart from "couldn't parse this one" and handle the
+    two differently -- see total_experience_months."""
+    now = now or date.today()
+    if not date_str:
+        return None
+    parts = re.split(r"\s*[-–—]\s*", date_str.strip())
+    if len(parts) != 2:
+        return None
+    start = _parse_single_date(parts[0])
+    end_raw = parts[1].strip()
+    end = now.replace(day=1) if end_raw.lower() == "present" else _parse_single_date(end_raw)
+    if start is None or end is None:
+        return None
+    return (start, end)
+
+
+def _month_index(d: date) -> int:
+    return d.year * 12 + (d.month - 1)
+
+
+def total_experience_months(experience: list[dict], now: date | None = None) -> int:
+    """UNION of employment date ranges -- overlapping/concurrent roles
+    counted once, never summed. An entry whose date field can't be
+    parsed is EXCLUDED from the total, not assumed to be zero-length
+    or estimated any other way -- see parse_date_range.
+
+    A stated end month counts as fully worked (resume convention: "Jan
+    2020 - Dec 2022" reads as 3 full years/36 months, not 35) -- each
+    interval is treated as half-open [start, end+1) in month-index
+    space so the merge/sum below comes out inclusive of the end month."""
+    now = now or date.today()
+    intervals = []
+    for entry in experience:
+        parsed = parse_date_range(entry.get("date", ""), now=now)
+        if parsed:
+            intervals.append((_month_index(parsed[0]), _month_index(parsed[1]) + 1))
+    if not intervals:
+        return 0
+
+    intervals.sort()
+    merged = [list(intervals[0])]
+    for start, end in intervals[1:]:
+        if start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return sum(end - start for start, end in merged)
+
+
+def check_years_claim(summary_text: str, total_months: int) -> list[str]:
+    """Returns the list of years-figures in summary_text that exceed
+    floor(total_months/12) -- empty if none. Pure detection, no
+    rewriting: tailoring_service.py's existing attention_reason/Needs-
+    Review flow is what surfaces a violation, same mechanism as every
+    other fabrication check there (see D1 wiring)."""
+    max_years = total_months // 12
+    violations = []
+    for match in _YEARS_CLAIM_RE.finditer(summary_text or ""):
+        claimed = int(match.group(1))
+        if claimed > max_years:
+            violations.append(match.group(0))
+    return violations
+
+
+# ---------------------------------------------------------------------------
+# C2 -- role classification
+# ---------------------------------------------------------------------------
+
+def is_credential_entry(entry: dict) -> bool:
+    """An explicit entry_type field always wins if the user set one;
+    otherwise falls back to a narrow keyword match on role/company --
+    a heuristic, not a claim of certainty, which is exactly why the
+    explicit field exists as an override."""
+    entry_type = (entry.get("entry_type") or "").strip().lower()
+    if entry_type:
+        return entry_type == "credential"
+    text = f"{entry.get('role', '')} {entry.get('company', '')}".lower()
+    return any(kw in text for kw in _CREDENTIAL_KEYWORDS)
+
+
+def classify_role(entry: dict, config: dict | None = None, now: date | None = None) -> str:
+    """Returns "CREDENTIAL", "EXPERIENCE", or "EARLIER" for one
+    experience entry. CREDENTIAL is checked first regardless of
+    duration -- a fellowship stays a fellowship even if it ran long."""
+    config = config or get_config()
+    if is_credential_entry(entry):
+        return "CREDENTIAL"
+
+    ec = config["experience_classification"]
+    now = now or date.today()
+    parsed = parse_date_range(entry.get("date", ""), now=now)
+    if parsed is None:
+        return "EXPERIENCE"  # can't verify duration/recency -- don't downgrade on a parse failure
+
+    start, end = parsed
+    months = _month_index(end) - _month_index(start) + 1  # inclusive of the end month, see total_experience_months
+    recency_months = _month_index(now.replace(day=1)) - _month_index(end)
+
+    if months < ec["experience_min_months"] or recency_months > ec["experience_recency_months"]:
+        return "EARLIER"
+    return "EXPERIENCE"
+
+
+def detect_concurrent_overlaps(experience: list[dict], config: dict | None = None, now: date | None = None) -> set[int]:
+    """Returns the set of experience-list INDEXES that should get
+    "(concurrent)" appended -- the later-listed one of any pair whose
+    real date ranges overlap by more than concurrent_overlap_days."""
+    config = config or get_config()
+    max_gap_days = config["experience_classification"]["concurrent_overlap_days"]
+    now = now or date.today()
+
+    parsed = []
+    for i, entry in enumerate(experience):
+        r = parse_date_range(entry.get("date", ""), now=now)
+        parsed.append((i, r))
+
+    concurrent = set()
+    for a in range(len(parsed)):
+        i_a, range_a = parsed[a]
+        if range_a is None:
+            continue
+        for b in range(a + 1, len(parsed)):
+            i_b, range_b = parsed[b]
+            if range_b is None:
+                continue
+            overlap_days = (min(range_a[1], range_b[1]) - max(range_a[0], range_b[0])).days
+            if overlap_days > max_gap_days:
+                # "later-listed" = whichever entry comes second in the
+                # profile's own ordering (index), not whichever date is
+                # more recent -- matches the rule's own wording.
+                concurrent.add(max(i_a, i_b))
+    return concurrent
+
+
+# ---------------------------------------------------------------------------
+# C3 -- skills filtering
+# ---------------------------------------------------------------------------
+
+def filter_skills(skills: dict, experience: list[dict], projects: list[dict], summary: str, config: dict | None = None) -> tuple[dict, list[str]]:
+    """A skill renders only if it also appears in an experience bullet,
+    a project bullet, or the summary -- everything else is dropped.
+    Returns (filtered_skills, dropped_reasons) -- dropped_reasons is
+    always populated when something is cut, never a silent removal."""
+    config = config or get_config()
+    haystack = summary or ""
+    for entry in experience:
+        haystack += " " + " ".join(entry.get("bullets", []))
+    for project in projects:
+        haystack += " " + " ".join(project.get("bullets", []))
+    haystack = haystack.lower()
+
+    filtered: dict[str, list[str]] = {}
+    dropped: list[str] = []
+    for category, items in (skills or {}).items():
+        kept = [item for item in items if item.lower() in haystack]
+        for item in items:
+            if item not in kept:
+                dropped.append(f"{item} (not found in any bullet or the summary)")
+        if kept:
+            filtered[category] = kept
+
+    return filtered, dropped
+
+
+# ---------------------------------------------------------------------------
+# C4 -- metric phrasing
+# ---------------------------------------------------------------------------
+
+_HEDGE_WORDS = ("roughly", "approximately", "about", "~")
+
+
+def _is_hedged(bullet_text: str, match_start: int) -> bool:
+    preceding = bullet_text[max(0, match_start - 20):match_start].lower()
+    return any(hedge in preceding for hedge in _HEDGE_WORDS)
+
+
+def hedge_unverified_metrics(bullet_text: str, config: dict | None = None) -> str:
+    """Any percentage/multiplier in bullet_text not in the config's
+    verified_metrics allowlist gets "roughly " prefixed if it isn't
+    already hedged. Plain counts/volumes (e.g. "500GB/day", "12 sources")
+    are untouched -- only %/x-multiplier claims are in scope, per C4."""
+    config = config or get_config()
+    verified = set(config["metrics"]["verified_metrics"])
+
+    def _replace(match: re.Match) -> str:
+        claim = match.group(0)
+        if claim in verified or _is_hedged(bullet_text, match.start()):
+            return claim
+        return f"roughly {claim}"
+
+    return _PERCENT_RE.sub(_replace, bullet_text)
+
+
+def check_bare_percentage(bullet_text: str) -> list[str]:
+    """Returns any %/multiplier claim in bullet_text NOT preceded by a
+    hedge word, regardless of whether it's in the verified allowlist --
+    used for the max_bare_percentages_per_page density count. For the
+    D2 fabrication-style check (is this SPECIFIC bare claim actually
+    verified), see check_unverified_bare_percentage below."""
+    bare = []
+    for match in _PERCENT_RE.finditer(bullet_text or ""):
+        if not _is_hedged(bullet_text, match.start()):
+            bare.append(match.group(0))
+    return bare
+
+
+def check_unverified_bare_percentage(bullet_text: str, config: dict | None = None) -> list[str]:
+    """D2: a bare (unhedged) %/multiplier claim that ISN'T in the
+    config's verified_metrics allowlist -- this is the real fabrication
+    signal (an invented number stated as fact), distinct from
+    check_bare_percentage's plain density count above."""
+    config = config or get_config()
+    verified = set(config["metrics"]["verified_metrics"])
+    return [claim for claim in check_bare_percentage(bullet_text) if claim not in verified]
+
+
+# ---------------------------------------------------------------------------
+# D (inverse check) -- volunteered self-deprecating content
+# ---------------------------------------------------------------------------
+
+_SELF_DEPRECATING_PATTERNS = (
+    r"\bonly\s+\d+\s*(month|year)s?\b",
+    r"\bjust a small part\b",
+    r"\bmostly a team effort\b",
+    r"\blimited experience with\b",
+)
+
+
+def check_self_deprecating_content(bullet_text: str) -> list[str]:
+    """Flags volunteered self-deprecating phrasing the JD never asked
+    about (e.g. "only 3 months", "just a small part") -- surfaced for
+    human review via the same attention_reason mechanism as every other
+    check here, NEVER auto-rewritten. A candidate genuinely choosing to
+    say this about their own work is their call, not this app's to
+    silently override; the point is making sure it was a deliberate
+    choice, not something an LLM added unprompted."""
+    lowered = bullet_text or ""
+    hits = []
+    for pattern in _SELF_DEPRECATING_PATTERNS:
+        match = re.search(pattern, lowered, re.IGNORECASE)
+        if match:
+            hits.append(match.group(0))
+    return hits
+
+
+# ---------------------------------------------------------------------------
+# C6 -- project selection per variant
+# ---------------------------------------------------------------------------
+
+def _slugify(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+
+
+# Real ProfileVariant.name values don't always slugify to the exact
+# config/resume_rules.yaml variant key (e.g. "ML Engineering" ->
+# "ml_engineering", but the config's own key is "ml_ai") -- narrow,
+# explicit aliases for the known cases; anything else falls back to a
+# plain slugify, which is correct whenever the variant name and the
+# config key already match (e.g. "Data Engineering" -> "data_engineering").
+_VARIANT_NAME_ALIASES = {
+    "ml_engineering": "ml_ai",
+    "machine_learning": "ml_ai",
+    "machine_learning_engineering": "ml_ai",
+    "ml_ai_engineering": "ml_ai",
+}
+
+
+def variant_slug_for_name(variant_name: str) -> str:
+    """Maps a real ProfileVariant.name to the config's variant key --
+    see _VARIANT_NAME_ALIASES for the known name/key mismatches."""
+    slug = _slugify(variant_name or "")
+    return _VARIANT_NAME_ALIASES.get(slug, slug)
+
+
+def select_projects_for_variant(projects: list[dict], variant_slug: str, config: dict | None = None) -> list[dict]:
+    """Returns the real project objects (from the candidate's actual
+    profile) matching the config's ordered slug list for this variant
+    -- never invents a project. A configured slug with no matching
+    real project is simply skipped (not an error -- config can list
+    aspirational ordering ahead of every project existing)."""
+    config = config or get_config()
+    pv = config["projects_by_variant"]
+    slugs = pv["variants"].get(variant_slug, [])
+
+    by_slug = {_slugify(p.get("name", "")): p for p in projects}
+    selected = [by_slug[slug] for slug in slugs if slug in by_slug]
+    return selected[: pv["max_projects"]]
+
+
+# ---------------------------------------------------------------------------
+# C8 -- work authorization
+# ---------------------------------------------------------------------------
+
+def work_authorization_line(config: dict | None = None) -> str | None:
+    """Never generates or infers immigration-status text -- returns
+    exactly what config says, or None if the config says not to
+    include a line at all."""
+    config = config or get_config()
+    wa = config["work_authorization"]
+    if not wa["include_work_auth_line"]:
+        return None
+    return wa.get("work_auth_text") or None

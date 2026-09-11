@@ -76,6 +76,7 @@
             {% if resume_doc %}
             <p class="muted-note">Resume ATS score: <strong>{{ resume_doc.ats_score }}%</strong> &middot; generated {{ resume_doc.generated_at.strftime("%Y-%m-%d %H:%M") }} UTC</p>
             <a href="/jobs/{{ application.id }}/tailored/resume/download" class="btn-secondary">Download Resume PDF</a>
+            <a href="/jobs/{{ application.id }}/tailored/resume/download-docx" class="btn-secondary">Download Resume DOCX</a>
             <details class="sub-panel">
                 <summary>Tailored resume JSON</summary>
                 <pre class="json-preview">{{ resume_doc.content }}</pre>
