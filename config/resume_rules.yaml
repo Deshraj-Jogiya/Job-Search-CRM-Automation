@@ -1,0 +1,93 @@
+# Declarative resume-generation rules (Part C). Consumed by
+# app/services/resume_rules.py, applied to the EXISTING tailoring
+# pipeline (tailoring_service.py) and profile-variant system
+# (profile_service.py) -- not a new generator. Every key here is
+# validated on load, with a documented default and an allowed
+# range/type -- see resume_rules.py's validate() for the exact checks.
+# Hot-reloadable: edit this file and the next resume generation picks
+# it up, no restart needed.
+
+experience_classification:
+  # A role counted as full "Experience" (not folded into the combined
+  # "Earlier:" line) needs at least this many months.
+  experience_min_months: 6
+  # A role older than this many months (measured from its end date, or
+  # from now if still current) also folds into "Earlier:" even if it
+  # cleared the min-months bar -- keeps the resume focused on recent work.
+  experience_recency_months: 36
+  # Two experience entries whose date ranges overlap by more than this
+  # many days get "(concurrent)" appended to the later-listed one.
+  concurrent_overlap_days: 60
+
+skills:
+  max_skill_items_total: 32
+  max_skill_lines: 5
+  # Default category order -- a skill not matching any group name
+  # below renders in the display order it was already in.
+  groups:
+    - "Languages"
+    - "Data Engineering"
+    - "Cloud & Warehouses"
+    - "ML & Analytics"
+    - "Platform"
+
+metrics:
+  # How many bare (unhedged) percentage/multiplier claims are allowed
+  # per page before the rest get hedged regardless of verified status
+  # -- keeps a resume from reading like a wall of identical-looking
+  # bold claims even when every one of them is individually true.
+  max_bare_percentages_per_page: 2
+  # Exact percentage/multiplier substrings confirmed real by the user
+  # -- anything found in a bullet that ISN'T in this list renders
+  # hedged ("roughly"/"approximately"/"about"/"~"). Scope figures
+  # (counts, row volumes, uptime) are exempt from hedging entirely,
+  # see resume_rules.py -- this list is only for percentages/multipliers.
+  verified_metrics: []
+
+projects_by_variant:
+  max_projects: 3
+  bullets_per_project_min: 1
+  bullets_per_project_max: 2
+  variants:
+    data_engineering:
+      - career_pilot
+      - talentvenue_eventintel
+      - ai_model_observability
+    ml_ai:
+      - ai_model_observability
+      - career_pilot
+      - ml_apprentice_mtl
+    analytics:
+      - sales_rfm_segmentation
+      - tax_anomaly_audit
+      - talentvenue_eventintel
+
+work_authorization:
+  include_work_auth_line: false
+  work_auth_text: ""
+
+page_fit:
+  min_body_font_pt: 9.0
+  min_margin_in: 0.35
+  max_pages: 1
+  # Ordered by ascending aggressiveness -- b1.1's fit loop tries them in
+  # this order the FIRST time it ever runs (before it has any learned
+  # history), picking whichever untried reduction currently has the
+  # best content_value_weight / measured_lines_saved ratio once history
+  # exists (see resume_rules.py / adaptation_service.py's page-fit
+  # learning). Never touches Summary structure beyond shortening it,
+  # Education, or an entry's first bullet -- enforced in code, not just
+  # by ordering here.
+  reduction_catalog:
+    - id: tighten_line_spacing
+      content_value_weight: 1
+    - id: shrink_margins_one_step
+      content_value_weight: 2
+    - id: drop_weakest_bullet_per_role
+      content_value_weight: 4
+    - id: shrink_body_font_one_step
+      content_value_weight: 3
+    - id: shorten_summary
+      content_value_weight: 2
+    - id: drop_third_project
+      content_value_weight: 5

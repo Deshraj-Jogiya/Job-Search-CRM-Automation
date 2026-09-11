@@ -19,6 +19,7 @@ button and no confirmation, which made an accidental permanent loss
 one misclick away.
 """
 
+import io
 import json
 import threading
 from urllib.parse import quote
@@ -46,6 +47,7 @@ from ..services import (
     behavioral_story_service,
     confirmation_service,
     contact_discovery_service,
+    docx_generator,
     document_render_service,
     intake_service,
     interview_prep_service,
@@ -569,6 +571,37 @@ def download_tailored_document(application_id: int, document_type: str, db: Sess
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/{application_id}/tailored/resume/download-docx")
+def download_tailored_resume_docx(application_id: int, db: Session = Depends(get_db)):
+    """C7 -- a real, ATS-safe .docx alongside the existing PDF download,
+    same source content (see docx_generator.py)."""
+    application = (
+        db.query(JobApplication).options(joinedload(JobApplication.posting))
+        .filter(JobApplication.id == application_id).first()
+    )
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+    doc = (
+        db.query(TailoredDocument)
+        .filter(TailoredDocument.application_id == application_id, TailoredDocument.document_type == "resume")
+        .first()
+    )
+    if not doc:
+        return _redirect_detail(application_id, error="Nothing tailored yet -- generate it first.")
+
+    resume_docx = docx_generator.build_resume_docx(json.loads(doc.content))
+    buffer = io.BytesIO()
+    resume_docx.save(buffer)
+    buffer.seek(0)
+
+    filename = f"resume-{application.posting.company_name_raw}-{application.posting.job_title}.docx".replace(" ", "-")
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
