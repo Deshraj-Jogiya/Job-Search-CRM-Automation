@@ -19,11 +19,33 @@ tier2:
   min_samples_resume_variant: 30
   min_samples_source_comparison: 50
   min_samples_tier_comparison: 40
+  min_samples_wage_level_comparison: 40
   min_replies_for_any_outcome_claim: 10
   # Any proposed weight change (e.g. a scoring_service.py component
   # weight) is clamped to +/- this percent of its current value per
   # approval -- see adaptation_service.clamp_weight_change.
   weight_change_clamp_pct: 20
+  # b3.5 -- a REPORTABLE comparison is withheld (flagged CONFOUNDED
+  # instead) when the compared segments' company-tier composition
+  # differs by more than this many percentage points for any tier --
+  # the reply-rate difference could just be that confound, not the
+  # thing actually being compared.
+  confound_share_diff_pct: 25
+
+# b2 -- scoring_service.py component weights this pass makes tunable
+# from Tier 2 evidence (approve/reject/snooze, never auto-applied).
+# floor/ceiling bound every approval regardless of clamp_pct, same
+# guarantee as b1.4's dedupe_threshold bounds. default matches
+# scoring_service.py's own hardcoded starting value (see WEIGHTING.md).
+scoring_weights:
+  sponsorship_history:
+    min: 10
+    max: 45
+    default: 30
+  wage_level_fit:
+    min: 5
+    max: 30
+    default: 20
 
 guardrails:
   # b3.1 -- at least this share of /queue is sampled from OUTSIDE
