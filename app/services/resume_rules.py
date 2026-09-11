@@ -37,7 +37,11 @@ _MONTH_NAMES = {
 _CREDENTIAL_KEYWORDS = ("fellowship", "bootcamp", "boot camp", "certificate program", "training program")
 
 _YEARS_CLAIM_RE = re.compile(r"\b(\d+)\+?\s*years?\b", re.IGNORECASE)
-_PERCENT_RE = re.compile(r"\b\d+(?:\.\d+)?\s*%|\b\d+(?:\.\d+)?x\b", re.IGNORECASE)
+# Leading +/- is part of the match (not just \b\d+) so a real signed
+# figure like "(-35% silent drift)" hedges as "roughly -35%", not
+# "-roughly 35%" -- found via a real bullet in the golden fixture pull
+# (deshraj_source_profile.json), see git log for this line.
+_PERCENT_RE = re.compile(r"(?<!\w)[-+]?\d+(?:\.\d+)?\s*%|(?<!\w)[-+]?\d+(?:\.\d+)?x\b", re.IGNORECASE)
 
 
 def _validate(data: dict) -> None:
