@@ -37,6 +37,7 @@ from .activity_logger import log_activity
 from .email_utils import is_smtp_configured, send_email
 from .llm import get_llm_provider
 from .matching_service import get_profile_content_for_application
+from .outreach_hygiene import OutreachCapViolation, check_caps
 
 _EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
 
@@ -127,7 +128,13 @@ def draft_outreach_message(
     recipient_address: str,
     channel: str,
     context_note: str | None = None,
+    override_reason: str | None = None,
 ) -> OutreachMessage:
+    """override_reason bypasses the outreach hygiene caps (see
+    outreach_hygiene.py) -- only ever set from an explicit user action
+    (a typed reason in the UI, never a default), and is recorded
+    verbatim on the created message so an override is always
+    auditable, never silent."""
     application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
     if not application:
         raise OutreachServiceError(f"Application {application_id} not found.")
@@ -136,8 +143,16 @@ def draft_outreach_message(
     if channel == "email" and not recipient_address:
         raise OutreachServiceError("An email address is required for the email channel.")
 
-    profile_content, _ = get_profile_content_for_application(db, application)
     posting = application.posting
+    if not override_reason:
+        try:
+            check_caps(db, recipient_address, posting.company_id if posting else None)
+        except OutreachCapViolation as e:
+            raise OutreachServiceError(
+                f"{e} Override with a reason if you're sure you want to send anyway."
+            ) from e
+
+    profile_content, _ = get_profile_content_for_application(db, application)
 
     try:
         body = _draft_note_text(profile_content, posting, recipient_name, channel, context_note)
@@ -160,12 +175,15 @@ def draft_outreach_message(
         body=body,
         status="Draft",
         email_verified=email_verified,
+        cap_override_reason=override_reason,
     )
     db.add(message)
     db.commit()
     db.refresh(message)
 
     log_activity(db, f"Drafted {channel} outreach for '{posting.job_title}' at {posting.company_name_raw}.", "INFO")
+    if override_reason:
+        log_activity(db, f"Outreach hygiene cap overridden for message {message.id}: {override_reason}", "WARNING")
     return message
 
 

@@ -33,3 +33,7 @@ CLAUDE.md
 # Local Claude Code tooling config (preview launch config, scheduler
 # lock file) -- machine-specific, not part of the application
 .claude/
+
+# Raw USCIS/DOL government data files for app/ingest/ -- large (tens of
+# MB), publicly downloadable, not something to version. See SETUP.md.
+data/raw/

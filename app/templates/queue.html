@@ -1,0 +1,117 @@
+{% extends "_base.html" %}
+
+{% block title %}Career Pilot -- Queue{% endblock %}
+
+{% block header_title %}<a href="/" class="plain-link">Career Pilot</a> / Queue{% endblock %}
+
+{% block nav %}
+<a href="/jobs">Jobs</a>
+<a href="/jobs/review">Review Queue</a>
+<a href="/analytics">Analytics</a>
+<a href="/metrics">Metrics</a>
+{% endblock %}
+
+{% block content %}
+{% if message %}
+<div class="flash flash-ok" role="status">{{ message }}</div>
+{% endif %}
+{% if error %}
+<div class="flash flash-error" role="alert">{{ error }}</div>
+{% endif %}
+
+<section class="summary-cards">
+    <div class="card">
+        <span class="card-label">Applications Today</span>
+        <span class="card-value">{{ counters.applications_today }} / {{ counters.applications_target_min }}-{{ counters.applications_target_max }}</span>
+    </div>
+    <div class="card">
+        <span class="card-label">Outreach Touches Today</span>
+        <span class="card-value">{{ counters.outreach_today }} / {{ counters.outreach_target }}</span>
+    </div>
+</section>
+
+{% macro queue_table(applications, empty_message) %}
+{% if applications %}
+<div class="table-scroll">
+    <table class="review-table">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Company</th>
+                <th>Tier</th>
+                <th>Wage Level</th>
+                <th>Score</th>
+                <th>Posted</th>
+                <th>Signals</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for app in applications %}
+            <tr>
+                <td><a href="/jobs/{{ app.id }}">{{ app.posting.job_title }}</a></td>
+                <td>{{ app.posting.company_name_raw }}</td>
+                <td>
+                    {% if app.posting.company %}
+                    <span class="badge{{ ' badge-active' if app.posting.company.tier in ('A', 'B') else '' }}">
+                        {{ app.posting.company.tier or 'unknown' }}{{ ' (cap-exempt)' if app.posting.company.is_cap_exempt else '' }}
+                    </span>
+                    {% else %}
+                    <span class="badge">unknown</span>
+                    {% endif %}
+                </td>
+                <td>{{ app.posting.company.max_wage_level_15xx if app.posting.company else '--' }}</td>
+                <td>{{ app.score_breakdown.total if app.score_breakdown else app.match_score }}</td>
+                <td>{{ app.posting.first_seen_at.strftime("%Y-%m-%d") if app.posting.first_seen_at else "--" }}</td>
+                <td>
+                    {% if app.posting.sponsorship_signal %}<span class="badge badge-active">sponsors</span>{% endif %}
+                    {% if app.posting.worksite_ambiguous %}<span class="badge">worksite ambiguous</span>{% endif %}
+                </td>
+                <td class="inline-form-row">
+                    <a href="/jobs/{{ app.id }}" class="btn-secondary">Apply</a>
+                    <form method="post" action="/queue/{{ app.id }}/skip" class="inline-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <select name="reason" aria-label="Skip reason">
+                            {% for r in skip_reasons %}<option value="{{ r }}">{{ r.replace('_', ' ') }}</option>{% endfor %}
+                        </select>
+                        <button type="submit" class="btn-secondary">Skip</button>
+                    </form>
+                    <form method="post" action="/queue/{{ app.id }}/not-a-fit" class="inline-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <select name="reason" aria-label="Not a fit reason">
+                            {% for r in skip_reasons %}<option value="{{ r }}">{{ r.replace('_', ' ') }}</option>{% endfor %}
+                        </select>
+                        <button type="submit" class="btn-danger">Not a Fit</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p class="muted-note">{{ empty_message }}</p>
+{% endif %}
+{% endmacro %}
+
+<section class="variant-block">
+    <h2>Cap-Exempt ({{ tabs.cap_exempt|length }})</h2>
+    <p class="muted-note">
+        Universities and nonprofit/government research orgs -- file year-round, no lottery. Highest-probability
+        lane.
+    </p>
+    {{ queue_table(tabs.cap_exempt, "Nothing here right now.") }}
+</section>
+
+<section class="variant-block">
+    <h2>Tier A/B ({{ tabs.tier_ab|length }})</h2>
+    <p class="muted-note">Proven sponsors, cap-subject.</p>
+    {{ queue_table(tabs.tier_ab, "Nothing here right now.") }}
+</section>
+
+<section class="variant-block">
+    <h2>Everything Else ({{ tabs.everything_else|length }})</h2>
+    <p class="muted-note">Tier C/X or unknown sponsorship history -- still worth reviewing, just lower-odds.</p>
+    {{ queue_table(tabs.everything_else, "Nothing here right now.") }}
+</section>
+{% endblock %}

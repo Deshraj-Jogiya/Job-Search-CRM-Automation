@@ -9,7 +9,8 @@ that already fits, instead of migrating tables mid-project.
 """
 
 from sqlalchemy import (
-    Column, Integer, String, Text, DateTime, ForeignKey, Boolean, Float
+    Column, Integer, String, Text, DateTime, ForeignKey, Boolean, Float, JSON,
+    UniqueConstraint, CheckConstraint,
 )
 from sqlalchemy.orm import relationship
 from .app_mode import is_showcase_mode
@@ -106,9 +107,98 @@ class Company(Base):
     ashby_slug = Column(String, nullable=True)
     recruitee_slug = Column(String, nullable=True)
     personio_slug = Column(String, nullable=True)  # bare slug only -- see personio_source.py for the .com/.de split
+    workable_slug = Column(String, nullable=True)
+    smartrecruiters_slug = Column(String, nullable=True)  # SmartRecruiters' own "company identifier", not a URL slug
     board_slugs_checked_at = Column(DateTime, nullable=True)
 
+    # H-1B sponsorship signal, sourced from the USCIS H-1B Employer Data
+    # Hub CSV (see ingest/sponsors.py). Null on every one of these columns
+    # means "not yet matched against USCIS data," not "confirmed zero
+    # activity" -- h1b_data_updated_at is what distinguishes the two.
+    h1b_approvals_total = Column(Integer, nullable=True)  # summed across all FYs present in the loaded CSV
+    h1b_denials_total = Column(Integer, nullable=True)
+    h1b_last_fiscal_year = Column(Integer, nullable=True)  # most recent FY with any recorded activity
+    # 'Frequent' | 'Occasional' | 'Rare' | 'None' -- bucketed from
+    # h1b_approvals_total at ingest time so scoring (later phase) doesn't
+    # re-derive the same thresholds in multiple places.
+    sponsorship_tier = Column(String, nullable=True)
+    h1b_data_updated_at = Column(DateTime, nullable=True)  # last time ingest/sponsors.py touched this row
+
+    # LCA filings are a second, more current sponsorship signal -- an
+    # employer files a Labor Condition Application with DOL *before* the
+    # H-1B petition itself, so a recent LCA filing can show real intent
+    # to sponsor even for an employer whose USCIS approval history above
+    # is thin or stale. Sourced from the DOL OFLC LCA Disclosure quarterly
+    # XLSX (see ingest/sponsors.py).
+    lca_filings_total = Column(Integer, nullable=True)
+    lca_last_fiscal_quarter = Column(String, nullable=True)  # e.g. "FY2024Q1"
+    lca_data_updated_at = Column(DateTime, nullable=True)
+
+    # Cap-exempt employers (universities, nonprofit/gov research orgs,
+    # affiliated nonprofits) aren't subject to the annual H-1B lottery --
+    # a real, positive signal distinct from "no USCIS filing history yet"
+    # for a company that may not need to win the cap to sponsor. Matched
+    # against ingest/cap_exempt_seeds.yaml, not USCIS data (USCIS doesn't
+    # label this directly).
+    is_cap_exempt = Column(Boolean, default=False)
+    cap_exempt_reason = Column(String, nullable=True)  # which seed entry/category matched
+
+    # Highest DOL prevailing-wage level ("I"-"IV") this company has ever
+    # filed a certified H-1B LCA at for a Computer/Mathematical role (SOC
+    # 15-* -- see ingest/sponsors.py's load_dol_lca_data). A proxy for
+    # "does this company pay/level tech roles well," distinct from
+    # wage_level_for()'s per-posting offered-salary comparison (Phase 1)
+    # -- this app has no per-posting offered-salary field to compare
+    # against, so the score component described in WEIGHTING.md uses this
+    # company-level signal instead, exactly as specified.
+    max_wage_level_15xx = Column(String, nullable=True)
+
+    # A/B/C/X, derived from h1b_approvals_total/lca_filings_total/
+    # is_cap_exempt/max_wage_level_15xx via company_tier.derive_tier() --
+    # never hand-set, always recomputed by the backfill CLI or the
+    # scoring path when stale. See WEIGHTING.md for the exact thresholds
+    # (config-driven via GlobalSettings, not hardcoded here).
+    tier = Column(String, nullable=True)
+    tier_computed_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("tier IN ('A', 'B', 'C', 'X')", name="ck_companies_tier"),
+        CheckConstraint("max_wage_level_15xx IN ('I', 'II', 'III', 'IV')", name="ck_companies_max_wage_level"),
+    )
+
     postings = relationship("JobPosting", back_populates="company")
+
+
+# ---------------------------------------------------------------------------
+# H-1B wage benchmarking (DOL OFLC OEWS data)
+# ---------------------------------------------------------------------------
+
+class OewsWage(Base):
+    """One SOC occupation code's prevailing-wage levels for one OEWS
+    geographic area, loaded from the DOL OFLC OEWS wage data file (see
+    ingest/wages.py). Levels I-IV follow the OFLC prevailing-wage
+    convention (roughly the 17th/34th/50th/67th wage percentiles for the
+    occupation+area) -- used by wage_level_for() to classify an offered
+    salary against what DOL would expect for that role/location."""
+
+    __tablename__ = "oews_wages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    soc_code = Column(String, nullable=False, index=True)  # e.g. "15-1252" (Software Developers)
+    soc_title = Column(String, nullable=True)
+    area_title = Column(String, nullable=False, index=True)  # OEWS area name, e.g. "San Jose-Sunnyvale-Santa Clara, CA"
+    source_year = Column(Integer, nullable=False)  # OEWS release year the wage data is from
+
+    wage_level_1 = Column(Float, nullable=True)  # annual, USD
+    wage_level_2 = Column(Float, nullable=True)
+    wage_level_3 = Column(Float, nullable=True)
+    wage_level_4 = Column(Float, nullable=True)
+
+    updated_at = Column(DateTime, default=utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("soc_code", "area_title", "source_year", name="uq_oews_wage_soc_area_year"),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -148,6 +238,21 @@ class JobPosting(Base):
     # additionally treats this as a hard-stop so a flagged posting always
     # needs an explicit human look before ever auto-proceeding.
     eligibility_flag_reason = Column(String, nullable=True)
+
+    # Pure regex sponsorship-signal extraction from the JD text, run
+    # in-process at intake -- no LLM, no cost (see
+    # sponsorship_signals.py). Distinct from JobApplication.
+    # visa_sponsorship, an LLM-derived classification computed later
+    # and only when an application is actually scored (a real cost);
+    # this is the free, always-on signal the hard gate uses. blocked
+    # wins over signal at the GATING layer (queue_service.py), not by
+    # zeroing sponsorship_signal here -- both booleans reflect their
+    # own independent pattern matches, signal_matches records exactly
+    # which patterns fired in each category for audit.
+    sponsorship_blocked = Column(Boolean, default=False)
+    sponsorship_signal = Column(Boolean, default=False)
+    worksite_ambiguous = Column(Boolean, default=False)
+    signal_matches = Column(JSON, nullable=True)
 
     created_at = Column(DateTime, default=utcnow)
 
@@ -199,6 +304,7 @@ class JobApplication(Base):
 
     applied_at = Column(DateTime, nullable=True)
     rejected_at = Column(DateTime, nullable=True)
+    replied_at = Column(DateTime, nullable=True)  # self-reported, same trust model as interviewing_at/offer_at below
     interviewing_at = Column(DateTime, nullable=True)  # only set by an explicit Mark as Interviewing click
     offer_at = Column(DateTime, nullable=True)
     not_selected_at = Column(DateTime, nullable=True)
@@ -206,7 +312,29 @@ class JobApplication(Base):
     notes = Column(Text, nullable=True)
     attention_reason = Column(String, nullable=True)
 
+    # Mechanical score components (sponsorship/wage/worksite/AI-profile-fit),
+    # one entry per component with its raw value/weight/contribution -- see
+    # scoring_service.py and WEIGHTING.md. Null until score_application()
+    # (or the backfill CLI) has run at least once for this application.
+    score_breakdown = Column(JSON, nullable=True)
+
+    # /queue triage -- Skip (soft, revisable, excluded from the default
+    # queue view but never deleted) is distinct from status="Rejected"
+    # (existing hard decline, swept after rejected_retention_days): both
+    # reuse this same short reason enum (see queue_service.py), skipped_at
+    # is what distinguishes a genuine Skip from a Rejected/"Not a fit"
+    # application, which sets status instead and leaves skipped_at unset.
+    skip_reason = Column(String, nullable=True)
+    skipped_at = Column(DateTime, nullable=True)
+
     created_at = Column(DateTime, default=utcnow)
+
+    __table_args__ = (
+        CheckConstraint(
+            "skip_reason IN ('not_interested', 'low_priority', 'duplicate_role', 'bad_timing', 'other')",
+            name="ck_job_applications_skip_reason",
+        ),
+    )
 
     posting = relationship("JobPosting", back_populates="application")
     documents = relationship("TailoredDocument", back_populates="application", cascade="all, delete-orphan")
@@ -257,6 +385,13 @@ class OutreachMessage(Base):
     email_verified = Column(Boolean, default=False)  # syntax + MX check passed
     sent_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=utcnow)
+
+    # Outreach hygiene caps (per-person lifetime, per-company rolling
+    # window -- see outreach_hygiene.py) block drafting by default when
+    # violated; cap_override_reason is set only when the user explicitly
+    # typed a reason to override the block, and is left null on every
+    # normal, non-overridden draft.
+    cap_override_reason = Column(String, nullable=True)
 
     application = relationship("JobApplication", back_populates="outreach_messages")
 
@@ -447,7 +582,7 @@ class JobSource(Base):
     __tablename__ = "job_sources"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, nullable=False, unique=True)  # 'linkedin' | 'adzuna' | 'greenhouse' | 'lever' | 'ashby' | 'recruitee' | 'personio' | 'jobspipe' | 'jobright' | 'ats_dataset' | 'job_board_aggregator' | 'yc_directory'
+    name = Column(String, nullable=False, unique=True)  # 'linkedin' | 'adzuna' | 'greenhouse' | 'lever' | 'ashby' | 'recruitee' | 'personio' | 'workable' | 'smartrecruiters' | 'remoteok' | 'remotive' | 'weworkremotely' | 'jobspresso' | 'jobspipe' | 'jobright' | 'ats_dataset' | 'job_board_aggregator' | 'yc_directory'
     is_active = Column(Boolean, default=True)
     calls_used_this_period = Column(Integer, default=0)
     period_reset_at = Column(DateTime, nullable=True)
@@ -511,6 +646,13 @@ class GlobalSettings(Base):
     # gradually across cycles instead of all at once.
     bulk_discovery_poll_interval_hours = Column(Integer, default=24)
     bulk_discovery_batch_size = Column(Integer, default=25)
+
+    # Phase 2b remote-board sources (RemoteOK/Remotive/WeWorkRemotely/
+    # Jobspresso) -- one shared slow cadence across all 4, sized to
+    # Remotive's own stricter published API constraint ("advise max. 4
+    # times a day" -- see remotive_source.py), not each source's own
+    # looser advisory (e.g. WeWorkRemotely's RSS <ttl> of 60 minutes).
+    remote_board_poll_interval_minutes = Column(Integer, default=360)
 
     # Confirmation queue
     confirmation_window_hours = Column(Float, default=15.0)
@@ -589,6 +731,30 @@ class GlobalSettings(Base):
     # live-editable per instance for anyone (like the operator here) who
     # wants deeper prep and is fine paying more for it.
     interview_prep_answer_target = Column(Integer, default=8)
+
+    # Company.tier (A/B/C/X) thresholds -- company_tier.py reads these
+    # instead of hardcoding them, so the bar for "proven sponsor" is a
+    # live-editable judgment call, not baked into code. tier_a_min_wage_level
+    # is stored as an int 1-4 (I-IV) for a plain >= comparison against
+    # Company.max_wage_level_15xx (converted via company_tier.WAGE_LEVEL_RANK).
+    tier_a_min_filings = Column(Integer, default=10)
+    tier_a_min_wage_level = Column(Integer, default=3)
+    tier_b_min_filings = Column(Integer, default=3)
+
+    # Outreach hygiene caps (outreach_hygiene.py) -- distinct from
+    # daily_outreach_cap above (a raw daily volume ceiling): these guard
+    # against re-contacting the same person/company too often, checked
+    # at draft time, not send time.
+    outreach_person_lifetime_cap = Column(Integer, default=1)  # cold messages to the same person, ever
+    outreach_company_cap_count = Column(Integer, default=3)  # messages to the same company...
+    outreach_company_cap_days = Column(Integer, default=14)  # ...within this many rolling days
+
+    # Daily go/no-go targets shown on /queue -- purely informational
+    # counters against the user's own personal targets, no automation
+    # gates on these.
+    daily_application_target_min = Column(Integer, default=8)
+    daily_application_target_max = Column(Integer, default=12)
+    daily_outreach_touch_target = Column(Integer, default=15)
 
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 

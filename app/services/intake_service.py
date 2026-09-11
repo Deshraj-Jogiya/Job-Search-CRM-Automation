@@ -37,15 +37,23 @@ from .activity_logger import log_activity
 from .company_utils import normalize_company_name, normalize_title
 from .llm import get_llm_provider, parse_json_response
 from .profile_service import get_default_profile_content
+from .source_visibility import is_source_visible_here
+from .sponsorship_signals import detect_sponsorship_signals
 from .sources import (
     adzuna_source,
     ashby_source,
     greenhouse_source,
     jobspipe_source,
+    jobspresso_source,
     lever_source,
     linkedin_source,
     personio_source,
     recruitee_source,
+    remoteok_source,
+    remotive_source,
+    smartrecruiters_source,
+    weworkremotely_source,
+    workable_source,
 )
 
 SOURCE_MODULES = {
@@ -56,7 +64,13 @@ SOURCE_MODULES = {
     ashby_source.SOURCE_NAME: ashby_source,
     recruitee_source.SOURCE_NAME: recruitee_source,
     personio_source.SOURCE_NAME: personio_source,
+    workable_source.SOURCE_NAME: workable_source,
+    smartrecruiters_source.SOURCE_NAME: smartrecruiters_source,
     jobspipe_source.SOURCE_NAME: jobspipe_source,
+    remoteok_source.SOURCE_NAME: remoteok_source,
+    remotive_source.SOURCE_NAME: remotive_source,
+    weworkremotely_source.SOURCE_NAME: weworkremotely_source,
+    jobspresso_source.SOURCE_NAME: jobspresso_source,
 }
 
 # Sources whose cheap_scan() makes one real external call per keyword
@@ -64,8 +78,18 @@ SOURCE_MODULES = {
 # per company regardless of keyword count -- see _run_source. JobsPipe
 # isn't in this set: its search API accepts every keyword as a single
 # `job_title_or` filter array in one call, so it gets the full keyword
-# list every cycle like the direct-ATS sources do.
-_PER_KEYWORD_CALL_SOURCES = {adzuna_source.SOURCE_NAME, linkedin_source.SOURCE_NAME}
+# list every cycle like the direct-ATS sources do. Of the 4 Phase 2b
+# remote-board sources, only Remotive has a real server-side search
+# param (see remotive_source.py) -- RemoteOK/WeWorkRemotely/Jobspresso
+# fetch everything and filter locally, same as the direct-ATS sources.
+_PER_KEYWORD_CALL_SOURCES = {adzuna_source.SOURCE_NAME, linkedin_source.SOURCE_NAME, remotive_source.SOURCE_NAME}
+
+# Phase 2b remote-board aggregators -- polled on their own shared slow
+# cadence (GlobalSettings.remote_board_poll_interval_minutes), not the
+# fast direct-ATS cadence: none of the 4 are "this app's own board"
+# with zero indexing lag, they're broad third-party aggregators with
+# real published rate-limit advisories (see remotive_source.py).
+_REMOTE_BOARD_SOURCES = (remoteok_source, remotive_source, weworkremotely_source, jobspresso_source)
 
 # How many pre-existing companies (created before board-slug auto-
 # detection existed, or never probed for some other reason) get probed
@@ -243,6 +267,8 @@ def _apply_discovered_slugs(db: Session, company: Company, slugs: dict) -> None:
     company.ashby_slug = slugs.get("ashby")
     company.recruitee_slug = slugs.get("recruitee")
     company.personio_slug = slugs.get("personio")
+    company.workable_slug = slugs.get("workable")
+    company.smartrecruiters_slug = slugs.get("smartrecruiters")
     company.board_slugs_checked_at = utcnow()
     found = [ats for ats, slug in slugs.items() if slug]
     if found:
@@ -281,7 +307,7 @@ def set_manual_board_slug(db: Session, company_name: str, ats_type: str, slug: s
     slug once, or it wouldn't have needed a manual entry). This does
     mean the other two ATS types won't get auto-probed for this company
     -- an acceptable gap; the user can set those manually too if needed."""
-    if ats_type not in ("greenhouse", "lever", "ashby", "recruitee", "personio"):
+    if ats_type not in ("greenhouse", "lever", "ashby", "recruitee", "personio", "workable", "smartrecruiters"):
         raise ValueError(f"Unknown ATS type '{ats_type}'.")
     if not slug or not slug.strip():
         raise ValueError("Slug can't be empty.")
@@ -674,6 +700,7 @@ def _ingest_raw_posting(db: Session, module, raw) -> JobPosting | None:
     if not job_description or len(job_description) < 50:
         return None
 
+    signals = detect_sponsorship_signals(job_description)
     posting = JobPosting(
         company_id=company.id,
         company_name_raw=raw.company_name_raw,
@@ -687,6 +714,10 @@ def _ingest_raw_posting(db: Session, module, raw) -> JobPosting | None:
         repost_count=(matched.repost_count + 1) if is_repost else 0,
         scam_flag_reason=_detect_scam_patterns(job_description),
         eligibility_flag_reason=_detect_eligibility_flags(job_description),
+        sponsorship_blocked=signals["sponsorship_blocked"],
+        sponsorship_signal=signals["sponsorship_signal"],
+        worksite_ambiguous=signals["worksite_ambiguous"],
+        signal_matches=signals["signal_matches"],
     )
     db.add(posting)
     db.commit()
@@ -714,6 +745,13 @@ def _ingest_raw_posting(db: Session, module, raw) -> JobPosting | None:
             f"Eligibility flag on '{raw.job_title}' at {raw.company_name_raw}: {posting.eligibility_flag_reason}",
             "WARNING",
         )
+    if posting.sponsorship_blocked:
+        log_activity(
+            db,
+            f"Sponsorship-blocked on '{raw.job_title}' at {raw.company_name_raw}: "
+            f"{'; '.join(posting.signal_matches['blocked'])}. Hidden from /queue by default.",
+            "WARNING",
+        )
 
     return posting
 
@@ -731,6 +769,18 @@ def _quota_cost(module_name: str, keywords: list[str], raw_postings: list) -> in
 
 def _run_source(db: Session, module, source_row: JobSource, location_query: str) -> None:
     now = utcnow()
+
+    if not is_source_visible_here(module.SOURCE_NAME):
+        if source_row.last_error != "not_visible_on_this_instance":
+            log_activity(
+                db,
+                f"Skipping {module.SOURCE_NAME}: not visible on this instance (see source_visibility.py).",
+                "INFO",
+            )
+        source_row.last_error = "not_visible_on_this_instance"
+        source_row.last_polled_at = now
+        db.commit()
+        return
 
     if not module.is_configured():
         if source_row.last_error != "not_configured":
@@ -971,9 +1021,12 @@ def run_intake_cycle(db: Session, force: bool = False) -> None:
     # same low-indexing-lag rationale as LinkedIn -- poll at the fast
     # cadence. Each is a no-op (skipped with a clear log entry) until at
     # least one Company row has that ATS's slug set. location_query is
-    # unused by these five (no location search param on any of their
+    # unused by these seven (no location search param on any of their
     # APIs) -- they filter locally via LocationExclusion instead.
-    for module in (greenhouse_source, lever_source, ashby_source, recruitee_source, personio_source):
+    for module in (
+        greenhouse_source, lever_source, ashby_source, recruitee_source, personio_source,
+        workable_source, smartrecruiters_source,
+    ):
         source_row = _get_or_create_job_source(db, module.SOURCE_NAME)
         if source_row.is_active and (force or _is_due(source_row, settings.fast_poll_interval_minutes, now)):
             _run_source(db, module, source_row, location_query)
@@ -986,6 +1039,13 @@ def run_intake_cycle(db: Session, force: bool = False) -> None:
     jobspipe_row = _get_or_create_job_source(db, jobspipe_source.SOURCE_NAME)
     if jobspipe_row.is_active and (force or _is_due(jobspipe_row, settings.full_ingest_interval_minutes, now)):
         _run_source(db, jobspipe_source, jobspipe_row, location_query)
+
+    # Phase 2b remote-board aggregators -- own shared slow cadence, see
+    # _REMOTE_BOARD_SOURCES/remote_board_poll_interval_minutes above.
+    for module in _REMOTE_BOARD_SOURCES:
+        source_row = _get_or_create_job_source(db, module.SOURCE_NAME)
+        if source_row.is_active and (force or _is_due(source_row, settings.remote_board_poll_interval_minutes, now)):
+            _run_source(db, module, source_row, location_query)
 
     _discover_companies_from_jobright(db, settings, force=force)
     _discover_companies_from_ats_dataset(db, settings, force=force)
