@@ -159,6 +159,14 @@ class TestHedgeUnverifiedMetrics:
         result = hedge_unverified_metrics("Processed 500GB/day across 12 sources.")
         assert result == "Processed 500GB/day across 12 sources."
 
+    def test_negative_percentage_hedges_before_the_sign_not_after(self):
+        # Found via a real bullet while building the Part F golden
+        # fixture: "(-35% silent drift)" must not hedge to
+        # "(-roughly 35%...)" -- the sign belongs with the number.
+        result = hedge_unverified_metrics("Monitors feature drift (-35% silent drift).")
+        assert "roughly -35%" in result
+        assert "-roughly" not in result
+
 
 class TestCheckBarePercentage:
     def test_unhedged_percentage_is_flagged(self):
@@ -166,6 +174,9 @@ class TestCheckBarePercentage:
 
     def test_hedged_percentage_is_not_flagged(self):
         assert check_bare_percentage("Cut runtime by roughly 40%.") == []
+
+    def test_negative_percentage_includes_the_sign_in_the_claim(self):
+        assert check_bare_percentage("Reduced drift by -35%.") == ["-35%"]
 
 
 _PROJECT_SELECTION_TEST_CONFIG = {
