@@ -27,7 +27,7 @@ from ..database import utcnow
 from ..models import Company
 from ..services.activity_logger import log_activity
 from ..services.company_utils import normalize_company_name
-from .column_utils import resolve_column
+from .column_utils import resolve_column_learned
 
 _USCIS_EMPLOYER_ALIASES = ["Employer", "Petitioner Name", "Employer (Petitioner) Name"]
 _USCIS_FY_ALIASES = ["Fiscal Year", "FY"]
@@ -97,13 +97,14 @@ def load_uscis_h1b_data(db: Session, csv_path: str) -> dict:
     normalized name matches an employer in the file. Returns counts
     for the caller to report/log."""
     df = pd.read_csv(csv_path, dtype=str)
+    _S = "uscis_h1b"
     columns = {
-        "employer": resolve_column(df.columns, _USCIS_EMPLOYER_ALIASES),
-        "fiscal_year": resolve_column(df.columns, _USCIS_FY_ALIASES),
-        "initial_approval": resolve_column(df.columns, _USCIS_INITIAL_APPROVAL_ALIASES),
-        "initial_denial": resolve_column(df.columns, _USCIS_INITIAL_DENIAL_ALIASES),
-        "continuing_approval": resolve_column(df.columns, _USCIS_CONTINUING_APPROVAL_ALIASES),
-        "continuing_denial": resolve_column(df.columns, _USCIS_CONTINUING_DENIAL_ALIASES),
+        "employer": resolve_column_learned(db, df.columns, _USCIS_EMPLOYER_ALIASES, _S, "employer"),
+        "fiscal_year": resolve_column_learned(db, df.columns, _USCIS_FY_ALIASES, _S, "fiscal_year"),
+        "initial_approval": resolve_column_learned(db, df.columns, _USCIS_INITIAL_APPROVAL_ALIASES, _S, "initial_approval"),
+        "initial_denial": resolve_column_learned(db, df.columns, _USCIS_INITIAL_DENIAL_ALIASES, _S, "initial_denial"),
+        "continuing_approval": resolve_column_learned(db, df.columns, _USCIS_CONTINUING_APPROVAL_ALIASES, _S, "continuing_approval"),
+        "continuing_denial": resolve_column_learned(db, df.columns, _USCIS_CONTINUING_DENIAL_ALIASES, _S, "continuing_denial"),
     }
     aggregated = _aggregate_uscis_rows(df, columns)
 
@@ -169,11 +170,12 @@ def load_dol_lca_data(db: Session, xlsx_path: str, fiscal_quarter: str) -> dict:
     wage-level update, logged separately below rather than failing the
     whole load."""
     df = pd.read_excel(xlsx_path, dtype=str)
-    employer_col = resolve_column(df.columns, _LCA_EMPLOYER_ALIASES)
-    status_col = resolve_column(df.columns, _LCA_STATUS_ALIASES, required=False)
-    visa_col = resolve_column(df.columns, _LCA_VISA_CLASS_ALIASES, required=False)
-    soc_col = resolve_column(df.columns, _LCA_SOC_CODE_ALIASES, required=False)
-    wage_level_col = resolve_column(df.columns, _LCA_WAGE_LEVEL_ALIASES, required=False)
+    _S = "dol_lca"
+    employer_col = resolve_column_learned(db, df.columns, _LCA_EMPLOYER_ALIASES, _S, "employer")
+    status_col = resolve_column_learned(db, df.columns, _LCA_STATUS_ALIASES, _S, "status", required=False)
+    visa_col = resolve_column_learned(db, df.columns, _LCA_VISA_CLASS_ALIASES, _S, "visa_class", required=False)
+    soc_col = resolve_column_learned(db, df.columns, _LCA_SOC_CODE_ALIASES, _S, "soc_code", required=False)
+    wage_level_col = resolve_column_learned(db, df.columns, _LCA_WAGE_LEVEL_ALIASES, _S, "wage_level", required=False)
 
     if status_col:
         df = df[df[status_col].astype(str).str.strip().str.upper() == "CERTIFIED"]
