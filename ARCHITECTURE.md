@@ -211,6 +211,5 @@ push and PR; `dependency-audit.yml` runs a vulnerability scan weekly.
 
 ## Known gaps
 
-- No external uptime monitoring configured against `/api/health` by default -- a per-deployment choice of provider left to whoever's running it (see [`deploy/README.md`](./deploy/README.md#7-health-check-watchdog))
+- No external uptime monitoring configured against `/api/health` by default for a fresh fork -- a per-deployment choice of provider left to whoever's running it (see [`deploy/README.md`](./deploy/README.md#7-health-check-watchdog)); this deployment's own instance already has one configured
 - Outreach handoff (the "we're now emailing back and forth" phase) is intentionally out of scope for now
-- General bullet-prose fabrication detection (an invented metric/outcome/organization name written directly into a bullet's prose) is now checked by `tailoring_service.check_bullet_fabrication`, a dedicated LLM verification pass comparing each tailored bullet against its original -- a real safeguard, not a mechanical guarantee the way `_verify_structural_fidelity()`/D1/D2 are. See [`FUTURE.md`](./FUTURE.md#bullet-level-fabrication-detection-done-2026-09-11).
