@@ -94,6 +94,28 @@ class TestMetricHedgingWired:
         assert "40%" in application_row.attention_reason
 
 
+def _config_with_test_project_slugs():
+    """The real config, deep-copied, with ONLY projects_by_variant's
+    data_engineering slugs swapped for this test's short fixture names
+    -- everything else (metrics/skills/experience_classification, all
+    of which the rest of tailor_application()'s pipeline still reads
+    from this same config) stays real and valid. Deliberately not a
+    from-scratch minimal dict: the real config/resume_rules.yaml's own
+    project slugs are derived from the live profile's actual project
+    titles and legitimately change whenever those do (see that file's
+    own comment), so this test shouldn't be coupled to whatever it
+    currently says."""
+    import copy
+
+    from app.services import resume_rules
+
+    config = copy.deepcopy(resume_rules.get_config())
+    config["projects_by_variant"]["variants"]["data_engineering"] = [
+        "career_pilot", "talentvenue_eventintel", "ai_model_observability",
+    ]
+    return config
+
+
 class TestProjectSelectionWiredByVariant:
     def test_only_configured_projects_for_the_variant_are_passed_to_tailoring(self, db):
         profile = {
@@ -108,14 +130,15 @@ class TestProjectSelectionWiredByVariant:
         }
         application = _application(db, profile, variant_name="Data Engineering")
 
-        with patch("app.services.tailoring_service.run_multi_pass_tailoring") as mock_tailor:
-            mock_tailor.return_value = ([], [], 90, [], [])
-            with (
-                patch("app.services.tailoring_service._tailor_summary_skills", return_value={"summary": "d", "skills": {}}),
-                patch("app.services.tailoring_service.generate_cover_letter", return_value="cl"),
-                patch("app.services.tailoring_service.score_cover_letter", return_value=80),
-            ):
-                tailoring_service.tailor_application(db, application.id)
+        with patch("app.services.resume_rules.get_config", return_value=_config_with_test_project_slugs()):
+            with patch("app.services.tailoring_service.run_multi_pass_tailoring") as mock_tailor:
+                mock_tailor.return_value = ([], [], 90, [], [])
+                with (
+                    patch("app.services.tailoring_service._tailor_summary_skills", return_value={"summary": "d", "skills": {}}),
+                    patch("app.services.tailoring_service.generate_cover_letter", return_value="cl"),
+                    patch("app.services.tailoring_service.score_cover_letter", return_value=80),
+                ):
+                    tailoring_service.tailor_application(db, application.id)
 
         passed_projects = mock_tailor.call_args[0][1]
         names = {p["name"] for p in passed_projects}
