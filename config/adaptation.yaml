@@ -11,6 +11,12 @@ tier1:
     min: 0.82
     max: 0.95
     default: 0.88
+  # b1.3 -- minimum stdlib difflib similarity ratio for a government
+  # data file's header to fuzzy-match a known field (column_utils.py)
+  # once an exact alias match fails. Below this, resolve_column_learned
+  # raises instead of guessing -- a wrong silent guess on a company's
+  # H-1B/wage data is worse than a loud, actionable failure.
+  column_mapping_fuzzy_threshold: 0.75
 
 tier2:
   # Statistical trustworthiness thresholds for the DATA -- never

@@ -37,3 +37,9 @@ CLAUDE.md
 # Raw USCIS/DOL government data files for app/ingest/ -- large (tens of
 # MB), publicly downloadable, not something to version. See SETUP.md.
 data/raw/
+
+# b1.3's learned column-header mapping state (app/ingest/column_utils.py)
+# -- written by the app itself as fuzzy guesses/corrections happen,
+# meaningful only against whatever real government data files THIS
+# deployment has actually loaded, not portable config to share.
+data/column_mappings.yaml
