@@ -34,18 +34,31 @@ metrics dashboard.
 
 ## Bullet-level fabrication detection
 
-`tailoring_service._verify_structural_fidelity()` (added this pass)
-catches an LLM inventing/altering a company name, role title, or date
-range. It does NOT catch a fabricated metric or outcome embedded
-directly in bullet prose (e.g. an invented "40% latency reduction"),
-or an invented employer name mentioned only inside a bullet's text
-rather than the structural `company` field. See
+`tailoring_service._verify_structural_fidelity()` catches an LLM
+inventing/altering a company name, role title, or date range. The
+Adaptive Layer + Resume Rules pass (2026-09-11) narrowed this gap by
+exactly two checks, deliberately not more: `resume_rules.check_years_claim`
+(D1) rejects a generated years-of-experience figure exceeding what
+`total_experience_months` actually computes, and
+`check_unverified_bare_percentage` (D2) rejects a bare percentage not
+marked `verified: true`. Both run against the raw tailored bullets
+BEFORE C4's hedging mutates them, so a real violation survives for
+human review even though the saved document always renders safely
+hedged regardless.
+
+Neither catches a fabricated metric or outcome embedded directly in
+bullet prose that ISN'T a bare percentage (e.g. an invented "cut
+latency by 40%" phrased as prose rather than a standalone number), or
+an invented employer name mentioned only inside a bullet's text rather
+than the structural `company` field. See
 `tests/test_tailoring_adversarial.py`'s own findings section for the
 exact adversarial cases that currently pass through undetected.
 Building a real detector here means distinguishing "genuinely
 rephrased from a real bullet" from "invented from nothing," which is
 a harder problem than a quick mechanical patch can solve honestly --
-worth a dedicated design pass, not a rushed fix.
+worth a dedicated design pass, not a rushed fix. Deliberately scoped
+out of the Adaptive Layer pass too (see that spec's Part D: "Do NOT
+attempt general prose fabrication detection").
 
 ## Wage-level fit is company-level, not per-posting
 
