@@ -17,6 +17,23 @@ from app.database import Base, SessionLocal, engine  # noqa: E402
 from app import models  # noqa: E402,F401  -- registers every table on Base.metadata
 
 
+def pytest_addoption(parser):
+    # Part F: the golden resume fixture (test_golden_resume.py) never
+    # auto-updates on a mismatch -- regenerating it requires this
+    # explicit flag, which also prints a full diff, so a real
+    # regression can never accidentally get rubber-stamped as "the new
+    # golden".
+    parser.addoption(
+        "--update-golden", action="store_true", default=False,
+        help="Regenerate tests/fixtures/golden/ from the current code instead of asserting against it.",
+    )
+
+
+@pytest.fixture()
+def update_golden(request):
+    return request.config.getoption("--update-golden")
+
+
 @pytest.fixture()
 def db():
     """A fresh schema for every test -- several service functions commit
