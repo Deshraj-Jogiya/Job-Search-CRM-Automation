@@ -54,6 +54,7 @@ from ..services import (
     interview_prep_service,
     matching_service,
     outreach_service,
+    page_fit_service,
     tailoring_service,
 )
 from ..services.activity_logger import log_activity, log_exception
@@ -587,7 +588,10 @@ def download_tailored_document(application_id: int, document_type: str, db: Sess
         return _redirect_detail(application_id, error="Nothing tailored yet -- generate it first.")
 
     if document_type == "resume":
-        pdf_bytes = document_render_service.render_resume_pdf(doc.content)
+        try:
+            pdf_bytes = page_fit_service.render_resume_pdf_with_fit(db, doc.content)["pdf_bytes"]
+        except page_fit_service.PageFitExhaustedError as e:
+            return _redirect_detail(application_id, error=str(e))
     else:
         resume_doc = (
             db.query(TailoredDocument)

@@ -33,7 +33,8 @@ from .activity_logger import log_activity
 from .autofill.ashby_autofill import autofill_ashby_application
 from .autofill.greenhouse_autofill import autofill_greenhouse_application
 from .autofill.lever_autofill import autofill_lever_application
-from .document_render_service import render_cover_letter_pdf, render_resume_pdf
+from . import page_fit_service
+from .document_render_service import render_cover_letter_pdf
 from .matching_service import get_profile_content_for_application
 
 _AUTOFILL_FUNCTIONS = {
@@ -150,8 +151,12 @@ def run_autofill(db: Session, application_id: int) -> None:
     safe_name = "_".join(candidate_name.split())
     tmp_dir = tempfile.mkdtemp(prefix="career_pilot_autofill_")
     resume_pdf_path = os.path.join(tmp_dir, f"{safe_name}_resume.pdf")
+    try:
+        resume_pdf_bytes = page_fit_service.render_resume_pdf_with_fit(db, resume_content)["pdf_bytes"]
+    except page_fit_service.PageFitExhaustedError as e:
+        raise AutofillServiceError(str(e)) from e
     with open(resume_pdf_path, "wb") as f:
-        f.write(render_resume_pdf(resume_content))
+        f.write(resume_pdf_bytes)
 
     cover_letter_pdf_path = None
     if cl_doc:

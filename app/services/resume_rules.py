@@ -27,7 +27,7 @@ verbatim if so.
 import re
 from datetime import date
 
-from ..config_loader import HotReloadableYaml, require
+from ..config_loader import ConfigValidationError, HotReloadableYaml, require
 
 _MONTH_NAMES = {
     "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
@@ -73,7 +73,16 @@ def _validate(data: dict) -> None:
     require(pf, "min_body_font_pt", float, min=1.0)
     require(pf, "min_margin_in", float, min=0.0)
     require(pf, "max_pages", int, min=1)
+    require(pf, "line_spacing_step_pt", float, min=0.01)
+    require(pf, "margin_step_in", float, min=0.01)
+    require(pf, "font_step_pt", float, min=0.01)
+    require(pf, "summary_shorten_max_chars", int, min=20)
     require(pf, "reduction_catalog", list)
+    for entry in pf["reduction_catalog"]:
+        if not isinstance(entry, dict):
+            raise ConfigValidationError(f"page_fit.reduction_catalog entries must be objects, got {entry!r}.")
+        require(entry, "id", str)
+        require(entry, "content_value_weight", int, min=1)
 
 
 _STORE = HotReloadableYaml("resume_rules.yaml", validate_fn=_validate)
