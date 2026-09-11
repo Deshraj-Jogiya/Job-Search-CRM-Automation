@@ -3,7 +3,7 @@ import json
 import pytest
 
 from app.database import utcnow
-from app.models import Company, JobApplication, JobPosting, OutreachMessage
+from app.models import Company, JobApplication, JobPosting
 from app.services import queue_service
 from app.services.company_utils import normalize_company_name
 
@@ -202,17 +202,3 @@ class TestRecomputeAllTiers:
         db.refresh(company)
         assert company.tier == "X"  # corrected down from a stale "A"
         assert company.tier_computed_at is not None
-
-
-class TestDailyCounters:
-    def test_counts_applications_and_outreach_sent_today(self, db, settings):
-        company = _company(db, tier="A")
-        posting = _posting(db, company)
-        application = _application(db, posting, applied_at=utcnow())
-        db.add(OutreachMessage(application_id=application.id, body="hi", sent_at=utcnow()))
-        db.commit()
-
-        counters = queue_service.daily_counters(db, settings)
-        assert counters["applications_today"] == 1
-        assert counters["outreach_today"] == 1
-        assert counters["applications_target_min"] == settings.daily_application_target_min

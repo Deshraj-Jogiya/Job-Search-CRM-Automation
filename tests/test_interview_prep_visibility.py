@@ -30,8 +30,6 @@ def _render_detail(application, posting, **extra_context):
         "interview_prep": application.active_interview_prep,
         "prep_versions": [],
         "outreach_messages": [],
-        "daily_outreach_cap": 10,
-        "outreach_sent_today": 0,
         "discovery_available": False,
         "discovered_contacts": None,
         "autofill_supported": False,

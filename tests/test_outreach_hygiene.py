@@ -68,7 +68,7 @@ class TestPersonLifetimeCap:
         company = _company(db)
         application = _application(db, company)
         _sent_message(db, application, "recruiter@acme.com")
-        settings.outreach_person_lifetime_cap = 2
+        settings.outreach_per_person_lifetime = 2
 
         check_caps(db, "recruiter@acme.com", company.id, settings)  # no raise
 
@@ -80,12 +80,15 @@ class TestCompanyRollingWindowCap:
         _sent_message(db, application, "a@acme.com")
         _sent_message(db, application, "b@acme.com")
 
-        check_caps(db, "new-person@acme.com", company.id, settings)  # 2 < default cap of 3, no raise
+        check_caps(db, "new-person@acme.com", company.id, settings)  # 2 < default cap of 10, no raise
 
     def test_at_the_cap_violates(self, db, settings):
+        # Default cap is 10, not the original (relaxed) 3 -- the per-
+        # company hygiene cap exists to prevent genuine duplicates, not
+        # to throttle normal outreach volume.
         company = _company(db)
         application = _application(db, company)
-        for i in range(3):
+        for i in range(10):
             _sent_message(db, application, f"person{i}@acme.com")
 
         with pytest.raises(OutreachCapViolation):
@@ -94,7 +97,7 @@ class TestCompanyRollingWindowCap:
     def test_messages_outside_the_rolling_window_dont_count(self, db, settings):
         company = _company(db)
         application = _application(db, company)
-        old = utcnow() - timedelta(days=settings.outreach_company_cap_days + 5)
+        old = utcnow() - timedelta(days=settings.outreach_per_company_window_days + 5)
         for i in range(3):
             _sent_message(db, application, f"person{i}@acme.com", sent_at=old)
 

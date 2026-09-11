@@ -21,7 +21,7 @@ from datetime import timedelta
 
 from sqlalchemy.orm import Session
 
-from ..models import Company, GlobalSettings, JobApplication, JobPosting, ProfileVariant, get_or_create_settings
+from ..models import Company, JobApplication, JobPosting, ProfileVariant
 
 # Below this, a resume-version reply-rate comparison is too noisy to
 # flag meaningfully -- 1-2 sends either replying or not swings the rate
@@ -197,22 +197,19 @@ def underperforming_resume_versions(db: Session) -> list[dict]:
     return [s for s in segments if (s["reply_rate"] or 0) < best / 2]
 
 
-def time_series(db: Session, settings: GlobalSettings) -> dict:
+def time_series(db: Session) -> dict:
+    """No target/quota line -- this app counts what happened, it never
+    implies what the user should do (see models.py's GlobalSettings
+    docstring on outreach caps for the same standing rule)."""
     funnel_asc = list(reversed(weekly_funnel(db)))
     return {
         "weeks": [w["week"] for w in funnel_asc],
         "applications_per_week": [w["sent"] for w in funnel_asc],
         "reply_rate_per_week": [w["reply_rate"] or 0 for w in funnel_asc],
-        # Weekday-based approximation from the daily /queue targets --
-        # no separate weekly target setting exists, see WEIGHTING.md-
-        # adjacent reasoning in queue_service.py for the daily ones.
-        "target_applications_per_week_min": settings.daily_application_target_min * 5,
-        "target_applications_per_week_max": settings.daily_application_target_max * 5,
     }
 
 
 def build_dashboard(db: Session) -> dict:
-    settings = get_or_create_settings(db)
     return {
         "weekly_funnel": weekly_funnel(db),
         "by_resume_version": by_resume_version(db),
@@ -222,5 +219,5 @@ def build_dashboard(db: Session) -> dict:
         "by_wage_level": by_wage_level(db),
         "median_days_to_first_reply": median_days_to_first_reply(db),
         "underperforming": underperforming_resume_versions(db),
-        "time_series": time_series(db, settings),
+        "time_series": time_series(db),
     }
