@@ -19,6 +19,12 @@ whole purpose is to showcase the platform to attract users) sits too
 close to for a default "yes" without a deliberate, separate legal
 review. The personal instance is unaffected either way -- this only
 gates the public demo.
+
+workingnomads (added 2026-09-11, same remote-board family) has no
+comparable restrictive language in its own terms (checked live the
+same day), but also no explicit "personal use is fine" statement --
+kept "prod_only" for the same conservative reason as the original 4,
+not because a specific clause was found against it.
 """
 
 from ..app_mode import is_showcase_mode as _is_showcase_mode
@@ -42,6 +48,7 @@ SOURCE_VISIBILITY = {
     "remotive": _PROD_ONLY,
     "weworkremotely": _PROD_ONLY,
     "jobspresso": _PROD_ONLY,
+    "workingnomads": _PROD_ONLY,
 }
 
 

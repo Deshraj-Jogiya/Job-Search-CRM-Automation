@@ -54,6 +54,7 @@ from .sources import (
     smartrecruiters_source,
     weworkremotely_source,
     workable_source,
+    workingnomads_source,
 )
 
 SOURCE_MODULES = {
@@ -71,6 +72,7 @@ SOURCE_MODULES = {
     remotive_source.SOURCE_NAME: remotive_source,
     weworkremotely_source.SOURCE_NAME: weworkremotely_source,
     jobspresso_source.SOURCE_NAME: jobspresso_source,
+    workingnomads_source.SOURCE_NAME: workingnomads_source,
 }
 
 # Sources whose cheap_scan() makes one real external call per keyword
@@ -86,10 +88,14 @@ _PER_KEYWORD_CALL_SOURCES = {adzuna_source.SOURCE_NAME, linkedin_source.SOURCE_N
 
 # Phase 2b remote-board aggregators -- polled on their own shared slow
 # cadence (GlobalSettings.remote_board_poll_interval_minutes), not the
-# fast direct-ATS cadence: none of the 4 are "this app's own board"
+# fast direct-ATS cadence: none of these are "this app's own board"
 # with zero indexing lag, they're broad third-party aggregators with
-# real published rate-limit advisories (see remotive_source.py).
-_REMOTE_BOARD_SOURCES = (remoteok_source, remotive_source, weworkremotely_source, jobspresso_source)
+# real published rate-limit advisories (see remotive_source.py) --
+# workingnomads_source.py added later (2026-09-11), same shape and
+# same shared cadence as the original 4, no published rate limit of
+# its own so it inherits the conservative default rather than assuming
+# an unstated one doesn't exist.
+_REMOTE_BOARD_SOURCES = (remoteok_source, remotive_source, weworkremotely_source, jobspresso_source, workingnomads_source)
 
 # How many pre-existing companies (created before board-slug auto-
 # detection existed, or never probed for some other reason) get probed
