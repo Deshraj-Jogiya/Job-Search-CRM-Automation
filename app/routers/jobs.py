@@ -43,6 +43,7 @@ from ..models import (
     get_or_create_settings,
 )
 from ..services import (
+    adaptation_service,
     autofill_service,
     behavioral_story_service,
     confirmation_service,
@@ -213,6 +214,21 @@ def toggle_source(source_id: int, db: Session = Depends(get_db)):
     source.is_active = not source.is_active
     db.commit()
     return _redirect(message=f"'{source.name}' is now {'active' if source.is_active else 'paused'}.")
+
+
+@router.post("/postings/{posting_id}/not-a-duplicate")
+def mark_posting_not_a_duplicate(posting_id: int, db: Session = Depends(get_db)):
+    """b1.4 correction feedback: a posting flagged 'repost x{{n}}' was
+    actually a distinct posting the fuzzy dedup wrongly merged. Nudges
+    adaptation_service's self-tuned dedupe threshold higher (see
+    record_dedupe_correction's docstring) and logs the correction."""
+    posting = db.query(JobPosting).filter(JobPosting.id == posting_id).first()
+    if not posting:
+        return _redirect(error=f"Posting {posting_id} not found.")
+    if posting.repost_count <= 0:
+        return _redirect(error="This posting isn't flagged as a repost.")
+    new_threshold = adaptation_service.record_dedupe_correction(db, was_false_merge=True)
+    return _redirect(message=f"Noted -- dedupe threshold adjusted to {new_threshold:.2f}.")
 
 
 @router.post("/companies/slug")

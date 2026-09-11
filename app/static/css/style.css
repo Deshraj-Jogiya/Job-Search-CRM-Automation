@@ -514,6 +514,23 @@ button:active {
     box-shadow: none;
 }
 
+.btn-link {
+    background: none;
+    color: var(--text-secondary);
+    border: none;
+    box-shadow: none;
+    padding: 2px 4px;
+    font-size: 0.72rem;
+    font-weight: 500;
+    text-decoration: underline;
+}
+
+.btn-link:hover {
+    color: var(--text-primary);
+    transform: none;
+    box-shadow: none;
+}
+
 .btn-danger {
     background: var(--grad-danger);
     box-shadow: 0 4px 16px rgba(239, 68, 68, 0.25);

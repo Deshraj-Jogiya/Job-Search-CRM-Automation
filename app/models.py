@@ -781,3 +781,63 @@ class ActivityLog(Base):
     message = Column(Text, nullable=False)
     level = Column(String, default="INFO")
     timestamp = Column(DateTime, default=utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Adaptive layer (Part B) -- audit trail for every self-tuning change
+# ---------------------------------------------------------------------------
+
+class AdaptationLog(Base):
+    """One row per adaptive change, either tier -- see
+    app/services/adaptation_service.py. Every field the guardrails
+    require is here on purpose: what changed, the old/new value, the
+    evidence it was based on, the sample size, and whether it was
+    auto-applied (Tier 1) or required human approval (Tier 2). Nothing
+    in this table is ever deleted -- a revert writes a NEW row
+    restoring the old value and marks the original 'reverted' via
+    reverted_at, so the audit trail itself stays append-only."""
+
+    __tablename__ = "adaptation_log"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tier = Column(String, nullable=False)  # 'tier1' | 'tier2'
+    subsystem = Column(String, nullable=False, index=True)  # e.g. 'dedupe_threshold', 'resume_variant_reply_rate'
+    parameter = Column(String, nullable=False)  # which specific config key/value changed
+    old_value = Column(JSON, nullable=True)
+    new_value = Column(JSON, nullable=True)
+    triggering_evidence = Column(JSON, nullable=True)  # sample sizes, computed rates/CIs -- whatever justified this
+    sample_size = Column(Integer, nullable=True)
+
+    # Tier 1 rows are created with status="applied" directly (auto-
+    # applies, no approval gate). Tier 2 rows start "proposed" and only
+    # ever become "approved" or "rejected" through an explicit human
+    # click (see /adaptation) -- never silently transition themselves.
+    status = Column(String, default="applied")
+
+    created_at = Column(DateTime, default=utcnow)
+    reverted_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("tier IN ('tier1', 'tier2')", name="ck_adaptation_log_tier"),
+        CheckConstraint(
+            "status IN ('applied', 'proposed', 'approved', 'rejected', 'reverted')",
+            name="ck_adaptation_log_status",
+        ),
+    )
+
+
+class AdaptiveParameterValue(Base):
+    """The CURRENT effective value of one self-tuned parameter --
+    config/adaptation.yaml declares each parameter's default and
+    allowed [min, max] bounds (static, human-edited); this table holds
+    what it's actually drifted to since (dynamic, app-written). A
+    parameter with no row here is at its config default -- cold start
+    (b3.4) falls out of that naturally, no special-case code needed.
+    Every write here is paired with an AdaptationLog row explaining why."""
+
+    __tablename__ = "adaptive_parameter_values"
+
+    id = Column(Integer, primary_key=True, index=True)
+    parameter = Column(String, nullable=False, unique=True)
+    value = Column(Float, nullable=False)
+    updated_at = Column(DateTime, default=utcnow)
