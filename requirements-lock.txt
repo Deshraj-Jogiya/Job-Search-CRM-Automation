@@ -23,6 +23,12 @@
 # Targeting Upgrade added pandas/openpyxl (app/ingest/ CSV+XLSX parsing)
 # and feedparser (2 remote-board RSS sources) -- verified against the
 # full test suite (462/462 passing).
+#
+# numpy is pinned to what actually resolves on the real production VM
+# (Python 3.11.13) -- the dev sandbox this was first generated in runs a
+# newer Python where pip resolved numpy==2.5.3, which doesn't exist for
+# 3.11 (real PyPI: numpy>=2.5.0 requires Python>=3.12) and failed outright
+# on the VM. Caught by actually running the install there, not assumed.
 
 alembic==1.19.1
 annotated-doc==0.0.4
@@ -55,7 +61,7 @@ Jinja2==3.1.6
 jiter==0.15.0
 Mako==1.4.1
 MarkupSafe==3.0.3
-numpy==2.5.3
+numpy==2.4.6
 openai==2.43.0
 openpyxl==3.1.5
 packaging==26.3
@@ -86,3 +92,4 @@ tzdata==2026.2
 tzlocal==5.4.3
 urllib3==2.7.0
 uvicorn==0.49.0
+
