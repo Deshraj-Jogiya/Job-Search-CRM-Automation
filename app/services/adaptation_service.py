@@ -24,6 +24,7 @@ adjusted; a parameter with no row there is still at its config default
 directly.
 """
 
+import math
 from datetime import timedelta
 from difflib import SequenceMatcher
 
@@ -47,8 +48,17 @@ def _validate(data: dict) -> None:
     require(t2, "min_samples_resume_variant", int, min=1)
     require(t2, "min_samples_source_comparison", int, min=1)
     require(t2, "min_samples_tier_comparison", int, min=1)
+    require(t2, "min_samples_wage_level_comparison", int, min=1)
     require(t2, "min_replies_for_any_outcome_claim", int, min=1)
     require(t2, "weight_change_clamp_pct", int, min=1, max=100)
+    require(t2, "confound_share_diff_pct", int, min=1, max=100)
+
+    sw = require(data, "scoring_weights", dict)
+    for key in ("sponsorship_history", "wage_level_fit"):
+        entry = require(sw, key, dict)
+        require(entry, "min", int, min=0)
+        require(entry, "max", int, min=0)
+        require(entry, "default", int, min=0)
 
     g = require(data, "guardrails", dict)
     require(g, "exploration_pct", int, min=0, max=100)
@@ -432,3 +442,246 @@ def typical_time_to_close_days(db: Session) -> dict:
         median = days[n // 2] if n % 2 else (days[n // 2 - 1] + days[n // 2]) / 2
         result[source] = {"median_days": median, "sample_size": n}
     return result
+
+
+# ---------------------------------------------------------------------------
+# B2 -- Tier 2 evidence engine. One generic comparison, NEVER auto-applies.
+# ---------------------------------------------------------------------------
+
+_COMPARISON_SEGMENTATION_FNS = {
+    "resume_variant": metrics_service.by_resume_version,
+    "source": metrics_service.by_source,
+    "tier": metrics_service.by_company_tier,
+    "wage_level": metrics_service.by_wage_level,
+}
+
+_COMPARISON_SAMPLE_KEYS = {
+    "resume_variant": "min_samples_resume_variant",
+    "source": "min_samples_source_comparison",
+    "tier": "min_samples_tier_comparison",
+    "wage_level": "min_samples_wage_level_comparison",
+}
+
+# Only comparisons with a natural, ordered "which segment SHOULD win"
+# get a proposed numeric weight adjustment -- resume_variant/source
+# have no such ordering (no honest single knob to auto-propose), so
+# they stay informational-only REPORTABLE results, never a proposal.
+_COMPARISON_WEIGHT_PARAMETER = {
+    "tier": ("scoring_weight_sponsorship_history", "sponsorship_history"),
+    "wage_level": ("scoring_weight_wage_level_fit", "wage_level_fit"),
+}
+_EXPECTED_RANK = {
+    "tier": {"A": 4, "B": 3, "C": 2, "X": 1, "unknown": 0},
+    "wage_level": {"IV": 4, "III": 3, "II": 2, "I": 1, "unknown": 0},
+}
+
+
+def _segment_application_ids(db: Session, comparison_type: str, segment_value: str) -> list[int]:
+    """Applied-application ids belonging to one segment value of one
+    comparison type -- shared by the confound check below. Local
+    imports avoid a circular import at module load (same convention as
+    queue_supply_report/source_yield_report above)."""
+    from ..models import Company, JobApplication, JobPosting, ProfileVariant
+
+    query = (
+        db.query(JobApplication.id)
+        .join(JobPosting, JobApplication.posting_id == JobPosting.id)
+        .filter(JobApplication.applied_at.isnot(None))
+    )
+    if comparison_type == "resume_variant":
+        if segment_value == "(unassigned)":
+            query = query.filter(JobApplication.profile_variant_id.is_(None))
+        else:
+            variant = db.query(ProfileVariant).filter(ProfileVariant.name == segment_value).first()
+            if not variant:
+                return []
+            query = query.filter(JobApplication.profile_variant_id == variant.id)
+    elif comparison_type == "source":
+        query = query.filter(JobPosting.source == segment_value)
+    elif comparison_type == "tier":
+        query = query.join(Company, JobPosting.company_id == Company.id).filter(
+            Company.tier == (None if segment_value == "unknown" else segment_value)
+        )
+    elif comparison_type == "wage_level":
+        query = query.join(Company, JobPosting.company_id == Company.id).filter(
+            Company.max_wage_level_15xx == (None if segment_value == "unknown" else segment_value)
+        )
+    return [row_id for (row_id,) in query.all()]
+
+
+def _dimension_share(db: Session, application_ids: list[int], dimension: str) -> dict:
+    """{value: proportion} of `dimension` ("source" or "tier") among
+    the given applied applications -- the confound check's raw input."""
+    if not application_ids:
+        return {}
+    from ..models import Company, JobApplication, JobPosting
+
+    rows = (
+        db.query(JobPosting.source, Company.tier)
+        .join(JobApplication, JobApplication.posting_id == JobPosting.id)
+        .outerjoin(Company, JobPosting.company_id == Company.id)
+        .filter(JobApplication.id.in_(application_ids))
+        .all()
+    )
+    counts: dict[str, int] = {}
+    for source, tier in rows:
+        key = source if dimension == "source" else (tier or "unknown")
+        counts[key] = counts.get(key, 0) + 1
+    total = len(rows)
+    return {k: v / total for k, v in counts.items()}
+
+
+def _is_confounded(db: Session, comparison_type: str, seg_a: str, seg_b: str, threshold_pct: int) -> bool:
+    """b3.5: True when the two compared segments differ in their
+    company-tier (or, for a tier comparison itself, source) composition
+    by more than threshold_pct for any value -- the reply-rate
+    difference could just be that, not the thing actually being
+    compared. Checking tier-as-confound of a tier comparison would be
+    circular, so a tier comparison checks source composition instead."""
+    dimension = "source" if comparison_type == "tier" else "tier"
+    share_a = _dimension_share(db, _segment_application_ids(db, comparison_type, seg_a), dimension)
+    share_b = _dimension_share(db, _segment_application_ids(db, comparison_type, seg_b), dimension)
+    for key in set(share_a) | set(share_b):
+        if abs(share_a.get(key, 0.0) - share_b.get(key, 0.0)) * 100 > threshold_pct:
+            return True
+    return False
+
+
+def _proportion_ci_95(p1: float, n1: int, p2: float, n2: int) -> dict:
+    """Wald 95% CI for the difference p1 - p2 of two proportions (each
+    0.0-1.0). Plain stdlib math, no scipy -- adequate at the sample
+    sizes this evidence gate already requires (n >= 30-50 per the
+    config-declared min_samples_*)."""
+    diff = p1 - p2
+    se = math.sqrt(p1 * (1 - p1) / n1 + p2 * (1 - p2) / n2) if n1 and n2 else 0.0
+    margin = 1.96 * se
+    return {"diff": round(diff, 4), "low": round(diff - margin, 4), "high": round(diff + margin, 4)}
+
+
+def evaluate_comparison(db: Session, comparison_type: str, config: dict | None = None) -> dict:
+    """The one generic Tier 2 engine behind every named comparison
+    (resume_variant/source/tier/wage_level) -- same evidence gates,
+    same confound check, same state machine, pointed at whichever
+    metrics_service.py segmentation function matches. NEVER writes
+    anything; a pure read returning the current readiness state.
+
+    States:
+      NOT_REPORTABLE -- raw segment numbers only, no best/worst, no CI,
+        no proposal. Below the sample-size or reply-count gate.
+      CONFOUNDED -- crossed the evidence gate, but the two leading
+        segments differ too much on another tracked dimension (b3.5) --
+        proposal withheld even though the numbers alone would qualify.
+      REPORTABLE -- best/worst segment, a 95% CI on the reply-rate
+        difference, and (only for tier/wage_level, only when the CI
+        excludes zero) a proposed_adjustment -- approve_comparison_proposal
+        applies it, reject_comparison_proposal just logs the decision."""
+    if comparison_type not in _COMPARISON_SEGMENTATION_FNS:
+        raise AdaptationServiceError(f"Unknown comparison_type '{comparison_type}'.")
+    config = config or get_config()
+    segments = _COMPARISON_SEGMENTATION_FNS[comparison_type](db)
+    total_sent = sum(s["sent"] for s in segments)
+    total_replied = sum(s["replied"] for s in segments)
+    min_samples = config["tier2"][_COMPARISON_SAMPLE_KEYS[comparison_type]]
+    min_replies = config["tier2"]["min_replies_for_any_outcome_claim"]
+
+    result = {
+        "comparison_type": comparison_type,
+        "segments": segments,
+        "total_sent": total_sent,
+        "total_replied": total_replied,
+        "min_samples_required": min_samples,
+        "min_replies_required": min_replies,
+        "state": "NOT_REPORTABLE",
+    }
+
+    eligible = [s for s in segments if s["sent"] >= 1]
+    if total_sent < min_samples or total_replied < min_replies or len(eligible) < 2:
+        return result
+
+    ranked = sorted(eligible, key=lambda s: s["reply_rate"] or 0, reverse=True)
+    best, worst = ranked[0], ranked[-1]
+    if best["segment"] == worst["segment"]:
+        return result  # only one real segment with data -- nothing to compare
+
+    if _is_confounded(db, comparison_type, best["segment"], worst["segment"], config["tier2"]["confound_share_diff_pct"]):
+        result["state"] = "CONFOUNDED"
+        result["confounded_segments"] = [best["segment"], worst["segment"]]
+        return result
+
+    ci = _proportion_ci_95(
+        (best["reply_rate"] or 0) / 100, best["sent"],
+        (worst["reply_rate"] or 0) / 100, worst["sent"],
+    )
+    result["state"] = "REPORTABLE"
+    result["best_segment"] = best["segment"]
+    result["worst_segment"] = worst["segment"]
+    result["confidence_interval"] = ci
+    result["proposed_adjustment"] = None
+
+    if comparison_type in _COMPARISON_WEIGHT_PARAMETER and ci["low"] > 0:
+        parameter, weight_key = _COMPARISON_WEIGHT_PARAMETER[comparison_type]
+        bounds = config["scoring_weights"][weight_key]
+        current = get_current_value(db, parameter, bounds["default"])
+        expected_rank = _EXPECTED_RANK[comparison_type]
+        # Evidence CONFIRMS the assumed ranking (e.g. tier A really does
+        # outreply tier C) -> nudge the weight up, more confidence in
+        # the signal. Evidence CONTRADICTS it (a lower tier winning) ->
+        # nudge down, the signal is less trustworthy than assumed.
+        confirms_expected_order = expected_rank.get(best["segment"], 0) >= expected_rank.get(worst["segment"], 0)
+        nudge_factor = 1.1 if confirms_expected_order else 0.9
+        proposed_value = clamp_weight_change(
+            current, current * nudge_factor, config["tier2"]["weight_change_clamp_pct"], bounds["min"], bounds["max"],
+        )
+        if proposed_value != current:
+            result["proposed_adjustment"] = {
+                "parameter": parameter,
+                "current_value": current,
+                "proposed_value": proposed_value,
+                "confirms_expected_order": confirms_expected_order,
+                "reason": (
+                    f"'{best['segment']}' reply rate significantly {'exceeds' if confirms_expected_order else 'trails'} "
+                    f"the assumed ranking against '{worst['segment']}'."
+                ),
+            }
+
+    return result
+
+
+def approve_comparison_proposal(db: Session, comparison_type: str, config: dict | None = None) -> AdaptationLog:
+    """Re-evaluates fresh (evidence may have moved since the view was
+    rendered) and, only if still REPORTABLE with a live proposal,
+    applies it -- writes the new AdaptiveParameterValue and an
+    'applied' AdaptationLog row citing the evidence, one-click
+    revertable via the existing revert_adaptation."""
+    result = evaluate_comparison(db, comparison_type, config)
+    proposal = result.get("proposed_adjustment")
+    if result["state"] != "REPORTABLE" or not proposal:
+        raise AdaptationServiceError(f"No approvable proposal for '{comparison_type}' right now (state={result['state']}).")
+
+    set_current_value(db, proposal["parameter"], proposal["proposed_value"])
+    return log_adaptation(
+        db, "tier2", f"comparison:{comparison_type}", proposal["parameter"],
+        proposal["current_value"], proposal["proposed_value"],
+        triggering_evidence={
+            "best_segment": result["best_segment"], "worst_segment": result["worst_segment"],
+            "confidence_interval": result["confidence_interval"],
+        },
+        sample_size=result["total_sent"], status="applied",
+    )
+
+
+def reject_comparison_proposal(db: Session, comparison_type: str, config: dict | None = None) -> AdaptationLog:
+    """Logs the decision for the audit trail -- no current_value
+    change. A rejected comparison isn't suppressed from view; if the
+    same proposal recurs on later evidence, evaluate_comparison shows
+    it again and the user can reject (or approve) it again."""
+    result = evaluate_comparison(db, comparison_type, config)
+    proposal = result.get("proposed_adjustment")
+    return log_adaptation(
+        db, "tier2", f"comparison:{comparison_type}",
+        proposal["parameter"] if proposal else comparison_type,
+        proposal["current_value"] if proposal else None,
+        proposal["proposed_value"] if proposal else None,
+        triggering_evidence={"best_segment": result.get("best_segment"), "worst_segment": result.get("worst_segment")},
+        sample_size=result["total_sent"], status="rejected",
+    )

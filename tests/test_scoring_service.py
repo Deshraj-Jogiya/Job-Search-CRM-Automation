@@ -160,3 +160,30 @@ class TestRecomputeScoreBreakdownPersists:
         db.refresh(application)
         assert application.score_breakdown is not None
         assert application.score_breakdown["components"]["sponsorship_history"]["contribution"] == 18
+
+    def test_cold_start_matches_the_module_default_exactly(self, db):
+        # b2: with no adaptive weight ever set, recompute_score_breakdown
+        # must produce the exact same numbers as before b2 existed.
+        company = _company(db, tier="A")
+        posting = _posting(db, company)
+        application = _application(db, posting)
+
+        breakdown = recompute_score_breakdown(db, application)
+        assert breakdown["components"]["sponsorship_history"]["contribution"] == 30
+        assert breakdown["components"]["sponsorship_history"]["weight"] == 30
+
+    def test_an_approved_adaptive_weight_actually_changes_the_score(self, db):
+        # b2's whole point: once a Tier 2 proposal is approved (here
+        # simulated directly via set_current_value, since the approval
+        # flow itself is adaptation_service's concern, not scoring_service's),
+        # the NEXT recompute reflects it -- proving the two are really wired.
+        from app.services import adaptation_service
+
+        adaptation_service.set_current_value(db, "scoring_weight_sponsorship_history", 36.0)
+        company = _company(db, tier="A")
+        posting = _posting(db, company)
+        application = _application(db, posting)
+
+        breakdown = recompute_score_breakdown(db, application)
+        assert breakdown["components"]["sponsorship_history"]["contribution"] == 36
+        assert breakdown["components"]["sponsorship_history"]["weight"] == 36.0
