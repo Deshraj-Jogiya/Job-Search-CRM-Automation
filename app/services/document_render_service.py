@@ -46,6 +46,8 @@ from reportlab.platypus import (
     SimpleDocTemplate, Spacer, Table, TableStyle,
 )
 
+from . import resume_rules
+
 _styles = getSampleStyleSheet()
 
 _name_style = ParagraphStyle("NameStyle", parent=_styles["Title"], fontSize=16, spaceAfter=0)
@@ -279,10 +281,34 @@ def build_resume_flow(
             flow.append(Paragraph(f"<b>{label}:</b> {_esc(', '.join(items))}", body_style))
 
     experience = resume_content.get("experience") or []
-    if experience:
+    # C2 classification (CREDENTIAL / EARLIER / EXPERIENCE) -- previously
+    # only wired into docx_generator.py, so the PDF path (the format that
+    # actually gets downloaded/attached) silently ignored it: every entry
+    # rendered as full Professional Experience regardless of tenure,
+    # recency, or whether it was a bootcamp/fellowship, not a job.
+    _rules_config = resume_rules.get_config()
+    _concurrent_idx = resume_rules.detect_concurrent_overlaps(experience, _rules_config)
+    credential_entries = []
+    earlier_lines = []
+    real_experience = []
+    for i, job in enumerate(experience):
+        classification = resume_rules.classify_role(job, _rules_config)
+        if classification == "CREDENTIAL":
+            credential_entries.append(job)
+            continue
+        if classification == "EARLIER":
+            suffix = " (concurrent)" if i in _concurrent_idx else ""
+            earlier_lines.append(
+                f"Earlier: {job.get('role', '')}, {job.get('company', '')} "
+                f"({job.get('location', '')}, {resume_rules.display_date_range(job)}){suffix}"
+            )
+            continue
+        real_experience.append((i, job))
+
+    if real_experience or earlier_lines:
         flow.append(SECTION_GAP)
         flow += _section_header("Professional Experience")
-        for is_first, job in _entries(experience):
+        for is_first, (i, job) in _entries(real_experience):
             if not is_first:
                 flow.append(ENTRY_GAP)
             # KeepTogether -- real bug found rendering this exact resume:
@@ -295,15 +321,26 @@ def build_resume_flow(
             # decision -- keep the whole entry atomic; if it doesn't fit
             # in what's left of the page, the WHOLE entry moves down,
             # never part of it.
+            suffix = " (concurrent)" if i in _concurrent_idx else ""
             entry_flow = [
                 _two_col_row(job.get("company"), job.get("location"), _role_style, _meta_right_style, content_width=content_width),
-                _two_col_row(job.get("role"), job.get("date"), _role_italic_style, _meta_right_style, content_width=content_width),
+                _two_col_row(
+                    job.get("role"), f"{resume_rules.display_date_range(job)}{suffix}",
+                    _role_italic_style, _meta_right_style, content_width=content_width,
+                ),
             ]
             for is_first_bullet, bullet in _lines(job.get("bullets", [])):
                 if not is_first_bullet:
                     entry_flow.append(LINE_GAP)
                 entry_flow.append(Paragraph(_esc(bullet), bullet_style, bulletText="-"))
             flow.append(KeepTogether(entry_flow))
+        if earlier_lines:
+            if real_experience:
+                flow.append(LINE_GAP)
+            for is_first, line in _lines(earlier_lines):
+                if not is_first:
+                    flow.append(LINE_GAP)
+                flow.append(Paragraph(_esc(line), body_style))
 
     projects = resume_content.get("projects") or []
     if projects:
@@ -337,14 +374,29 @@ def build_resume_flow(
                 _two_col_row(edu.get("degree"), edu.get("date"), _role_italic_style, _meta_right_style, content_width=content_width),
             ]))
 
-    certifications = resume_content.get("certifications") or []
-    if certifications:
+    certifications = list(resume_content.get("certifications") or [])
+    if certifications or credential_entries:
         flow.append(SECTION_GAP)
         flow += _section_header("Certifications")
-        for is_first, cert in _lines(certifications):
+        cert_lines = [cert if isinstance(cert, str) else cert.get("name", "") for cert in certifications]
+        cert_lines += [
+            " | ".join(b for b in (entry.get("role"), entry.get("company"), entry.get("date")) if b)
+            for entry in credential_entries
+        ]
+        for is_first, line in _lines(cert_lines):
             if not is_first:
                 flow.append(LINE_GAP)
-            flow.append(Paragraph(_esc(cert), bullet_style, bulletText="-"))
+            flow.append(Paragraph(_esc(line), bullet_style, bulletText="-"))
+
+    languages = resume_content.get("languages") or []
+    if languages:
+        flow.append(SECTION_GAP)
+        flow += _section_header("Languages")
+        lang_text = ", ".join(
+            f"{lang.get('language', '')} ({lang.get('proficiency', '')})" if lang.get("proficiency") else lang.get("language", "")
+            for lang in languages
+        )
+        flow.append(Paragraph(_esc(lang_text), body_style))
 
     return flow
 

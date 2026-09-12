@@ -130,6 +130,23 @@ def parse_date_range(date_str: str, now: date | None = None) -> tuple[date, date
     return (start, end)
 
 
+def display_date_range(entry: dict) -> str:
+    """The entry's date range plus its employment_type ("Contract",
+    "Part-Time"), if set, as one display string ("May 2026 - Present
+    - Part-Time") -- kept separate from the raw "date" field itself so
+    parse_date_range/total_experience_months/classify_role keep
+    getting a clean, parseable string. Appending free text directly
+    into "date" (an earlier, real mistake here) silently broke
+    parsing for every entry it touched -- total_experience_months
+    excluded them entirely rather than erroring, so the years-claim
+    math went quietly wrong with no visible failure."""
+    date_str = entry.get("date", "")
+    employment_type = entry.get("employment_type")
+    if not employment_type:
+        return date_str
+    return f"{date_str} · {employment_type}"
+
+
 def _month_index(d: date) -> int:
     return d.year * 12 + (d.month - 1)
 
@@ -197,16 +214,26 @@ def is_credential_entry(entry: dict) -> bool:
 def classify_role(entry: dict, config: dict | None = None, now: date | None = None) -> str:
     """Returns "CREDENTIAL", "EXPERIENCE", or "EARLIER" for one
     experience entry. CREDENTIAL is checked first regardless of
-    duration -- a fellowship stays a fellowship even if it ran long."""
+    duration -- a fellowship stays a fellowship even if it ran long.
+
+    A currently-held role (date range ends in "Present") is always
+    EXPERIENCE regardless of how short its tenure is so far -- a role
+    you're in right now is never "Earlier:" material just because it's
+    new. Only past roles get held to the min-months/recency bars."""
     config = config or get_config()
     if is_credential_entry(entry):
         return "CREDENTIAL"
 
     ec = config["experience_classification"]
     now = now or date.today()
-    parsed = parse_date_range(entry.get("date", ""), now=now)
+    date_str = entry.get("date", "")
+    parsed = parse_date_range(date_str, now=now)
     if parsed is None:
         return "EXPERIENCE"  # can't verify duration/recency -- don't downgrade on a parse failure
+
+    is_current = date_str.strip().lower().endswith("present")
+    if is_current:
+        return "EXPERIENCE"
 
     start, end = parsed
     months = _month_index(end) - _month_index(start) + 1  # inclusive of the end month, see total_experience_months

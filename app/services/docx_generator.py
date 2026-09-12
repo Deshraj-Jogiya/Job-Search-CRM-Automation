@@ -149,7 +149,7 @@ def _add_experience_section(doc: Document, resume_doc: dict, config: dict) -> No
             suffix = " (concurrent)" if i in concurrent_idx else ""
             earlier_lines.append(
                 f"Earlier: {entry.get('role', '')}, {entry.get('company', '')} "
-                f"({entry.get('location', '')}, {entry.get('date', '')}){suffix}"
+                f"({entry.get('location', '')}, {resume_rules.display_date_range(entry)}){suffix}"
             )
             continue
 
@@ -161,7 +161,7 @@ def _add_experience_section(doc: Document, resume_doc: dict, config: dict) -> No
         role_run = role_p.add_run(f"{entry.get('role', '')} — {entry.get('company', '')}")
         role_run.bold = True
         suffix = " (concurrent)" if i in concurrent_idx else ""
-        meta_bits = [b for b in (entry.get("location"), entry.get("date")) if b]
+        meta_bits = [b for b in (entry.get("location"), resume_rules.display_date_range(entry)) if b]
         doc.add_paragraph(f"{' | '.join(meta_bits)}{suffix}")
         _add_bullets(doc, entry.get("bullets", []))
 
@@ -212,6 +212,18 @@ def _add_certifications_section(doc: Document, resume_doc: dict) -> None:
         doc.add_paragraph(" | ".join(bits))
 
 
+def _add_languages_section(doc: Document, resume_doc: dict) -> None:
+    languages = resume_doc.get("languages") or []
+    if not languages:
+        return
+    doc.add_heading("Languages", level=1)
+    text = ", ".join(
+        f"{lang.get('language', '')} ({lang.get('proficiency', '')})" if lang.get("proficiency") else lang.get("language", "")
+        for lang in languages
+    )
+    doc.add_paragraph(text)
+
+
 def build_resume_docx(resume_doc: dict, config: dict | None = None) -> Document:
     """resume_doc is the same dict tailor_application() saves to
     TailoredDocument -- C3/C4/C6 are already applied to it by the time
@@ -235,6 +247,7 @@ def build_resume_docx(resume_doc: dict, config: dict | None = None) -> Document:
     _add_projects_section(doc, resume_doc, config)
     _add_education_section(doc, resume_doc)
     _add_certifications_section(doc, resume_doc)
+    _add_languages_section(doc, resume_doc)
 
     work_auth = resume_rules.work_authorization_line(config)
     if work_auth:
