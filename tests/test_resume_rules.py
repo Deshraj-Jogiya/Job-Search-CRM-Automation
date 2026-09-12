@@ -147,23 +147,30 @@ class TestFilterSkills:
 
 
 class TestHedgeUnverifiedMetrics:
+    # Isolated from the real config's verified_metrics allowlist (which
+    # holds Deshraj's actual confirmed-real percentages) -- these tests
+    # exercise the hedging mechanism itself, not any specific business
+    # data, so they pass their own empty allowlist rather than coincidentally
+    # relying on a percentage not showing up in the live config.
+    _UNVERIFIED_CONFIG = {"metrics": {"verified_metrics": []}}
+
     def test_unverified_percentage_gets_hedged(self):
-        result = hedge_unverified_metrics("Reduced latency by 47%.")
+        result = hedge_unverified_metrics("Reduced latency by 47%.", self._UNVERIFIED_CONFIG)
         assert "roughly 47%" in result
 
     def test_already_hedged_not_double_hedged(self):
-        result = hedge_unverified_metrics("Reduced latency by roughly 47%.")
+        result = hedge_unverified_metrics("Reduced latency by roughly 47%.", self._UNVERIFIED_CONFIG)
         assert result.count("roughly") == 1
 
     def test_scope_counts_are_not_percentages_so_untouched(self):
-        result = hedge_unverified_metrics("Processed 500GB/day across 12 sources.")
+        result = hedge_unverified_metrics("Processed 500GB/day across 12 sources.", self._UNVERIFIED_CONFIG)
         assert result == "Processed 500GB/day across 12 sources."
 
     def test_negative_percentage_hedges_before_the_sign_not_after(self):
         # Found via a real bullet while building the Part F golden
         # fixture: "(-35% silent drift)" must not hedge to
         # "(-roughly 35%...)" -- the sign belongs with the number.
-        result = hedge_unverified_metrics("Monitors feature drift (-35% silent drift).")
+        result = hedge_unverified_metrics("Monitors feature drift (-35% silent drift).", self._UNVERIFIED_CONFIG)
         assert "roughly -35%" in result
         assert "-roughly" not in result
 

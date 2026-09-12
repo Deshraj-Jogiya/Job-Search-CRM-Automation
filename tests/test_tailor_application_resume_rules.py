@@ -84,14 +84,18 @@ class TestMetricHedgingWired:
             "education": [], "certifications": [],
         }
         application = _application(db, profile)
-        experience = [{"role": "DE", "company": "X", "date": "Jan 2024 - Present", "bullets": ["Cut latency by 40%."]}]
+        # 77% is deliberately not in the real config's verified_metrics
+        # allowlist (unlike 40%, which is one of Deshraj's actual
+        # confirmed-real bullet percentages as of 2026-09-11) -- this
+        # test needs a genuinely unverified claim to exercise hedging.
+        experience = [{"role": "DE", "company": "X", "date": "Jan 2024 - Present", "bullets": ["Cut latency by 77%."]}]
         saved = _run_tailor_application(db, application, experience, [])
-        assert "roughly 40%" in saved["experience"][0]["bullets"][0]
+        assert "roughly 77%" in saved["experience"][0]["bullets"][0]
         # ...but the RAW (pre-hedge) claim was still flagged for review --
         # hedging the saved doc doesn't suppress the fabrication signal.
         application_row = db.query(JobApplication).filter(JobApplication.id == application.id).first()
         assert application_row.attention_reason is not None
-        assert "40%" in application_row.attention_reason
+        assert "77%" in application_row.attention_reason
 
 
 def _config_with_test_project_slugs():
