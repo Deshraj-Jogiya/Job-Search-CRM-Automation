@@ -3,6 +3,8 @@ rendered and measured via reportlab (no mocking of the measurement
 itself) -- these tests exercise the real loop against deliberately
 small/oversized resumes, not a fake "page count" signal."""
 
+from datetime import date
+
 import pytest
 
 from app.models import AdaptationLog, AdaptiveParameterValue
@@ -15,19 +17,30 @@ _LONG_BULLET = (
 
 
 def _content(num_roles=1, bullets_per_role=2, num_projects=1, summary_repeats=1):
+    # Every role ends "Present" -- classify_role (wired into both the
+    # docx and PDF renderers) always treats a currently-held role as
+    # EXPERIENCE regardless of tenure, so this reliably produces
+    # num_roles full entries no matter how many are asked for. A fixed
+    # start year old enough to be irrelevant to classification (only
+    # the "Present" end matters); overlapping start dates are fine here
+    # since this fixture is exercising page-fit overflow, not the
+    # concurrent-overlap detector.
+    this_year = date.today().year
+    experience = [
+        {
+            "role": f"Role {i}", "company": f"Company {i}", "location": "Remote",
+            "date": f"{this_year - 1} - Present",
+            "bullets": [_LONG_BULLET] * bullets_per_role,
+        }
+        for i in range(num_roles)
+    ]
     return {
         "name": "Test Candidate",
         "title": "Data Engineer",
         "contact": {"email": "t@example.com", "phone": "555-1234", "location": "Austin, TX"},
         "summary": "A concise summary. " * summary_repeats,
         "skills": {"Languages": ["Python", "SQL"]},
-        "experience": [
-            {
-                "role": f"Role {i}", "company": f"Company {i}", "location": "Remote",
-                "date": f"{2015 + i} - {2016 + i}", "bullets": [_LONG_BULLET] * bullets_per_role,
-            }
-            for i in range(num_roles)
-        ],
+        "experience": experience,
         "projects": [{"name": f"Project {i}", "bullets": [_LONG_BULLET]} for i in range(num_projects)],
         "education": [{"degree": "B.S. Computer Science", "school": "State University", "date": "2015"}],
         "certifications": ["Cert A"],

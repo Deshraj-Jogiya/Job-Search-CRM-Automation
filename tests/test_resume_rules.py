@@ -86,6 +86,14 @@ class TestClassifyRole:
         entry = {"date": "Jan 2024 - Mar 2024"}  # 2 months, below the 6-month floor
         assert classify_role(entry, now=_NOW) == "EARLIER"
 
+    def test_short_but_currently_held_role_stays_experience(self):
+        # A role you're in right now is never "Earlier:" material just
+        # because it's new -- only a PAST role gets held to the
+        # min-months bar. Matches the real Objectways case: 4 months in,
+        # current, must render as full Experience, not collapse away.
+        entry = {"date": "Jun 2026 - Present"}  # ~3 months as of _NOW, below the 6-month floor
+        assert classify_role(entry, now=_NOW) == "EXPERIENCE"
+
     def test_old_role_is_earlier_even_if_long(self):
         entry = {"date": "Jan 2015 - Jan 2018"}  # long, but ended >36 months ago
         assert classify_role(entry, now=_NOW) == "EARLIER"
