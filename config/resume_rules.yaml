@@ -24,12 +24,23 @@ skills:
   max_skill_lines: 5
   # Default category order -- a skill not matching any group name
   # below renders in the display order it was already in.
+  #
+  # These must be the real profile's raw skill-category KEYS (e.g.
+  # "generative_ai_llms_agentic_frameworks"), not the humanized display
+  # labels -- docx_generator._add_skills_section matches this list
+  # against resume_doc["skills"]'s own dict keys directly, and only
+  # humanizes for display afterward (_humanize_skill_category). The
+  # previous version of this list ("Data Engineering", "Cloud &
+  # Warehouses", etc.) never matched any real key, so it silently did
+  # nothing -- every category still rendered (there are exactly 5 real
+  # categories and max_skill_lines is 5), just in whatever order the
+  # profile JSON happened to store them in, not by deliberate choice.
   groups:
-    - "Languages"
-    - "Data Engineering"
-    - "Cloud & Warehouses"
-    - "ML & Analytics"
-    - "Platform"
+    - "generative_ai_llms_agentic_frameworks"
+    - "machine_learning_deep_learning"
+    - "data_engineering_cloud_platforms"
+    - "full_stack_software_engineering"
+    - "devops_tooling_analytics"
 
 metrics:
   # How many bare (unhedged) percentage/multiplier claims are allowed
@@ -42,7 +53,39 @@ metrics:
   # hedged ("roughly"/"approximately"/"about"/"~"). Scope figures
   # (counts, row volumes, uptime) are exempt from hedging entirely,
   # see resume_rules.py -- this list is only for percentages/multipliers.
-  verified_metrics: []
+  # Populated 2026-09-11: every bare percentage/multiplier confirmed
+  # real across the full profile (experience + projects), per the
+  # user directly -- was an empty list before, so every one of these
+  # was getting defensively hedged into "approximately X%" past the
+  # 2-per-page cap even though all of them are true.
+  verified_metrics:
+    - "12%"
+    - "15%"
+    - "17%"
+    - "20%"
+    - "25%"
+    - "30%"
+    - "33%"
+    - "35%"
+    - "40%"
+    - "45%"
+    - "50%"
+    - "60%"
+    - "65%"
+    - "70%"
+    - "88%"
+    - "90%"
+    - "92%"
+    - "94%"
+    - "98%"
+    - "99.20%"
+    - "99.9%"
+    - "100%"
+    - "+3%"
+    - "+10%"
+    - "+150%"
+    - "-35%"
+    - "-40%"
 
 projects_by_variant:
   max_projects: 3
@@ -59,6 +102,19 @@ projects_by_variant:
   # since changed. If a project's name changes again, its slug here
   # needs to change with it, or it silently drops out of that variant.
   variants:
+    # "default" is what actually renders today -- the only real
+    # ProfileVariant row in production is named "Default", which
+    # doesn't slugify to any of the other named keys below, so every
+    # tailored resume generated so far has used THIS list (or, before
+    # this key existed, the undocumented positional fallback in
+    # tailoring_service.py -- first 3 projects in raw profile order,
+    # not by relevance). The other named variants only take effect if
+    # a matching ProfileVariant is created on the Profile page (e.g.
+    # "ML Engineering", "Analytics", "Full Stack").
+    default:
+      - job_search_crm_ai_application_tailoring_center
+      - talentvenue_eventintel_enterprise_data_platform_predictive_intelligence
+      - ai_model_observability_fairness_audits
     data_engineering:
       - job_search_crm_ai_application_tailoring_center
       - talentvenue_eventintel_enterprise_data_platform_predictive_intelligence
@@ -70,7 +126,15 @@ projects_by_variant:
     analytics:
       - sales_analytics_rfm_customer_segmentation_pipeline
       - tax_anomaly_audit_compliance_engine
-      - talentvenue_eventintel_enterprise_data_platform_predictive_intelligence
+      - elevateme_bootcamp_customer_segmentation_marketing_intelligence
+    # Recreated 2026-09-11 -- a "Full Stack & Software Engineering"
+    # project filter existed on the portfolio site before an earlier
+    # rebuild dropped it; this is the CRM-side equivalent so a "Full
+    # Stack" ProfileVariant can pull the right 3 projects.
+    full_stack:
+      - job_search_crm_ai_application_tailoring_center
+      - chef_at_gathering
+      - get_your_token
 
 work_authorization:
   include_work_auth_line: false
