@@ -20,6 +20,16 @@
 <div class="flash flash-error" role="alert">{{ error }}</div>
 {% endif %}
 
+{% set component_labels = {
+    "ai_profile_fit": "AI Profile Fit",
+    "sponsorship_history": "Sponsorship History",
+    "wage_level_fit": "Wage-Level Fit",
+    "role_title_match": "Role/Title Match",
+    "worksite_clarity": "Worksite Clarity",
+    "posting_recency": "Posting Recency",
+    "sponsorship_signal_bonus": "Sponsorship Signal",
+} %}
+
 {% macro queue_table(applications, empty_message) %}
 {% if applications %}
 <div class="table-scroll">
@@ -51,7 +61,24 @@
                     {% endif %}
                 </td>
                 <td>{{ app.posting.company.max_wage_level_15xx if app.posting.company else '--' }}</td>
-                <td>{{ app.score_breakdown.total if app.score_breakdown else app.match_score }}</td>
+                <td>
+                    {% if app.score_breakdown and app.score_breakdown.components %}
+                    <details class="score-breakdown">
+                        <summary>{{ app.score_breakdown.total }}</summary>
+                        <table class="score-breakdown-table">
+                            {% for key, c in app.score_breakdown.components.items() %}
+                            <tr>
+                                <td>{{ component_labels.get(key, key) }}</td>
+                                <td>{{ c.raw if c.raw is not none else '--' }}</td>
+                                <td>{{ c.contribution }}/{{ c.weight }}</td>
+                            </tr>
+                            {% endfor %}
+                        </table>
+                    </details>
+                    {% else %}
+                    {{ app.match_score }}
+                    {% endif %}
+                </td>
                 <td>{{ app.posting.first_seen_at.strftime("%Y-%m-%d") if app.posting.first_seen_at else "--" }}</td>
                 <td>
                     {% if app.posting.sponsorship_signal %}<span class="badge badge-active">sponsors</span>{% endif %}

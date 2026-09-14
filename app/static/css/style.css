@@ -944,6 +944,36 @@ html.light-theme .flag-warning {
     background: var(--input-bg);
 }
 
+.score-breakdown summary {
+    cursor: pointer;
+    font-weight: 600;
+    list-style: none;
+}
+
+.score-breakdown summary::-webkit-details-marker {
+    display: none;
+}
+
+.score-breakdown summary::after {
+    content: " \25BE";
+    font-size: 0.75em;
+    color: var(--text-muted);
+}
+
+.score-breakdown-table {
+    white-space: normal;
+    font-size: 0.8rem;
+    margin-top: 6px;
+    border-collapse: collapse;
+}
+
+.score-breakdown-table td {
+    padding: 2px 8px 2px 0;
+    border: none;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
 /* ==========================================================================
    Bar charts (Analytics page) -- a track + proportional fill, single
    accent hue per chart. Color here encodes "how much of this converted"
