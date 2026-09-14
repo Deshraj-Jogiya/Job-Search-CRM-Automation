@@ -69,6 +69,10 @@ def _validate(data: dict) -> None:
     require(wa, "include_work_auth_line", bool)
     require(wa, "work_auth_text", str, required=False)
 
+    cc = require(data, "certifications", dict)
+    require(cc, "max_shown", int, min=1, required=False)
+    require(cc, "priority", list, required=False)
+
     pf = require(data, "page_fit", dict)
     require(pf, "min_body_font_pt", float, min=1.0)
     require(pf, "min_margin_in", float, min=0.0)
@@ -443,3 +447,46 @@ def work_authorization_line(config: dict | None = None) -> str | None:
     if not wa["include_work_auth_line"]:
         return None
     return wa.get("work_auth_text") or None
+
+
+# ---------------------------------------------------------------------------
+# C9 -- certification curation
+# ---------------------------------------------------------------------------
+
+def select_certifications_for_resume(certifications: list[str], config: dict | None = None) -> list[str]:
+    """Curates the real certification list for a space-constrained resume
+    -- never invents or alters one, only reorders/caps what's real. A
+    3+ years candidate listing five certifications where three are
+    beginner-level online-course completions reads as padding, not
+    strength -- the signal-dense ones (a real, recognized credential body;
+    a genuinely rare, verifiable differentiator) get buried at the same
+    weight as generic ones just by list position otherwise.
+
+    config['certifications']['priority'] is an ordered list of substrings
+    matched case-insensitively against each real certification string;
+    matches surface first in that priority order, non-matches keep their
+    original relative order after. A priority entry with no matching real
+    certification is simply skipped (config can list aspirational
+    ordering ahead of every certification existing, same posture as
+    select_projects_for_variant). Capped to max_shown if configured.
+    Nothing here is ever hidden from the full profile/LinkedIn/portfolio
+    -- this only curates what one space-constrained document shows."""
+    config = config or get_config()
+    cc = config.get("certifications") or {}
+    priority = cc.get("priority") or []
+    max_shown = cc.get("max_shown")
+
+    if not priority and not max_shown:
+        return certifications
+
+    def _priority_rank(cert: str) -> int:
+        cert_lower = cert.lower()
+        for i, key in enumerate(priority):
+            if key.lower() in cert_lower:
+                return i
+        return len(priority)
+
+    ordered = [
+        cert for _, cert in sorted(enumerate(certifications), key=lambda pair: (_priority_rank(pair[1]), pair[0]))
+    ]
+    return ordered[:max_shown] if max_shown else ordered

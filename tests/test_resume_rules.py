@@ -8,6 +8,7 @@ from app.services.resume_rules import (
     filter_skills,
     hedge_unverified_metrics,
     parse_date_range,
+    select_certifications_for_resume,
     select_projects_for_variant,
     total_experience_months,
     work_authorization_line,
@@ -262,3 +263,66 @@ class TestWorkAuthorizationLine:
         assert "STEM OPT" in line
         assert "H-1B" in line
         assert "now" in line.lower()
+
+
+class TestSelectCertificationsForResume:
+    """A 3+ years candidate listing 5 certifications where 3 are
+    beginner-level online-course completions reads as padding, not
+    strength. This curates ONE document, never the underlying profile."""
+
+    _CERTS = [
+        "Tableau Business Intelligence Analyst - Feb 2026",
+        "ElevateMe Bootcamp Data Analytics Certificate of Completion - Feb 2026",
+        "IBM Data Analyst Specialization - Sep 2025",
+        "Generative AI Mastermind (Outskill) - Oct 2025",
+        "Guinness World Record - AI Training Hackathon (Kanz) - Jul 2026",
+    ]
+
+    def test_returns_everything_unchanged_when_no_config_section(self):
+        # Note: an explicit {} (falsy) would fall through to get_config()
+        # via the same `config or get_config()` pattern work_authorization_line
+        # uses -- pass a real, present-but-empty section to test "no
+        # priority/max_shown configured" specifically, not "no config passed".
+        config = {"certifications": {}}
+        assert select_certifications_for_resume(self._CERTS, config) == self._CERTS
+
+    def test_priority_matches_surface_first_in_configured_order(self):
+        config = {"certifications": {"priority": ["Guinness World Record", "Tableau"]}}
+        result = select_certifications_for_resume(self._CERTS, config)
+        assert result[0] == "Guinness World Record - AI Training Hackathon (Kanz) - Jul 2026"
+        assert result[1] == "Tableau Business Intelligence Analyst - Feb 2026"
+
+    def test_non_matches_keep_original_relative_order_after_matches(self):
+        config = {"certifications": {"priority": ["Guinness World Record"]}}
+        result = select_certifications_for_resume(self._CERTS, config)
+        non_matched = result[1:]
+        assert non_matched == self._CERTS[:4]  # original order, GWR (index 4) removed
+
+    def test_max_shown_caps_the_list(self):
+        config = {"certifications": {"priority": ["Guinness World Record", "Tableau"], "max_shown": 2}}
+        result = select_certifications_for_resume(self._CERTS, config)
+        assert len(result) == 2
+        assert result == [
+            "Guinness World Record - AI Training Hackathon (Kanz) - Jul 2026",
+            "Tableau Business Intelligence Analyst - Feb 2026",
+        ]
+
+    def test_priority_key_with_no_match_is_skipped_not_an_error(self):
+        config = {"certifications": {"priority": ["Nonexistent Cert", "Tableau"]}}
+        result = select_certifications_for_resume(self._CERTS, config)
+        assert result[0] == "Tableau Business Intelligence Analyst - Feb 2026"
+
+    def test_never_invents_or_drops_a_real_certification_without_max_shown(self):
+        config = {"certifications": {"priority": ["Tableau"]}}
+        result = select_certifications_for_resume(self._CERTS, config)
+        assert sorted(result) == sorted(self._CERTS)  # same 5, just reordered
+
+    def test_real_config_leads_with_gwr_then_tableau_then_genai(self):
+        # Locks in the real, current product decision (2026-09-14, at the
+        # candidate's explicit direction): the resume shows exactly the 3
+        # highest-signal real certifications, GWR first.
+        result = select_certifications_for_resume(self._CERTS)
+        assert len(result) == 3
+        assert "Guinness World Record" in result[0]
+        assert "Tableau" in result[1]
+        assert "Generative AI" in result[2]
