@@ -98,6 +98,56 @@
 </section>
 
 <section class="variant-block">
+    <h2>Market Trend Proposals</h2>
+    <div class="empty-state">
+        Periodically re-checks a small, explicit list of resume-building rules (right now: resume length,
+        project count) against real, current web research -- because "resumes must be one page" sat here as an
+        unverified folk rule for a long time before anyone actually checked it. A finding here is ALWAYS a
+        proposal, never a silent change: nothing in <code>config/resume_rules.yaml</code> updates itself without
+        an explicit Approve click below.
+    </div>
+
+    <form method="post" action="/adaptation/trends/check" class="inline-form" style="margin-bottom: 16px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit">Check for Updates Now</button>
+    </form>
+
+    {% if trend_proposals %}
+    {% for tp in trend_proposals %}
+    <div class="card" style="margin-bottom: 16px;">
+        <h3>{{ tp.label }} <span class="badge badge-active">PROPOSED</span></h3>
+        <p class="muted-note">
+            Current: <strong>{{ tp.entry.old_value }}</strong> &rarr; Proposed: <strong>{{ tp.entry.new_value }}</strong>
+        </p>
+        {% if tp.entry.triggering_evidence %}
+        <p class="muted-note">{{ tp.entry.triggering_evidence.summary }}</p>
+        {% if tp.entry.triggering_evidence.sources %}
+        <p class="muted-note">
+            Sources:
+            {% for s in tp.entry.triggering_evidence.sources %}
+            <a href="{{ s.url }}" target="_blank" rel="noopener">{{ s.title or s.url }}</a>{{ ", " if not loop.last else "" }}
+            {% endfor %}
+        </p>
+        {% endif %}
+        {% endif %}
+        <div class="row-actions">
+            <form method="post" action="/adaptation/trends/{{ tp.entry.id }}/approve" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit">Approve</button>
+            </form>
+            <form method="post" action="/adaptation/trends/{{ tp.entry.id }}/reject" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn-secondary">Reject</button>
+            </form>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <p class="muted-note">Nothing pending right now.</p>
+    {% endif %}
+</section>
+
+<section class="variant-block">
     <h2>Audit Trail</h2>
     <p class="muted-note">Every self-tuned or approved change, append-only. Revert restores the prior value and logs the restoration as a new row -- history itself is never edited.</p>
 
