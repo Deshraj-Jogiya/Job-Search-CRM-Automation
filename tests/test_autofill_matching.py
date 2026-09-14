@@ -8,6 +8,8 @@ uses the same match-or-leave-for-human policy rather than ever guessing
 a close-but-wrong option, and that policy is exactly what's under test.
 """
 
+from unittest.mock import MagicMock, patch
+
 from app.services.autofill import ashby_autofill, greenhouse_autofill, lever_autofill
 
 
@@ -104,3 +106,40 @@ def test_ashby_option_matcher_shares_the_same_conservative_policy():
     assert ashby_autofill._match_option("Yes", ["Yes", "No"]) == 0
     assert ashby_autofill._match_option("[REVIEW NEEDED]", ["Yes", "No"]) is None
     assert ashby_autofill._match_option("", ["Yes", "No"]) is None
+
+
+class TestDraftCustomAnswersDegradesGracefully:
+    """A malformed LLM response here previously raised past this
+    function, propagated through the whole autofill_*_application call,
+    and killed the entire real, in-progress, already-partially-filled
+    browser session -- caught for real via a live Ashby autofill run
+    whose custom-question drafting call returned valid JSON followed by
+    trailing content. Every ATS module shares this exact call shape, so
+    all three get the same coverage."""
+
+    _questions = [{"field_path": "q1", "name": "q1", "id": "q1", "field_type": "text", "label": "Why us?"}]
+
+    def _fake_llm(self, raw_response):
+        provider = MagicMock()
+        provider.complete_json.return_value = raw_response
+        return provider
+
+    def test_ashby_returns_empty_dict_instead_of_raising(self):
+        with patch("app.services.autofill.ashby_autofill.get_llm_provider", return_value=self._fake_llm("not json")):
+            assert ashby_autofill._draft_custom_answers(self._questions, {}, "jd text", "Acme") == {}
+
+    def test_lever_returns_empty_dict_instead_of_raising(self):
+        with patch("app.services.autofill.lever_autofill.get_llm_provider", return_value=self._fake_llm("not json")):
+            assert lever_autofill._draft_custom_answers(self._questions, {}, "jd text", "Acme") == {}
+
+    def test_greenhouse_returns_empty_dict_instead_of_raising(self):
+        with patch(
+            "app.services.autofill.greenhouse_autofill.get_llm_provider", return_value=self._fake_llm("not json")
+        ):
+            assert greenhouse_autofill._draft_custom_answers(self._questions, {}, "jd text", "Acme") == {}
+
+    def test_ashby_still_returns_real_answers_on_a_clean_response(self):
+        clean = '{"answers": ["Because I love the mission."]}'
+        with patch("app.services.autofill.ashby_autofill.get_llm_provider", return_value=self._fake_llm(clean)):
+            result = ashby_autofill._draft_custom_answers(self._questions, {}, "jd text", "Acme")
+        assert result == {"q1": "Because I love the mission."}

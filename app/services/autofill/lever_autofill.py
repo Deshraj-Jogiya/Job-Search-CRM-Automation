@@ -183,7 +183,13 @@ def _draft_custom_answers(questions: list[dict], profile: dict, jd_text: str, co
         ),
         temperature=0.4,
     )
-    parsed = parse_json_response(raw)
+    try:
+        parsed = parse_json_response(raw)
+    except (json.JSONDecodeError, AttributeError):
+        # See ashby_autofill.py's _draft_custom_answers for why this is
+        # a graceful skip, not a raise -- a malformed LLM response here
+        # previously took down the whole in-progress autofill session.
+        return {}
     answers = parsed.get("answers", [])
     return {q["name"]: answers[i] for i, q in enumerate(questions) if i < len(answers) and answers[i]}
 

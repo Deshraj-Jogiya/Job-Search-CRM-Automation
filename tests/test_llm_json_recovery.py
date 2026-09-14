@@ -51,6 +51,23 @@ def test_braces_inside_string_values_dont_confuse_the_scanner():
     assert parse_json_response(raw) == {"draft_answer": 'I said "we handle {edge cases}" in the demo'}
 
 
+def test_recovers_from_trailing_garbage_after_a_complete_value():
+    # The opposite problem from truncation: a fully-closed, valid JSON
+    # value followed by leftover content (a stray trailing sentence, or
+    # a second emitted fragment) -- "Expecting value"'s truncation
+    # recovery doesn't apply since nothing is actually unclosed. Found
+    # for real via ashby_autofill.py's custom-question drafting, which
+    # took down an entire in-progress autofill browser session over
+    # this exact shape of response.
+    raw = '{"answers": ["Yes", "3 years"]} Let me know if you need anything else!'
+    assert parse_json_response(raw) == {"answers": ["Yes", "3 years"]}
+
+
+def test_trailing_garbage_recovery_respects_nested_structure():
+    raw = '{"a": {"b": [1, 2, 3]}}\n\n(explanation of the above)'
+    assert parse_json_response(raw) == {"a": {"b": [1, 2, 3]}}
+
+
 def test_genuinely_malformed_json_still_raises():
     with pytest.raises(json.JSONDecodeError):
         parse_json_response("not json at all, just prose")
