@@ -186,11 +186,22 @@ def total_experience_months(experience: list[dict], now: date | None = None) -> 
 
 def check_years_claim(summary_text: str, total_months: int) -> list[str]:
     """Returns the list of years-figures in summary_text that exceed
-    floor(total_months/12) -- empty if none. Pure detection, no
+    round(total_months/12) -- empty if none. Pure detection, no
     rewriting: tailoring_service.py's existing attention_reason/Needs-
     Review flow is what surfaces a violation, same mechanism as every
-    other fabrication check there (see D1 wiring)."""
-    max_years = total_months // 12
+    other fabrication check there (see D1 wiring).
+
+    Rounds to the nearest year rather than flooring -- a floor
+    previously flagged a real, conventional claim as fabrication: 35
+    real months is 2.9166 years, and "3+ years" is how anyone actually
+    phrases that on a resume, not "2 years". Flooring made that
+    genuine, standard phrasing fail the same check meant to catch
+    someone claiming, say, "5+ years" off of 35 months. The user
+    confirmed this directly after seeing the false flag -- "no need to
+    compute 3+ is goo[d] and shouldn't be flagged" -- round() keeps the
+    check's real purpose (catching a claim meaningfully beyond the real
+    total) without punishing ordinary rounding."""
+    max_years = round(total_months / 12)
     violations = []
     for match in _YEARS_CLAIM_RE.finditer(summary_text or ""):
         claimed = int(match.group(1))
