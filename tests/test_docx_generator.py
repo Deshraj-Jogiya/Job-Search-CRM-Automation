@@ -148,11 +148,22 @@ class TestPageDensity:
 
 
 class TestWorkAuthorizationNeverGenerated:
-    def test_no_work_auth_line_by_default(self):
+    def test_no_work_auth_line_when_config_disables_it(self):
+        config = dict(get_config())
+        config["work_authorization"] = {"include_work_auth_line": False, "work_auth_text": "should never appear"}
+        doc = build_resume_docx(_RESUME_DOC, config=config)
+        text = "\n".join(p.text for p in doc.paragraphs)
+        assert "should never appear" not in text
+
+    def test_real_config_now_includes_accurate_stem_opt_line(self):
+        # Real, current product decision (2026-09-14, at the candidate's
+        # explicit direction): the default config has this ON, with text
+        # precise about OPT needing no employer action to hire NOW vs.
+        # H-1B only being relevant to continue PAST OPT.
         doc = build_resume_docx(_RESUME_DOC)
         text = "\n".join(p.text for p in doc.paragraphs)
-        assert "authorized to work" not in text.lower()
-        assert "visa" not in text.lower()
+        assert "STEM OPT" in text
+        assert "H-1B" in text
 
     def test_config_supplied_text_is_used_verbatim_when_enabled(self):
         config = dict(get_config())

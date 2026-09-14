@@ -137,8 +137,17 @@ projects_by_variant:
       - get_your_token
 
 work_authorization:
-  include_work_auth_line: false
-  work_auth_text: ""
+  # Turned on 2026-09-14 at the candidate's explicit direction. The text
+  # is deliberately precise: F-1 STEM OPT means NO employer action is
+  # needed to hire right now (real EAD, works like any other employee) --
+  # H-1B only becomes relevant later, to continue past OPT. Getting that
+  # distinction stated accurately is the point; a vaguer line risks being
+  # misread as "needs sponsorship now" and screened out for the wrong
+  # reason. work_authorization_line() never infers this text -- it only
+  # ever returns exactly what's written here, so this is the one place
+  # that can ever change what the resume says about immigration status.
+  include_work_auth_line: true
+  work_auth_text: "Authorized to work in the U.S. now under F-1 STEM OPT (no employer action required to hire); will require H-1B sponsorship to continue beyond OPT."
 
 page_fit:
   # Corrected 2026-09-11 when b1.1 was actually built: the PDF
