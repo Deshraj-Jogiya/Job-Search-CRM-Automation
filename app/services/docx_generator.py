@@ -22,10 +22,48 @@ ATS-safety is enforced, not just intended:
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
 from . import resume_rules
 from .document_render_service import _humanize_skill_category
+
+# Real w:hyperlink XML -- python-docx has no built-in hyperlink support, and a
+# plain run of URL text is not clickable in Word. This is the standard
+# low-level pattern for it. Real hyperlinks are normal, expected resume
+# content and don't affect ATS parsing (unlike tables/text boxes/images,
+# which this module's docstring above does deliberately avoid).
+_LINK_COLOR_HEX = "2563EB"
+
+
+def _add_hyperlink(paragraph, url: str, text: str) -> None:
+    part = paragraph.part
+    r_id = part.relate_to(
+        url,
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink",
+        is_external=True,
+    )
+
+    hyperlink = OxmlElement("w:hyperlink")
+    hyperlink.set(qn("r:id"), r_id)
+
+    run = OxmlElement("w:r")
+    run_props = OxmlElement("w:rPr")
+    color = OxmlElement("w:color")
+    color.set(qn("w:val"), _LINK_COLOR_HEX)
+    run_props.append(color)
+    underline = OxmlElement("w:u")
+    underline.set(qn("w:val"), "single")
+    run_props.append(underline)
+    run.append(run_props)
+
+    text_el = OxmlElement("w:t")
+    text_el.text = text
+    run.append(text_el)
+
+    hyperlink.append(run)
+    paragraph._p.append(hyperlink)
 
 # python-docx's default template carries real, non-zero spacing on
 # EVERY paragraph (w:docDefaults -- 10pt space-after, 1.15x line
@@ -100,9 +138,16 @@ def _add_name_and_contact(doc: Document, resume_doc: dict) -> None:
         if contact.get(k)
     ]
     if contact_parts:
-        contact_p = doc.add_paragraph(" | ".join(contact_parts))
+        contact_p = doc.add_paragraph()
         contact_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         contact_p.paragraph_format.space_after = Pt(_HEADING_SPACE_AFTER_PT)
+        for i, part in enumerate(contact_parts):
+            if i > 0:
+                contact_p.add_run(" | ")
+            if part.startswith("http"):
+                _add_hyperlink(contact_p, part, part)
+            else:
+                contact_p.add_run(part)
 
 
 def _add_bullets(doc: Document, bullets: list[str]) -> None:
@@ -184,6 +229,10 @@ def _add_projects_section(doc: Document, resume_doc: dict, config: dict) -> None
         name_p = doc.add_paragraph()
         name_run = name_p.add_run(project.get("name", ""))
         name_run.bold = True
+        github_url = project.get("github_url")
+        if github_url:
+            name_p.add_run("  |  ")
+            _add_hyperlink(name_p, github_url, "GitHub")
         bullets = (project.get("bullets") or [])[: pv["bullets_per_project_max"]]
         _add_bullets(doc, bullets)
 
