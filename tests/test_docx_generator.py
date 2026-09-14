@@ -163,3 +163,56 @@ class TestWorkAuthorizationNeverGenerated:
         doc = build_resume_docx(_RESUME_DOC, config=config)
         text = "\n".join(p.text for p in doc.paragraphs)
         assert "Authorized to work in the U.S. without sponsorship." in text
+
+
+class TestHyperlinks:
+    """Real gap this closes: the DOCX renderer used to drop every link
+    entirely -- header LinkedIn/GitHub/portfolio URLs and each project's
+    github_url never appeared at all, unlike the PDF renderer which already
+    had them. Real w:hyperlink elements, not just visible URL text -- a
+    reader opening the .docx should be able to click straight through."""
+
+    _RESUME_WITH_LINKS = {
+        **_RESUME_DOC,
+        "contact": {
+            **_RESUME_DOC["contact"],
+            "linkedin": "https://www.linkedin.com/in/deshrajjogiya",
+            "github": "https://github.com/Deshraj-Jogiya",
+        },
+        "projects": [
+            {
+                "name": "Career Pilot",
+                "bullets": ["Built a job-search CRM."],
+                "github_url": "https://github.com/Deshraj-Jogiya/Job-Search-CRM-Automation",
+            },
+        ],
+    }
+
+    def test_contact_links_are_real_hyperlinks(self):
+        doc = build_resume_docx(self._RESUME_WITH_LINKS)
+        rels = {r.target_ref for r in doc.part.rels.values() if r.reltype.endswith("hyperlink")}
+        assert "https://www.linkedin.com/in/deshrajjogiya" in rels
+        assert "https://github.com/Deshraj-Jogiya" in rels
+
+    def test_contact_links_still_visible_as_text(self):
+        doc = build_resume_docx(self._RESUME_WITH_LINKS)
+        text = "\n".join(p.text for p in doc.paragraphs)
+        assert "https://www.linkedin.com/in/deshrajjogiya" in text
+        assert "https://github.com/Deshraj-Jogiya" in text
+
+    def test_project_github_url_becomes_a_real_hyperlink(self):
+        doc = build_resume_docx(self._RESUME_WITH_LINKS)
+        rels = {r.target_ref for r in doc.part.rels.values() if r.reltype.endswith("hyperlink")}
+        assert "https://github.com/Deshraj-Jogiya/Job-Search-CRM-Automation" in rels
+
+    def test_project_without_github_url_renders_no_link(self):
+        # _RESUME_DOC's project has no github_url -- must not error, and
+        # must not produce a stray hyperlink relationship.
+        doc = build_resume_docx(_RESUME_DOC)
+        rels = [r for r in doc.part.rels.values() if r.reltype.endswith("hyperlink")]
+        assert rels == []
+
+    def test_no_tables_even_with_links_present(self):
+        # Hyperlinks must not compromise the ATS-safety guarantee above.
+        doc = build_resume_docx(self._RESUME_WITH_LINKS)
+        assert len(doc.tables) == 0
