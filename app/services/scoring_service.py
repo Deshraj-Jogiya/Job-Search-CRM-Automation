@@ -30,7 +30,7 @@ network call -- so it can run on every posting at intake/backfill
 time, safe to call in bulk. matching_service.score_application() calls
 it once at the end of a real (paid) LLM scoring pass so score_breakdown
 stays in sync with the latest match_score; the backfill CLI
-(ingest/cli.py's rescore-all) calls it directly across every
+(ingest/cli.py's backfill-signals) calls it directly across every
 application without ever touching the LLM, since most of what changed
 between "yesterday's tier" and "today's tier" doesn't require redoing
 profile-fit analysis.
@@ -298,7 +298,7 @@ def recompute_score_breakdown(db: Session, application: JobApplication) -> dict:
     """Recomputes and persists score_breakdown from whatever data is
     currently on record (tier, wage level, signals, title/keywords, and
     the last LLM match_score if any) -- no LLM call. Safe to run on
-    every application in bulk (see ingest/cli.py's rescore-all).
+    every application in bulk (see ingest/cli.py's backfill-signals).
 
     Resolves sponsorship_history/wage_level_fit weights from
     adaptation_service (cold start = the config default, identical to

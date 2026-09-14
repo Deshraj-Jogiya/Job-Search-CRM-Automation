@@ -25,7 +25,6 @@ in sync -- idempotent, safe to re-run any time, no LLM calls.
 import argparse
 import sys
 
-from ..database import SessionLocal
 from ..services.queue_service import recompute_all_scores, recompute_all_tiers
 from ..services.sponsorship_signals import detect_sponsorship_signals
 from .cap_exempt import apply_cap_exempt_flags
@@ -59,6 +58,24 @@ def backfill_signals(db) -> dict:
 
 
 def main(argv=None) -> int:
+    # Loaded lazily, here rather than at module import time, so this
+    # never fires on a plain `from app.ingest.cli import backfill_signals`
+    # test import (test_ingest_cli_backfill.py does exactly that) -- an
+    # earlier version of this fix called load_dotenv() at module scope,
+    # which loaded .env's real secrets (SMTP creds, API keys) into the
+    # test process the moment anything imported this module, silently
+    # changing unrelated tests' behavior. Caught via 3 reproducible test
+    # failures in an unrelated file after that change, not by inspection.
+    # Must still run before `..database` is imported anywhere in this
+    # process, since database.py reads DATABASE_URL via os.getenv() at
+    # module import time -- true here since main() is only ever reached
+    # by a genuine standalone run (this file's own module docstring),
+    # where nothing else has imported ..database yet.
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    from ..database import SessionLocal
+
     parser = argparse.ArgumentParser(prog="python -m app.ingest.cli")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
