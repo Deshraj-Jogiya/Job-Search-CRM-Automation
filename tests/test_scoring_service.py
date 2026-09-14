@@ -52,33 +52,51 @@ class TestUnscoredApplication:
 
 class TestScoreNormalization:
     def test_perfect_application_sums_to_exactly_100(self, db):
+        from datetime import datetime, timezone
+
         company = _company(db, tier="A", is_cap_exempt=False, max_wage_level_15xx="IV")
-        posting = _posting(db, company, location="Austin, TX", sponsorship_signal=True, worksite_ambiguous=False)
+        posting = _posting(
+            db, company, job_title="Data Engineer", location="Austin, TX", sponsorship_signal=False,
+            worksite_ambiguous=False, first_seen_at=datetime.now(timezone.utc),
+        )
         application = _application(
             db, posting, match_score=100, match_analysis_json=json.dumps({"match_score": 100}),
         )
-        breakdown = compute_score_breakdown(application)
+        # Every base component at its own max, bonus untouched: ai_fit(30)
+        # + sponsorship_history(30) + wage(20) + role_title_match(12) +
+        # worksite(6) + posting_recency(2) = 100 exactly, pre-clamp --
+        # proves the 100-base design lands on 100, not just that the
+        # clamp happens to save an over-100 sum.
+        breakdown = compute_score_breakdown(application, active_keywords=["Data Engineer"])
         assert breakdown["total"] == 100
 
     def test_total_never_exceeds_100_even_with_every_bonus(self, db):
-        # ai_profile_fit(30) + sponsorship_history(30, cap-exempt floor)
-        # + wage(20) + worksite(10) + signal bonus(10) = 100 exactly, but
-        # verify the min(100, ...) clamp is real by checking the sum
-        # logic directly rather than assuming no combination can exceed it.
+        # Same as above PLUS the sponsorship_signal bonus fires too --
+        # 100 base + 10 bonus would be 110 pre-clamp; verify the
+        # min(100, ...) clamp is real by checking the sum logic directly
+        # rather than assuming no combination can exceed it.
+        from datetime import datetime, timezone
+
         company = _company(db, tier="A", is_cap_exempt=True, max_wage_level_15xx="IV")
-        posting = _posting(db, company, location="Austin, TX", sponsorship_signal=True, worksite_ambiguous=False)
+        posting = _posting(
+            db, company, job_title="Data Engineer", location="Austin, TX", sponsorship_signal=True,
+            worksite_ambiguous=False, first_seen_at=datetime.now(timezone.utc),
+        )
         application = _application(
             db, posting, match_score=100, match_analysis_json=json.dumps({"match_score": 100}),
         )
-        breakdown = compute_score_breakdown(application)
-        assert breakdown["total"] <= 100
+        breakdown = compute_score_breakdown(application, active_keywords=["Data Engineer"])
+        assert breakdown["total"] == 100  # clamped down from 110
 
     def test_worst_case_sums_to_a_low_but_valid_score(self, db):
         company = _company(db, tier="X", is_cap_exempt=False, max_wage_level_15xx=None)
         posting = _posting(db, company, location=None, sponsorship_signal=False, worksite_ambiguous=True)
         application = _application(db, posting, match_score=0, match_analysis_json=json.dumps({"match_score": 0}))
         breakdown = compute_score_breakdown(application)
-        assert breakdown["total"] == 0 + 0 + 6 + 0 + 0  # ai_fit + sponsorship_history(X) + wage(unknown) + worksite(ambiguous) + bonus
+        # ai_fit(0) + sponsorship_history(X, 0) + wage(unknown, 6) +
+        # role_title_match(no keywords resolved -- neutral, 6) +
+        # worksite(ambiguous, 0) + posting_recency(fresh, 2) + bonus(0)
+        assert breakdown["total"] == 0 + 0 + 6 + 6 + 0 + 2 + 0
 
 
 class TestSponsorshipHistoryComponent:
@@ -150,23 +168,96 @@ class TestWorksiteClarityComponent:
         application = _application(db, posting)
         assert compute_score_breakdown(application)["components"]["worksite_clarity"]["contribution"] == 0
 
-    def test_specific_city_scores_10(self, db):
+    def test_specific_city_scores_full_weight(self, db):
         company = _company(db)
         posting = _posting(db, company, location="Austin, TX", worksite_ambiguous=False)
         application = _application(db, posting)
-        assert compute_score_breakdown(application)["components"]["worksite_clarity"]["contribution"] == 10
+        assert compute_score_breakdown(application)["components"]["worksite_clarity"]["contribution"] == 6
 
-    def test_bare_remote_scores_6(self, db):
+    def test_bare_remote_scores_partial(self, db):
         company = _company(db)
         posting = _posting(db, company, location="Remote", worksite_ambiguous=False)
         application = _application(db, posting)
-        assert compute_score_breakdown(application)["components"]["worksite_clarity"]["contribution"] == 6
+        assert compute_score_breakdown(application)["components"]["worksite_clarity"]["contribution"] == 4
 
-    def test_no_location_scores_6(self, db):
+    def test_no_location_scores_partial(self, db):
         company = _company(db)
         posting = _posting(db, company, location=None, worksite_ambiguous=False)
         application = _application(db, posting)
-        assert compute_score_breakdown(application)["components"]["worksite_clarity"]["contribution"] == 6
+        assert compute_score_breakdown(application)["components"]["worksite_clarity"]["contribution"] == 4
+
+
+class TestRoleTitleMatchComponent:
+    def test_no_keywords_resolved_scores_neutral(self, db):
+        # compute_score_breakdown called directly (no db session) --
+        # active_keywords defaults to None, same neutral treatment as a
+        # genuinely empty SearchKeyword table.
+        company = _company(db)
+        posting = _posting(db, company, job_title="Data Engineer")
+        application = _application(db, posting)
+        assert compute_score_breakdown(application)["components"]["role_title_match"]["contribution"] == 6
+
+    def test_matching_keyword_scores_full_weight(self, db):
+        company = _company(db)
+        posting = _posting(db, company, job_title="Senior Data Engineer")
+        application = _application(db, posting)
+        breakdown = compute_score_breakdown(application, active_keywords=["Data Engineer", "Data Analyst"])
+        assert breakdown["components"]["role_title_match"]["contribution"] == 12
+        assert breakdown["components"]["role_title_match"]["raw"] == "Data Engineer"
+
+    def test_no_matching_keyword_scores_partial(self, db):
+        company = _company(db)
+        posting = _posting(db, company, job_title="Product Manager")
+        application = _application(db, posting)
+        breakdown = compute_score_breakdown(application, active_keywords=["Data Engineer", "Data Analyst"])
+        assert breakdown["components"]["role_title_match"]["contribution"] == 4  # round(12 * 0.35)
+
+    def test_excluded_seniority_term_scores_zero_even_with_a_matching_keyword(self, db):
+        company = _company(db)
+        posting = _posting(db, company, job_title="Staff Data Engineer")
+        application = _application(db, posting)
+        breakdown = compute_score_breakdown(
+            application, active_keywords=["Data Engineer"], active_seniority_exclusions=["Staff", "Director"],
+        )
+        assert breakdown["components"]["role_title_match"]["contribution"] == 0
+        assert "Staff" in breakdown["components"]["role_title_match"]["raw"]
+
+
+class TestPostingRecencyComponent:
+    def test_fresh_posting_scores_full_weight(self, db):
+        from datetime import datetime, timezone
+
+        company = _company(db)
+        posting = _posting(db, company, first_seen_at=datetime.now(timezone.utc))
+        application = _application(db, posting)
+        assert compute_score_breakdown(application)["components"]["posting_recency"]["contribution"] == 2
+
+    def test_stale_posting_scores_least(self, db):
+        from datetime import datetime, timedelta, timezone
+
+        from app.models import GlobalSettings
+
+        company = _company(db)
+        posting = _posting(db, company, first_seen_at=datetime.now(timezone.utc) - timedelta(days=60))
+        application = _application(db, posting)
+        settings = GlobalSettings(stale_posting_threshold_days=45)
+        breakdown = compute_score_breakdown(application, settings=settings)
+        assert breakdown["components"]["posting_recency"]["contribution"] == round(2 * 0.15)
+
+    def test_staleness_flag_forces_lowest_bucket_even_if_recent(self, db):
+        from datetime import datetime, timezone
+
+        company = _company(db)
+        posting = _posting(db, company, first_seen_at=datetime.now(timezone.utc), staleness_flag=True)
+        application = _application(db, posting)
+        assert compute_score_breakdown(application)["components"]["posting_recency"]["contribution"] == round(2 * 0.15)
+
+    def test_unknown_first_seen_at_scores_neutral(self, db):
+        company = _company(db)
+        posting = _posting(db, company)
+        posting.first_seen_at = None
+        application = _application(db, posting)
+        assert compute_score_breakdown(application)["components"]["posting_recency"]["contribution"] == round(2 * 0.4)
 
 
 class TestRecomputeScoreBreakdownPersists:
