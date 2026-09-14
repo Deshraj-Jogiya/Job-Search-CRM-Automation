@@ -580,14 +580,21 @@ def tailor_application_now(application_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{application_id}/tailored/{document_type}/download")
-def download_tailored_document(application_id: int, document_type: str, db: Session = Depends(get_db)):
+def download_tailored_document(application_id: int, document_type: str, inline: bool = False, db: Session = Depends(get_db)):
     """Renders a real PDF from the same content this app already
     generates for the actual browser-autofill upload (see
     autofill_service.py, which calls these same render_* functions to
     produce the file it attaches to a real application form) -- until
     now that rendering only ever happened invisibly mid-autofill, so a
     candidate wanting to preview or manually attach the resume/cover
-    letter had nothing but a raw JSON dump on the page to work with."""
+    letter had nothing but a raw JSON dump on the page to work with.
+
+    `inline=True` (the template's "Preview" link) serves the exact same
+    bytes with Content-Disposition: inline instead of attachment, so a
+    browser's native PDF viewer renders it in a new tab instead of
+    forcing a download -- this docstring already claimed "preview" as
+    a use case before this existed; every response actually always
+    forced a download regardless of intent."""
     if document_type not in ("resume", "cover_letter"):
         raise HTTPException(status_code=404, detail="Unknown document type")
     application = (
@@ -620,10 +627,11 @@ def download_tailored_document(application_id: int, document_type: str, db: Sess
 
     name_part = "resume" if document_type == "resume" else "cover-letter"
     filename = f"{name_part}-{application.posting.company_name_raw}-{application.posting.job_title}.pdf".replace(" ", "-")
+    disposition = "inline" if inline else "attachment"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": f'{disposition}; filename="{filename}"'},
     )
 
 
