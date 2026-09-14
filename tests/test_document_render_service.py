@@ -10,11 +10,14 @@ content fabrication is a separate, already-guarded concern
 
 from unittest.mock import patch
 
+from reportlab.platypus import Paragraph
+
 from app.services import document_render_service
 from app.services.document_render_service import (
     _contact_lines,
     _humanize_skill_category,
     _section_header,
+    build_resume_flow,
     render_cover_letter_pdf,
     render_interview_prep_cheat_sheet_pdf,
     render_resume_pdf,
@@ -226,3 +229,34 @@ def test_render_interview_prep_cheat_sheet_handles_special_characters():
     }
     pdf_bytes = render_interview_prep_cheat_sheet_pdf("Role & Title", "Acme <Co>", {}, {}, rounds)
     assert pdf_bytes.startswith(b"%PDF")
+
+
+class TestWorkAuthorizationLineInPdf:
+    """The PDF renderer never had work_authorization_line() wired in at all
+    -- same class of gap as the header hyperlinks fixed earlier: a feature
+    built once (docx_generator.py) but never wired into the other output
+    format. These lock in the fix."""
+
+    def test_real_config_line_appears_in_pdf_flow(self):
+        flow = build_resume_flow(_FULL_CONTENT)
+        texts = [f.text for f in flow if isinstance(f, Paragraph)]
+        joined = "\n".join(texts)
+        assert "STEM OPT" in joined
+        assert "H-1B" in joined
+
+    def test_disabled_config_produces_no_line(self):
+        with patch.object(
+            document_render_service.resume_rules,
+            "work_authorization_line",
+            return_value=None,
+        ):
+            flow = build_resume_flow(_FULL_CONTENT)
+            texts = [f.text for f in flow if isinstance(f, Paragraph)]
+            assert not any("STEM OPT" in t or "H-1B" in t for t in texts)
+
+    def test_appears_after_languages_as_final_line(self):
+        content = dict(_FULL_CONTENT)
+        content["languages"] = [{"language": "English", "proficiency": "Native"}]
+        flow = build_resume_flow(content)
+        texts = [f.text for f in flow if isinstance(f, Paragraph)]
+        assert "H-1B" in texts[-1]

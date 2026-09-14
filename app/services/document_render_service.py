@@ -411,6 +411,16 @@ def build_resume_flow(
         )
         flow.append(Paragraph(_esc(lang_text), body_style))
 
+    # C8 was already wired into the DOCX renderer (docx_generator.py) but
+    # never into this one -- same class of gap as the header hyperlinks
+    # fixed earlier: a feature built once, wired into only one of the two
+    # output formats. work_authorization_line() never infers/generates
+    # this text itself, only ever returns exactly what config says.
+    work_auth = resume_rules.work_authorization_line()
+    if work_auth:
+        flow.append(SECTION_GAP)
+        flow.append(Paragraph(_esc(work_auth), body_style))
+
     return flow
 
 

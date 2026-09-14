@@ -237,5 +237,28 @@ class TestSelectProjectsForVariant:
 
 
 class TestWorkAuthorizationLine:
-    def test_defaults_to_none(self):
-        assert work_authorization_line() is None
+    def test_returns_none_when_disabled(self):
+        config = {"work_authorization": {"include_work_auth_line": False, "work_auth_text": "should never appear"}}
+        assert work_authorization_line(config) is None
+
+    def test_returns_none_when_enabled_but_text_empty(self):
+        # Enabled with no text configured yet must not invent a placeholder.
+        config = {"work_authorization": {"include_work_auth_line": True, "work_auth_text": ""}}
+        assert work_authorization_line(config) is None
+
+    def test_returns_exact_configured_text_verbatim(self):
+        config = {"work_authorization": {"include_work_auth_line": True, "work_auth_text": "Authorized to work in the U.S."}}
+        assert work_authorization_line(config) == "Authorized to work in the U.S."
+
+    def test_real_config_is_enabled_with_accurate_stem_opt_text(self):
+        # Locks in the real, current product decision (2026-09-14, at the
+        # candidate's explicit direction): the line must be precise that
+        # OPT means no employer action is needed to hire NOW, and H-1B is
+        # only relevant to continue PAST OPT -- a vaguer line risks being
+        # misread as "needs sponsorship now" and screened out for the
+        # wrong reason.
+        line = work_authorization_line()
+        assert line is not None
+        assert "STEM OPT" in line
+        assert "H-1B" in line
+        assert "now" in line.lower()
