@@ -77,6 +77,18 @@ class TestCheckYearsClaim:
     def test_omitted_claim_is_fine(self):
         assert check_years_claim("Built large-scale data platforms.", 36) == []
 
+    def test_rounds_to_nearest_year_not_floor(self):
+        # 35 real months is 2.9166 years -- "3+ years" is ordinary,
+        # conventional resume phrasing for that, not an inflated claim.
+        # A floor-based check previously flagged this as fabrication;
+        # rounding to the nearest year is what a human actually means.
+        assert check_years_claim("3+ years of experience", 35) == []
+
+    def test_rounding_still_catches_a_real_inflation(self):
+        # 35 months rounds to 3 -- claiming "5+" off that is still a
+        # real, meaningful overclaim, not just rounding noise.
+        assert check_years_claim("5+ years of experience", 35) == ["5+ years"]
+
 
 class TestClassifyRole:
     def test_recent_long_role_is_experience(self):
