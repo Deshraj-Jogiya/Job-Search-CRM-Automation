@@ -20,22 +20,74 @@ in as ONE new component, **AI Profile Fit**, scaled down from its old
 `match_score` and `match_analysis_json` are untouched, still exactly
 what they were. `score_breakdown` is new and additive.
 
-## The five components
+## The seven components
 
 | Component | Weight | Source |
 |---|---|---|
 | AI Profile Fit | 30 | folded-in `match_score` (see above) |
 | Sponsorship History | 30 | `Company.tier` (A=30, B=18, C=8, X=0, cap-exempt=30 floor, unknown=4) |
 | Wage-Level Fit | 20 | `Company.max_wage_level_15xx` (IV=20, III=15, II=8, I=3, unknown=6) |
-| Worksite Clarity | 10 | `JobPosting.location` + `worksite_ambiguous` (specific place=10, bare "Remote"/unset=6, flagged ambiguous=0) |
+| Role/Title Match | 12 | `JobPosting.job_title` vs. `SearchKeyword`/`SeniorityExclusion` (match=12, no keywords configured=6, no match among configured keywords=4, excluded seniority term hit=0) |
+| Worksite Clarity | 6 | `JobPosting.location` + `worksite_ambiguous` (specific place=6, bare "Remote"/unset=4, flagged ambiguous=0) |
+| Posting Recency | 2 | `JobPosting.first_seen_at` vs. `GlobalSettings.stale_posting_threshold_days` (fresh=2, recent=1, aging=1, stale or `staleness_flag`=0) |
 | Sponsorship Signal | +10 bonus | `JobPosting.sponsorship_signal` |
 
 Base components (AI Profile Fit + Sponsorship History + Wage-Level Fit
-+ Worksite Clarity) sum to a 90-point subtotal; the Sponsorship Signal
-bonus is a genuine +10 on top, clamped at 100 total
-(`min(100, sum(...))`). This is a literal reading of the spec's own
-notation, which marked sponsorship_signal with a leading "+" distinct
-from the other four flat weights.
++ Role/Title Match + Worksite Clarity + Posting Recency) sum to a
+100-point subtotal; the Sponsorship Signal bonus is a genuine +10 on
+top, clamped at 100 total (`min(100, sum(...))`). This is a literal
+reading of the spec's own notation, which marked sponsorship_signal
+with a leading "+" distinct from the other flat weights.
+
+## Two components added after a real audit (2026-09-14)
+
+The user asked for a point-by-point audit of this file/module against
+the original spec, sharply, after a prior resume-market-research
+mistake in the same session where unresearched claims got presented as
+fact. The audit found two real gaps -- not folded into an existing
+component, not a design choice, genuinely absent:
+
+- **Role/Title Match** didn't exist as its own line item. `AI Profile
+  Fit`'s LLM judgment may informally weigh title relevance as part of
+  its holistic call, but there was no separate, explainable,
+  free/mechanical signal the way sponsorship/wage/worksite each have
+  their own -- and several real sources (every direct-ATS board:
+  Greenhouse/Lever/Ashby/etc, plus all 4 remote-job boards) pull EVERY
+  posting from a company/board with no title filter applied at intake
+  at all. `SeniorityExclusion` in particular was created and stored
+  but never actually enforced as a hard filter on those sources --
+  this component is the first place it's mechanically checked against
+  a posting's real title. Built on the same profile-derived
+  `SearchKeyword`/`SeniorityExclusion` tables `intake_service.py`
+  already uses to build search queries, rather than a new data source.
+- **Posting Recency** didn't exist anywhere in the scoring pipeline at
+  all. Built on `GlobalSettings.stale_posting_threshold_days`, the
+  same already-user-configurable cutoff `staleness_flag` uses, rather
+  than a second hardcoded day count.
+
+Weight for both came out of Worksite Clarity's own budget (10 -> 6),
+not the three heaviest/best-evidenced components (AI Profile Fit,
+Sponsorship History, Wage-Level Fit), which stayed untouched -- both
+because the user's own explicit ordering placed Role/Title Match above
+Worksite Clarity and Posting Recency below it, and because Worksite
+Clarity's own docstring already called it "a heuristic, not precise
+geolocation," the least evidence-strong of the pre-existing
+components. Neither new component was wired into the Tier 2 adaptive
+weight-tuning system (`adaptation_service.py`'s
+`_COMPARISON_WEIGHT_PARAMETER`) -- that system compares reply-rate
+segments (tier, wage level) that don't exist for title-match/recency,
+so making them "adaptive" without that real evidence backing would be
+fake precision, not a real safeguard. They're static module constants,
+same category as Worksite Clarity and Sponsorship Signal.
+
+Also confirmed correct during this audit, not a gap: absence of a
+sponsorship tag/signal in a JD is never treated as a negative --
+`sponsorship_blocked` (the hard gate) only fires on explicit negative
+language (`sponsorship_signals.py`'s `_NEGATIVE_PATTERNS` -- "no visa
+sponsorship," "US citizens only," etc.), never on a JD that simply
+says nothing about sponsorship either way. A posting with no
+sponsorship language at all stays fully visible and scored; it just
+doesn't earn the Sponsorship Signal bonus.
 
 ## Two things the spec assumed that don't exist in this schema
 
