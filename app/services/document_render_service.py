@@ -189,12 +189,25 @@ def _contact_lines(contact: dict) -> list[str]:
     """Info (location/phone/email) and links (LinkedIn/GitHub/portfolio
     URLs) as two separate centered lines rather than one long run --
     matches the reference format, and reads better once a candidate has
-    both a phone number and 2-3 URLs."""
+    both a phone number and 2-3 URLs.
+
+    The links line renders each URL as a real clickable <a href> (same
+    pattern as the per-project GitHub link below), not just visible text --
+    a reader opening the PDF on screen can click straight through instead
+    of having to copy/retype the URL."""
     values = [str(v) for v in (contact or {}).values() if v]
     info = [v for v in values if not v.startswith("http")]
     links = [v for v in values if v.startswith("http")]
     sep = " &nbsp;|&nbsp; "
-    return [sep.join(_esc(v) for v in group) for group in (info, links) if group]
+    lines = [sep.join(_esc(v) for v in info)] if info else []
+    if links:
+        lines.append(
+            sep.join(
+                f'<a href="{_esc(v)}"><font color="#2563eb"><u>{_esc(v)}</u></font></a>'
+                for v in links
+            )
+        )
+    return lines
 
 
 def build_resume_flow(
