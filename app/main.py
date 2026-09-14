@@ -31,7 +31,7 @@ from .routers import analytics as analytics_router
 from .routers import queue as queue_router
 from .routers import metrics as metrics_router
 from .routers import adaptation as adaptation_router
-from .services import auth_service, backup_service, profile_service
+from .services import auth_service, backup_service, profile_service, trend_research_service
 from .services import scheduler as bg_scheduler
 from .services.activity_logger import log_activity
 
@@ -229,6 +229,11 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     profile_completeness_warnings = (
         profile_service.profile_completeness_warnings(default_profile_content) if default_profile_content else []
     )
+    # Same "first thing anyone sees on login" placement as the completeness
+    # check above -- a pending trend proposal (see trend_research_service.py)
+    # is real, actionable news, not something to leave undiscovered until
+    # someone happens to visit /adaptation on their own.
+    pending_trend_proposal_count = len(trend_research_service.pending_trend_proposals(db))
 
     return render(
         request,
@@ -250,6 +255,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
             # ongoing pause/resume from there.
             "ready_to_start": has_profile_content and has_active_keywords and not settings.automation_enabled,
             "profile_completeness_warnings": profile_completeness_warnings,
+            "pending_trend_proposal_count": pending_trend_proposal_count,
             "message": request.query_params.get("message"),
             "error": request.query_params.get("error"),
         },

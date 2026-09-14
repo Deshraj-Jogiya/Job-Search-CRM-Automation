@@ -20,17 +20,26 @@ printed to a console nobody's watching, since this is meant to run
 unattended.
 """
 
+from datetime import date
+
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from ..database import SessionLocal
 from ..models import get_or_create_settings
-from . import backup_service, confirmation_service, intake_service, notification_service
+from . import backup_service, confirmation_service, intake_service, notification_service, trend_research_service
 from .activity_logger import log_activity
 
 scheduler = BackgroundScheduler()
 
 _TICK_MINUTES = 5
 _BACKUP_INTERVAL_HOURS = 24
+# Real-world practice around resume length/format moves slowly (this is
+# what motivated building trend_research_service.py in the first place --
+# a stale, never-re-verified assumption sat in config for a long time) --
+# monthly is frequent enough to catch a real shift without spending
+# Tavily/LLM budget checking something that hasn't meaningfully changed
+# since last week.
+_TREND_CHECK_INTERVAL_DAYS = 30
 
 
 def _run_isolated(name: str, fn) -> None:
@@ -70,12 +79,27 @@ def _backup_tick() -> None:
     _run_isolated("scheduled backup", backup_service.run_scheduled_backup)
 
 
+def _trend_check_tick() -> None:
+    # Deliberately not gated by automation_enabled either, same reasoning
+    # as backups -- this keeps the RESUME-BUILDING RULES current, not the
+    # job search itself, so it should keep working even while automation
+    # is paused. run_all_trend_checks already no-ops safely if Tavily
+    # isn't configured, or if a proposal for a category is already
+    # pending review -- never spends budget re-checking something a
+    # human hasn't looked at yet.
+    _run_isolated("trend check", lambda db: trend_research_service.run_all_trend_checks(db, date.today().year))
+
+
 def start_scheduler() -> None:
     if not scheduler.running:
         scheduler.add_job(_tick, trigger="interval", minutes=_TICK_MINUTES, name="job_intake_tick")
         scheduler.add_job(_backup_tick, trigger="interval", hours=_BACKUP_INTERVAL_HOURS, name="scheduled_backup")
+        scheduler.add_job(_trend_check_tick, trigger="interval", days=_TREND_CHECK_INTERVAL_DAYS, name="trend_check")
         scheduler.start()
-        print(f"Background scheduler started (tick every {_TICK_MINUTES}m, backup every {_BACKUP_INTERVAL_HOURS}h).")
+        print(
+            f"Background scheduler started (tick every {_TICK_MINUTES}m, backup every "
+            f"{_BACKUP_INTERVAL_HOURS}h, trend check every {_TREND_CHECK_INTERVAL_DAYS}d)."
+        )
 
 
 def stop_scheduler() -> None:

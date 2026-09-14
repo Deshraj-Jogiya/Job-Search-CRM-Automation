@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import AdaptationLog
-from ..services import adaptation_service
+from ..services import adaptation_service, trend_research_service
 from ..templating import render
 
 router = APIRouter(prefix="/adaptation", tags=["adaptation"])
@@ -54,16 +54,50 @@ def adaptation_page(request: Request, db: Session = Depends(get_db)):
         for ct in _COMPARISON_TYPES
     ]
     log_entries = db.query(AdaptationLog).order_by(AdaptationLog.created_at.desc()).limit(100).all()
+    trend_proposals = [
+        {"entry": entry, "label": trend_research_service.TREND_CATEGORIES[entry.parameter].label}
+        for entry in trend_research_service.pending_trend_proposals(db)
+        if entry.parameter in trend_research_service.TREND_CATEGORIES
+    ]
     return render(
         request,
         "adaptation.html",
         {
             "comparisons": comparisons,
             "log_entries": log_entries,
+            "trend_proposals": trend_proposals,
+            "trend_categories": trend_research_service.TREND_CATEGORIES,
             "message": request.query_params.get("message"),
             "error": request.query_params.get("error"),
         },
     )
+
+
+@router.post("/trends/check")
+def check_trends_now(db: Session = Depends(get_db)):
+    from datetime import date
+    created = trend_research_service.run_all_trend_checks(db, date.today().year)
+    if not created:
+        return _redirect(message="Checked -- nothing new to propose right now (current settings already match research, or Tavily isn't configured).")
+    return _redirect(message=f"Found {len(created)} potential update(s) -- review below.")
+
+
+@router.post("/trends/{log_id}/approve")
+def approve_trend(log_id: int, db: Session = Depends(get_db)):
+    try:
+        entry = trend_research_service.approve_trend_proposal(db, log_id)
+        return _redirect(message=f"Applied: {entry.parameter} {entry.old_value} -> {entry.new_value}.")
+    except trend_research_service.TrendProposalError as e:
+        return _redirect(error=str(e))
+
+
+@router.post("/trends/{log_id}/reject")
+def reject_trend(log_id: int, db: Session = Depends(get_db)):
+    try:
+        trend_research_service.reject_trend_proposal(db, log_id)
+        return _redirect(message="Noted -- proposal rejected.")
+    except trend_research_service.TrendProposalError as e:
+        return _redirect(error=str(e))
 
 
 @router.post("/comparisons/{comparison_type}/approve")

@@ -40,6 +40,13 @@
     Review it on the <a href="/profile">Profile page</a>.
 </div>
 {% endif %}
+{% if pending_trend_proposal_count %}
+<div class="flash flash-ok" role="status">
+    <strong>{{ pending_trend_proposal_count }} platform update{{ "s" if pending_trend_proposal_count != 1 else "" }} found</strong>
+    from real current research on resume-building practice -- nothing has changed yet, review and approve
+    (or reject) on the <a href="/adaptation">Adaptation page</a>.
+</div>
+{% endif %}
 {% if message %}
 <div class="flash flash-ok" role="status">{{ message }}</div>
 {% endif %}
