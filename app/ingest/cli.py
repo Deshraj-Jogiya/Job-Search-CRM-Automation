@@ -25,12 +25,6 @@ in sync -- idempotent, safe to re-run any time, no LLM calls.
 import argparse
 import sys
 
-from ..services.queue_service import recompute_all_scores, recompute_all_tiers
-from ..services.sponsorship_signals import detect_sponsorship_signals
-from .cap_exempt import apply_cap_exempt_flags
-from .sponsors import load_dol_lca_data, load_uscis_h1b_data
-from .wages import load_oews_wage_data
-
 
 def backfill_signals(db) -> dict:
     """One-shot, idempotent Phase 3 backfill: (1) recomputes sponsorship
@@ -39,8 +33,20 @@ def backfill_signals(db) -> dict:
     existed have NULL/default values here, this is the "already-stored
     data" side of that mechanical detector; (2) recomputes Company.tier
     for every company; (3) recomputes score_breakdown for every
-    application. No LLM calls anywhere in this path."""
+    application. No LLM calls anywhere in this path.
+
+    Every import here is lazy, on purpose (see main()'s own comment for
+    the full reason): this module must have NO top-level import that
+    transitively touches ..database (queue_service/sponsorship_signals
+    both do), or a standalone run's env still loads too late -- cli.py's
+    own top-level imports run before main()'s load_dotenv() ever gets a
+    chance to. A test importing just this function (test_ingest_cli_
+    backfill.py) is unaffected either way: conftest.py already bound
+    ..database to the test DB before any test module gets imported, so
+    these lazy imports just reuse that cached, correctly-bound module."""
     from ..models import JobPosting
+    from ..services.queue_service import recompute_all_scores, recompute_all_tiers
+    from ..services.sponsorship_signals import detect_sponsorship_signals
 
     postings = db.query(JobPosting).all()
     for posting in postings:
@@ -58,23 +64,38 @@ def backfill_signals(db) -> dict:
 
 
 def main(argv=None) -> int:
-    # Loaded lazily, here rather than at module import time, so this
-    # never fires on a plain `from app.ingest.cli import backfill_signals`
-    # test import (test_ingest_cli_backfill.py does exactly that) -- an
-    # earlier version of this fix called load_dotenv() at module scope,
-    # which loaded .env's real secrets (SMTP creds, API keys) into the
-    # test process the moment anything imported this module, silently
-    # changing unrelated tests' behavior. Caught via 3 reproducible test
-    # failures in an unrelated file after that change, not by inspection.
-    # Must still run before `..database` is imported anywhere in this
-    # process, since database.py reads DATABASE_URL via os.getenv() at
-    # module import time -- true here since main() is only ever reached
-    # by a genuine standalone run (this file's own module docstring),
-    # where nothing else has imported ..database yet.
+    # load_dotenv() must run before the VERY FIRST import anywhere in
+    # this process that touches ..database (database.py reads
+    # DATABASE_URL via os.getenv() at module import time) -- which is
+    # why every import below, and every import inside backfill_signals()
+    # above, is lazy rather than at module top level. A first attempt at
+    # this fix only made THIS function's own SessionLocal import lazy
+    # and left queue_service/sponsorship_signals/etc as top-level
+    # imports in this file -- those transitively import ..database too,
+    # so they were still binding the (wrong, sqlite-fallback) engine
+    # before this line ever ran. Caught by actually running
+    # backfill-signals for real against the personal instance and
+    # getting a sqlite "no such table" error despite the DATABASE_URL
+    # env var being real and correct.
+    #
+    # This is also why the load stays here, not at module scope: an
+    # import-time load_dotenv() call loaded .env's real secrets (SMTP
+    # creds, API keys) into the test process the moment anything
+    # imported this module (test_ingest_cli_backfill.py does), which
+    # silently changed unrelated autofill background-thread tests'
+    # behavior -- caught via 3 reproducible failures in an unrelated
+    # test file, not by inspection. main() is only ever reached by a
+    # genuine standalone run (see this file's own module docstring), so
+    # gating everything database-adjacent behind it keeps a plain test
+    # import of backfill_signals() inert.
     from dotenv import load_dotenv
 
     load_dotenv()
+
     from ..database import SessionLocal
+    from .cap_exempt import apply_cap_exempt_flags
+    from .sponsors import load_dol_lca_data, load_uscis_h1b_data
+    from .wages import load_oews_wage_data
 
     parser = argparse.ArgumentParser(prog="python -m app.ingest.cli")
     subparsers = parser.add_subparsers(dest="command", required=True)
