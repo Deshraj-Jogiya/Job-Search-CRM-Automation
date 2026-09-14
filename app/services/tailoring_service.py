@@ -666,7 +666,9 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
         "experience": tailored_experience,
         "projects": tailored_projects,
         "education": profile_content.get("education", []),
-        "certifications": profile_content.get("certifications", []),
+        "certifications": resume_rules.select_certifications_for_resume(
+            profile_content.get("certifications", []), config
+        ),
     }
     if dropped_skills:
         log_activity(

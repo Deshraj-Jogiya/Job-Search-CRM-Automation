@@ -149,6 +149,21 @@ work_authorization:
   include_work_auth_line: true
   work_auth_text: "Authorized to work in the U.S. now under F-1 STEM OPT (no employer action required to hire); will require H-1B sponsorship to continue beyond OPT."
 
+certifications:
+  # Added 2026-09-14 at the candidate's explicit direction ("build the
+  # resume that stands out"): a 3+ years candidate listing 5
+  # certifications where 3 are beginner-level online-course completions
+  # reads as padding, not strength. Curates the RESUME only -- nothing
+  # is hidden from the full profile, LinkedIn, or portfolio, which can
+  # and do show the complete real history. select_certifications_for_resume()
+  # never invents or drops a real one outside this cap; a priority key
+  # with nothing matching is just skipped.
+  max_shown: 3
+  priority:
+    - "Guinness World Record"    # genuinely rare, verifiable, memorable -- lead with it
+    - "Tableau"                  # real, recognized credential body, directly relevant to data roles
+    - "Generative AI"            # relevant to the AI/ML specialization
+
 page_fit:
   # Corrected 2026-09-11 when b1.1 was actually built: the PDF
   # renderer's real, already-shipped body font (document_render_service.py's
