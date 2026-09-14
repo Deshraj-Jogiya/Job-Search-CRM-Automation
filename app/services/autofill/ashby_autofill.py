@@ -174,7 +174,17 @@ def _draft_custom_answers(questions: list[dict], profile: dict, jd_text: str, co
         ),
         temperature=0.4,
     )
-    parsed = parse_json_response(raw)
+    try:
+        parsed = parse_json_response(raw)
+    except (json.JSONDecodeError, AttributeError):
+        # A malformed LLM response here previously propagated all the
+        # way up and killed the whole in-progress autofill browser
+        # session -- losing every field already filled -- over content
+        # this function can safely just skip. Same "never guess, leave
+        # for human" posture as _match_option below: these questions
+        # come back unanswered (stay blank on the real form) instead of
+        # the whole session being lost.
+        return {}
     answers = parsed.get("answers", [])
     return {q["field_path"]: answers[i] for i, q in enumerate(questions) if i < len(answers) and answers[i]}
 

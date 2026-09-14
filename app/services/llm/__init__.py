@@ -66,7 +66,23 @@ def parse_json_response(raw_text: str):
         text = "\n".join(lines).strip()
     try:
         return json.loads(text)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        # "Extra data" is the opposite problem from truncation -- a
+        # complete, validly-closed JSON value followed by leftover
+        # content (a stray trailing sentence, or the model emitting a
+        # second fragment after the real one). raw_decode parses just
+        # the first valid value and reports where it ended, so the
+        # trailing content can be dropped instead of failing the whole
+        # response -- found via a real ashby_autofill.py custom-question
+        # drafting call that hit exactly this and took down an entire
+        # in-progress autofill browser session over content after the
+        # actual answer.
+        if e.msg == "Extra data":
+            try:
+                obj, _ = json.JSONDecoder().raw_decode(text)
+                return obj
+            except json.JSONDecodeError:
+                pass
         recovered = _recover_truncated_json(text)
         if recovered is None:
             raise
