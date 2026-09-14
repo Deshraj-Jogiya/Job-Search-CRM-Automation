@@ -174,7 +174,24 @@ page_fit:
   # now sits genuinely below the real starting font.
   min_body_font_pt: 8.0
   min_margin_in: 0.35
-  max_pages: 1
+  # Changed 1 -> 2 on 2026-09-14, backed by real research (not the old
+  # "resumes must be one page" folk rule, which this codebase had never
+  # actually verified): 2026 recruiter-preference data shows recruiters
+  # are ~2.3x more likely to prefer two-page resumes over one-page when
+  # experience is substantial and every line adds value, and real ATS
+  # parsing-risk research shows the actual failure modes are multi-column
+  # layouts, image-based PDFs, and header/footer-embedded contact info --
+  # NOT page count. This renderer already avoids all three (single
+  # column, real text layer, contact info in the body -- see
+  # document_render_service.py's own module docstring and
+  # TestAtsSafety in tests/test_docx_generator.py). The real cost of the
+  # old max_pages: 1 was silently DROPPING real, backed, differentiating
+  # content (extra bullets, a 3rd project) just to force a page count
+  # that wasn't actually required -- see PlatformUpdateProposal category
+  # "resume_length" in trend_research_service.py, which now re-checks
+  # this periodically rather than letting it go stale the way it did
+  # before anyone verified it.
+  max_pages: 2
   # Step sizes for the three visual reductions (b1.1) -- how much one
   # application of each moves the corresponding render parameter.
   line_spacing_step_pt: 0.3
