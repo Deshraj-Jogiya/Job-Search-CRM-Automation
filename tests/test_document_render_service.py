@@ -71,6 +71,20 @@ def test_contact_lines_escapes_html():
     assert "&lt;b&gt;" in lines[0]
 
 
+def test_contact_lines_links_are_clickable():
+    """Header LinkedIn/GitHub/portfolio URLs must be real <a href> links, not
+    just visible text -- a reader opening the PDF should be able to click
+    straight through, same as the per-project GitHub link already does."""
+    lines = _contact_lines({
+        "email": "a@b.com",
+        "linkedin": "https://www.linkedin.com/in/deshrajjogiya",
+        "github": "https://github.com/Deshraj-Jogiya",
+    })
+    links_line = lines[1]
+    assert '<a href="https://www.linkedin.com/in/deshrajjogiya">' in links_line
+    assert '<a href="https://github.com/Deshraj-Jogiya">' in links_line
+
+
 def test_section_header_is_uppercased():
     flow = _section_header("Professional Summary")
     assert len(flow) == 2
