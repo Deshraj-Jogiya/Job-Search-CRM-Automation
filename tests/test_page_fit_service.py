@@ -56,29 +56,34 @@ class TestFitsAlready:
 
 
 class TestOverflowingContentGetsReduced:
+    # Scaled up 2026-09-14 alongside max_pages: 1 -> 2 (see resume_rules.yaml)
+    # -- the old fixture no longer overflows two pages' worth of room, so it
+    # stopped exercising the reduction loop at all. Re-verified empirically
+    # against the real (properly isolated, drop_all-per-test) db fixture,
+    # not guessed.
     def test_large_content_applies_reductions_and_still_produces_a_pdf(self, db):
-        large = _content(num_roles=6, bullets_per_role=4, num_projects=3, summary_repeats=8)
+        large = _content(num_roles=10, bullets_per_role=5, num_projects=3, summary_repeats=12)
         result = page_fit_service.render_resume_pdf_with_fit(db, large)
         assert result["page_fit_ok"] is True
         assert len(result["reductions_applied"]) > 0
         assert result["pdf_bytes"]
 
     def test_cold_start_tries_catalog_order_first(self, db):
-        large = _content(num_roles=6, bullets_per_role=4, num_projects=3, summary_repeats=8)
+        large = _content(num_roles=10, bullets_per_role=5, num_projects=3, summary_repeats=12)
         result = page_fit_service.render_resume_pdf_with_fit(db, large)
         # config's catalog lists tighten_line_spacing first -- with zero
         # learned history anywhere, that's what the very first pick must be.
         assert result["reductions_applied"][0] == "tighten_line_spacing"
 
     def test_each_real_reduction_is_logged(self, db):
-        large = _content(num_roles=6, bullets_per_role=4, num_projects=3, summary_repeats=8)
+        large = _content(num_roles=10, bullets_per_role=5, num_projects=3, summary_repeats=12)
         page_fit_service.render_resume_pdf_with_fit(db, large)
         entries = db.query(AdaptationLog).filter(AdaptationLog.subsystem == "page_fit").all()
         assert len(entries) > 0
         assert all(e.tier == "tier1" and e.status == "applied" for e in entries)
 
     def test_learned_average_persists_across_calls(self, db):
-        large = _content(num_roles=6, bullets_per_role=4, num_projects=3, summary_repeats=8)
+        large = _content(num_roles=10, bullets_per_role=5, num_projects=3, summary_repeats=12)
         page_fit_service.render_resume_pdf_with_fit(db, large)
         row = (
             db.query(AdaptiveParameterValue)
@@ -113,10 +118,25 @@ class TestNeverTouchesProtectedContent:
 
 
 class TestFailsLoudlyWhenExhausted:
+    # Exhaustion is tested against an explicit, deliberately tiny max_pages
+    # override, not by hunting for a fixture large enough to overflow
+    # today's real max_pages default. drop_weakest_bullet_per_role removes
+    # one bullet from EVERY role per application (see _apply_content_reduction),
+    # so its power scales with role count -- doubling max_pages (1 -> 2,
+    # 2026-09-14) meant a fixture sized for the old default no longer
+    # exhausts, and any future default change would silently do the same
+    # again. Overriding max_pages directly tests the exhaustion MECHANISM
+    # itself, decoupled from whatever the current real default happens to be.
+    def _tiny_page_config(self):
+        config = dict(page_fit_service.resume_rules.get_config())
+        config["page_fit"] = dict(config["page_fit"])
+        config["page_fit"]["max_pages"] = 1
+        return config
+
     def test_impossibly_large_content_raises_with_diagnostics(self, db):
         huge = _content(num_roles=20, bullets_per_role=6, num_projects=5, summary_repeats=10)
         with pytest.raises(page_fit_service.PageFitExhaustedError) as exc:
-            page_fit_service.render_resume_pdf_with_fit(db, huge)
+            page_fit_service.render_resume_pdf_with_fit(db, huge, config=self._tiny_page_config())
         err = exc.value
         assert err.lines_over > 0
         assert err.target_lines > 0
@@ -127,7 +147,7 @@ class TestFailsLoudlyWhenExhausted:
     def test_never_shrinks_font_below_the_config_floor(self, db):
         huge = _content(num_roles=20, bullets_per_role=6, num_projects=5, summary_repeats=10)
         with pytest.raises(page_fit_service.PageFitExhaustedError):
-            page_fit_service.render_resume_pdf_with_fit(db, huge)
+            page_fit_service.render_resume_pdf_with_fit(db, huge, config=self._tiny_page_config())
         config = page_fit_service.resume_rules.get_config()
         floor = config["page_fit"]["min_body_font_pt"]
         row = db.query(AdaptiveParameterValue).filter(AdaptiveParameterValue.parameter.like("%shrink_body_font%")).first()
