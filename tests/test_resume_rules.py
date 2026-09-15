@@ -167,6 +167,69 @@ class TestFilterSkills:
         assert "Rust" in dropped[0]
 
 
+# Real gap found live (2026-09-15): max_skill_items_total was validated
+# as real config but never actually enforced anywhere -- a real
+# evidence-backed resume landed at 86 total skills against a config cap
+# of 32. Isolated test config, deliberately NOT the real
+# config/resume_rules.yaml default (whose real cap is 32 and would make
+# a small, readable test fixture awkward) -- same posture as
+# _PROJECT_SELECTION_TEST_CONFIG above.
+_SKILL_CAP_TEST_CONFIG = {
+    "skills": {
+        "max_skill_items_total": 3,
+        "max_skill_lines": 5,
+        "groups": ["languages", "cloud", "tools"],
+    },
+}
+
+
+class TestFilterSkillsEnforcesTotalCap:
+    def test_under_the_cap_keeps_everything(self):
+        skills = {"languages": ["Python", "SQL"]}
+        experience = [{"bullets": ["Wrote Python and SQL."]}]
+        filtered, dropped = filter_skills(skills, experience, [], "", config=_SKILL_CAP_TEST_CONFIG)
+        assert filtered == {"languages": ["Python", "SQL"]}
+        assert dropped == []
+
+    def test_over_the_cap_truncates_by_category_priority_order(self):
+        skills = {
+            "tools": ["Jenkins", "Docker"],
+            "languages": ["Python", "SQL", "Scala"],
+            "cloud": ["AWS"],
+        }
+        experience = [{"bullets": ["Used Python, SQL, Scala, AWS, Jenkins, and Docker daily."]}]
+        filtered, dropped = filter_skills(skills, experience, [], "", config=_SKILL_CAP_TEST_CONFIG)
+        # groups priority is [languages, cloud, tools] -- fills languages
+        # first (in its own existing item order), hits the cap of 3
+        # there, so cloud/tools get cut entirely even though they were
+        # each individually evidence-backed.
+        assert filtered == {"languages": ["Python", "SQL", "Scala"]}
+        assert len(dropped) == 3
+        assert all("cut for length" in d for d in dropped)
+        assert any("AWS" in d for d in dropped)
+        assert any("Jenkins" in d for d in dropped)
+        assert any("Docker" in d for d in dropped)
+
+    def test_cap_truncates_within_a_single_category_too(self):
+        skills = {"languages": ["Python", "SQL", "Scala", "Java"]}
+        experience = [{"bullets": ["Used Python, SQL, Scala, and Java daily."]}]
+        filtered, dropped = filter_skills(skills, experience, [], "", config=_SKILL_CAP_TEST_CONFIG)
+        assert filtered == {"languages": ["Python", "SQL", "Scala"]}
+        assert len(dropped) == 1
+        assert "Java" in dropped[0] and "cut for length" in dropped[0]
+
+    def test_not_found_and_cut_for_length_reasons_stay_distinct(self):
+        skills = {"languages": ["Python", "SQL", "Scala", "Rust"]}
+        # Rust is never mentioned at all -- must be dropped as
+        # "not found", not conflated with the length-cut reason, even
+        # though the cap would also exclude it.
+        experience = [{"bullets": ["Used Python, SQL, and Scala daily."]}]
+        filtered, dropped = filter_skills(skills, experience, [], "", config=_SKILL_CAP_TEST_CONFIG)
+        assert filtered == {"languages": ["Python", "SQL", "Scala"]}
+        assert any("Rust" in d and "not found" in d for d in dropped)
+        assert not any("Rust" in d and "cut for length" in d for d in dropped)
+
+
 class TestHedgeUnverifiedMetrics:
     # Isolated from the real config's verified_metrics allowlist (which
     # holds Deshraj's actual confirmed-real percentages) -- these tests

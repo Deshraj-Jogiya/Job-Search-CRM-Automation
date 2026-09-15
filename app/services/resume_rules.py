@@ -298,7 +298,28 @@ def filter_skills(skills: dict, experience: list[dict], projects: list[dict], su
     """A skill renders only if it also appears in an experience bullet,
     a project bullet, or the summary -- everything else is dropped.
     Returns (filtered_skills, dropped_reasons) -- dropped_reasons is
-    always populated when something is cut, never a silent removal."""
+    always populated when something is cut, never a silent removal.
+
+    Also enforces config's max_skill_items_total (a real global cap on
+    the TOTAL skill count across every category) -- found genuinely
+    unenforced anywhere: validated as real config at load time, but
+    never actually consumed. Real cost: a real evidence-backed resume
+    landed at 86 total skills (config's own cap says 32), since neither
+    renderer capped by total item count -- docx_generator.py only caps
+    by category LINES (max_skill_lines), which still lets one category
+    with 21 items count as a single "line", and the PDF renderer
+    (document_render_service.py, the format autofill actually attaches)
+    enforced no cap at all. Enforced ONCE here rather than per-renderer
+    so both inherit the same real limit for free, matching this
+    function's own existing single-source-of-truth role (see its call
+    site's own comment in tailoring_service.py).
+
+    Truncation is by category priority (config's skills.groups order,
+    the same priority order docx_generator.py already uses to decide
+    which categories matter most) then by each category's own existing
+    item order -- never random, and every cut item is recorded in
+    dropped_reasons with its own distinct reason so a length-based cut
+    is never confused with "not found in any bullet"."""
     config = config or get_config()
     haystack = summary or ""
     for entry in experience:
@@ -307,7 +328,7 @@ def filter_skills(skills: dict, experience: list[dict], projects: list[dict], su
         haystack += " " + " ".join(project.get("bullets", []))
     haystack = haystack.lower()
 
-    filtered: dict[str, list[str]] = {}
+    evidence_backed: dict[str, list[str]] = {}
     dropped: list[str] = []
     for category, items in (skills or {}).items():
         kept = [item for item in items if item.lower() in haystack]
@@ -315,7 +336,25 @@ def filter_skills(skills: dict, experience: list[dict], projects: list[dict], su
             if item not in kept:
                 dropped.append(f"{item} (not found in any bullet or the summary)")
         if kept:
-            filtered[category] = kept
+            evidence_backed[category] = kept
+
+    max_total = config["skills"]["max_skill_items_total"]
+    priority_order = list(config["skills"]["groups"])
+    ordered_categories = priority_order + [c for c in evidence_backed if c not in priority_order]
+
+    filtered: dict[str, list[str]] = {}
+    remaining = max_total
+    for category in ordered_categories:
+        items = evidence_backed.get(category)
+        if not items:
+            continue
+        if remaining <= 0:
+            dropped.extend(f"{item} (cut for length -- over the {max_total}-skill total cap)" for item in items)
+            continue
+        keep, cut = items[:remaining], items[remaining:]
+        filtered[category] = keep
+        remaining -= len(keep)
+        dropped.extend(f"{item} (cut for length -- over the {max_total}-skill total cap)" for item in cut)
 
     return filtered, dropped
 
