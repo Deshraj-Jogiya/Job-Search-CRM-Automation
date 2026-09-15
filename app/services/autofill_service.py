@@ -87,6 +87,35 @@ def _hostname_matches(url: str, expected_hosts: tuple[str, ...]) -> bool:
     return any(host == h or host.endswith("." + h) for h in expected_hosts)
 
 
+def _uses_employer_wrapped_domain(job_url: str, source: str) -> bool:
+    """True when this posting's apply URL is NOT on the ATS's own
+    first-party hosted board (job-boards.greenhouse.io, jobs.ashbyhq.com,
+    jobs.lever.co) -- i.e. the employer (or a third-party job-board
+    product) wraps/embeds the ATS's form on a different domain instead.
+
+    Confirmed live and reproducible (2026-09-15): Samsara's embedded
+    Greenhouse form failed every one of 5 real attempts (0 fields filled
+    each time, even with _resolve_fill_scope_with_retry's ~15s poll
+    window) while every tested first-party-hosted posting (Cognition x2,
+    Hasbro) filled real fields on the first try. The embed iframe's own
+    origin -- not the employer's page -- appears to block/stall requests
+    from this VM's IP before any real content loads; confirming that a
+    plain Greenhouse redirect check shows Samsara/Instacart/Lyft each
+    302-redirect their own job-boards.greenhouse.io URL BACK to their
+    wrapper page, so there's no first-party fallback URL to use instead.
+    A real check against the live catalog the same day found 6 of 32
+    postings (Samsara x2, Lyft x3 via app.careerpuck.com, Instacart x1)
+    match this pattern -- the other 26 go straight to the ATS's own
+    domain and are unaffected. Used to skip the doomed browser-launch
+    attempt up front (see run_autofill) rather than leave the user
+    watching a blank/frozen browser for the ~15-20s poll only to end in
+    zero fields filled anyway."""
+    expected_hosts = _ATS_HOSTNAMES.get(source, ())
+    if not expected_hosts:
+        return False
+    return not _hostname_matches(job_url, expected_hosts)
+
+
 _FILL_SCOPE_POLL_ATTEMPTS = 15
 _FILL_SCOPE_POLL_INTERVAL_MS = 1000
 
@@ -274,6 +303,21 @@ def run_autofill(db: Session, application_id: int) -> None:
             shutil.copy(cover_letter_pdf_path, os.path.join(manual_copy_dir, os.path.basename(cover_letter_pdf_path)))
     except Exception:
         manual_copy_dir = None
+
+    if _uses_employer_wrapped_domain(posting.job_url, posting.source):
+        # Known, reproducible dead end (see _uses_employer_wrapped_domain) --
+        # don't burn a ~15-20s browser launch + poll just to land on zero
+        # fields filled again. Tailored documents are already rendered
+        # and copied above; tell the user plainly instead.
+        log_activity(
+            db,
+            f"'{posting.job_title}' at {posting.company_name_raw} embeds its application form on the "
+            "employer's own site in a way this automation has confirmed it can't reliably reach -- skipping "
+            "the automated browser for this one rather than opening it just to fill nothing."
+            + (f" Your tailored resume/cover letter are ready at {manual_copy_dir} to attach manually." if manual_copy_dir else ""),
+            "INFO",
+        )
+        return
 
     log_activity(
         db,
