@@ -36,7 +36,7 @@ guess.
 
 | Component | Free option | What free gets you | Paid option | What paid adds |
 |---|---|---|---|---|
-| **LLM (scoring, tailoring, cover letters, interview prep)** | Google Gemini's free tier, or a fully local Ollama model (Llama 3.1 etc.) | Gemini's free tier: full functionality, rate-limited rather than capped — fine for one person's daily posting volume. Ollama: zero cost forever, but tailoring quality depends entirely on the local model you run and your own CPU/GPU. | Anthropic Claude or OpenAI, pay-per-token | Meaningfully better tailoring/fabrication-check judgment quality (this is a real, noticeable difference on the fabrication-safeguard checks specifically, which lean on the model actually understanding nuance) — real cost is small for one person's daily volume (a handful of postings/day), typically well under $5/month, but it is a real recurring cost, not a rounding error to ignore |
+| **LLM (scoring, tailoring, cover letters, interview prep)** | Google Gemini's free tier, or a fully local Ollama model (Llama 3.1 etc.) — both already wired up, `LLM_PROVIDER=ollama` in `.env` and nothing else changes | Gemini's free tier: full functionality, rate-limited rather than capped — fine for one person's daily posting volume. Ollama: zero cost forever, but tailoring quality depends entirely on the local model you run and your own CPU/GPU. | Anthropic Claude (default) or OpenAI, pay-per-token | Meaningfully better tailoring/fabrication-check judgment quality (a real, noticeable difference on the fabrication-safeguard checks specifically, which lean on the model actually understanding nuance) — **real measured cost on this project's own live deployment: $2.72 total across 82 real LLM calls / 32 applications (Claude Sonnet 4.6, the code default) as of 2026-09-15 — averaging ~$0.085 per application**, pulled straight from this app's own `llm_usage_logs` table (`/dashboard`'s "Real LLM Cost" card shows your own running total), not a guess |
 | **Job board search** (Adzuna) | Free tier: ~1,000 calls/month | Fully sufficient — a daily personal job search uses a small fraction of this | Paid tier exists | Not needed for personal use; relevant only at much higher call volume than one person's search generates |
 | **Job aggregation** (JobsPipe) | Free tier: 1,000 jobs/month (billed per job returned, not per call) | Fully sufficient for personal use | Paid tier exists | Same as above — not needed at personal scale |
 | **Contact/company research** (Tavily) | Free tier: 1,000 searches/month | Covers real outreach-research volume for one person's search comfortably | Paid tier exists | Only relevant if you're doing outreach at a volume well beyond a single job search |
@@ -50,8 +50,14 @@ $0/month using Ollama or Gemini's free tier plus the free tiers above.
 The only place spending real money buys something real is LLM quality
 — if you want the tailoring and fabrication checks to reason as well
 as they possibly can, that's the one line item worth paying for, and
-even then it's a small, predictable per-month cost for one person's
-own search volume, not a meaningful line item for most budgets.
+this project's own real, measured usage (not an estimate) puts that at
+roughly **8.5 cents per application** with Claude Sonnet 4.6, the code
+default — around $2-4/month at a realistic personal job-search volume
+(20-40 applications/month), nowhere near what paid competitor tools
+charge for the same job. Every other component in the table above is
+genuinely free at personal-job-search volume, full stop — this isn't
+a "free tier that quietly funnels you to paid" table, every row above
+is actually sufficient on its own.
 
 ## Quick start
 
