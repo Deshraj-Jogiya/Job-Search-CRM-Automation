@@ -15,9 +15,11 @@ class ScriptedLLM:
     def __init__(self, script: list[str]):
         self.script = list(script)
         self.calls: list[tuple[str, str]] = []
+        self.stops_seen: list[list[str] | None] = []
 
-    def complete_text(self, system: str, prompt: str) -> str:
+    def complete_text(self, system: str, prompt: str, stop: list[str] | None = None) -> str:
         self.calls.append((system, prompt))
+        self.stops_seen.append(stop)
         return self.script.pop(0)
 
 
@@ -71,6 +73,23 @@ def test_agent_handles_an_unknown_tool_gracefully_then_recovers_with_a_real_one(
     assert "Unknown tool" in result.steps[0].observation
     assert result.steps[1].action == "search_company"
     assert result.final_answer == "Acme Corp is Active."
+
+
+def test_every_call_passes_a_real_stop_sequence_at_observation(db):
+    # Real root cause found live 2026-09-15: without an API-level stop
+    # sequence, the model would keep generating past "Action Input: X"
+    # and hallucinate its own fake "Observation: ..." in the same
+    # completion, then answer from that fabrication. This is the actual
+    # mechanism that prevents it -- verifies the real fix is wired in,
+    # not just present in a docstring.
+    llm = ScriptedLLM([
+        "Thought: check.\nAction: count_applications\nAction Input: applied",
+        "Thought: got it.\nFinal Answer: 1 application(s).",
+    ])
+
+    run_research_agent(db, llm, "How many applications are marked applied?")
+
+    assert llm.stops_seen == [["Observation:"], ["Observation:"]]
 
 
 class TestUngroundedFinalAnswerRejected:
