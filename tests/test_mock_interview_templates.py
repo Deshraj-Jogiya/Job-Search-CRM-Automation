@@ -112,13 +112,14 @@ class FakeTurn:
 
 
 class FakeSession:
-    def __init__(self, status="in_progress"):
+    def __init__(self, status="in_progress", used_tailored_resume=None):
         self.id = 1
         self.round_name = "Recruiter Screen"
         self.tier = "warm_up"
         self.status = status
         self.camera_enabled = False
         self.visual_metrics_json = None
+        self.used_tailored_resume = used_tailored_resume
 
 
 def test_mock_interview_session_renders_transcript_in_progress(db):
@@ -191,6 +192,40 @@ def test_mock_interview_session_shows_debrief_when_completed(db):
     assert "Good pace, no filler words." in html
     assert "Communication clarity: 4/5" in html
     assert "Submit Answer" not in html
+
+
+def test_mock_interview_session_shows_tailored_resume_badge(db):
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application = make_application(db, posting)
+    turns = [FakeTurn("interviewer", "Q"), FakeTurn("candidate", "A")]
+    debrief = {"overall_summary": "ok", "strengths": [], "areas_to_improve": [], "delivery_feedback": "",
+               "scorecard": {}, "comparison": {"has_previous": False}, "accuracy_notes": []}
+
+    html = env.get_template("mock_interview_session.html").render(**_base_context(
+        application=application, posting=posting,
+        session=FakeSession(status="completed", used_tailored_resume=True), turns=turns,
+        debrief=debrief, visual_metrics={}, tier_label="Warm-Up", tier_description="No time pressure.",
+    ))
+
+    assert "Grounded in your tailored resume for this application" in html
+
+
+def test_mock_interview_session_shows_base_profile_warning(db):
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application = make_application(db, posting)
+    turns = [FakeTurn("interviewer", "Q"), FakeTurn("candidate", "A")]
+    debrief = {"overall_summary": "ok", "strengths": [], "areas_to_improve": [], "delivery_feedback": "",
+               "scorecard": {}, "comparison": {"has_previous": False}, "accuracy_notes": []}
+
+    html = env.get_template("mock_interview_session.html").render(**_base_context(
+        application=application, posting=posting,
+        session=FakeSession(status="completed", used_tailored_resume=False), turns=turns,
+        debrief=debrief, visual_metrics={}, tier_label="Warm-Up", tier_description="No time pressure.",
+    ))
+
+    assert "Grounded in your general profile" in html
 
 
 def test_mock_interview_session_shows_decline_warning(db):
