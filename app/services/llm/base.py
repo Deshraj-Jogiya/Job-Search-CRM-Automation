@@ -50,7 +50,22 @@ class LLMProvider(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def complete_text(self, system: str, prompt: str, temperature: float = 0.4, max_tokens: int = None) -> str:
+    def complete_text(
+        self, system: str, prompt: str, temperature: float = 0.4, max_tokens: int = None,
+        stop: list[str] | None = None,
+    ) -> str:
         """Send a prompt expecting free-form text back (cover letters,
-        outreach notes, interview prep narrative)."""
+        outreach notes, interview prep narrative).
+
+        stop: real API-level stop sequences (not a post-hoc string trim)
+        -- generation is physically cut off the moment one is produced.
+        Added 2026-09-15 for research_agent.py's ReAct loop: without this,
+        a model asked to emit "Action Input: X" and then wait for a real
+        Observation would instead keep generating past that point and
+        hallucinate its own plausible-sounding fake Observation and
+        Final Answer in the same completion -- confirmed live (asked a
+        real question, the true count was 1, the model free-ran straight
+        to a self-invented "Observation: 7" and answered from that).
+        Optional and defaulting to None (no stop sequences) everywhere
+        else, so every existing caller is unaffected."""
         raise NotImplementedError

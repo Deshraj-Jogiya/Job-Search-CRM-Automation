@@ -33,7 +33,7 @@ class AnthropicProvider(LLMProvider):
         self.client = Anthropic(api_key=api_key)
         self.model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 
-    def _call(self, system: str, prompt: str, temperature: float, max_tokens: int) -> str:
+    def _call(self, system: str, prompt: str, temperature: float, max_tokens: int, stop: list[str] | None = None) -> str:
         # Streamed unconditionally, not just above some max_tokens
         # threshold -- the Anthropic SDK raises ValueError ("Streaming is
         # required for operations that may take longer than 10 minutes")
@@ -45,12 +45,16 @@ class AnthropicProvider(LLMProvider):
         # answer_target) pushed max_tokens to 24000 and hit this wall.
         # Streaming works identically for small requests too, so there's
         # no reason to keep the non-streaming path around at all.
+        kwargs = {}
+        if stop:
+            kwargs["stop_sequences"] = stop
         with self.client.messages.stream(
             model=self.model,
             max_tokens=max_tokens,
             temperature=temperature,
             system=system,
             messages=[{"role": "user", "content": prompt}],
+            **kwargs,
         ) as stream:
             response = stream.get_final_message()
         if response.usage:
@@ -60,5 +64,10 @@ class AnthropicProvider(LLMProvider):
     def complete_json(self, system: str, prompt: str, temperature: float = 0.3, max_tokens: int = None) -> str:
         return self._call_with_retry(self._call, system, prompt, temperature, max_tokens=max_tokens or 2000)
 
-    def complete_text(self, system: str, prompt: str, temperature: float = 0.4, max_tokens: int = None) -> str:
-        return self._call_with_retry(self._call, system, prompt, temperature, max_tokens=max_tokens or 1200)
+    def complete_text(
+        self, system: str, prompt: str, temperature: float = 0.4, max_tokens: int = None,
+        stop: list[str] | None = None,
+    ) -> str:
+        return self._call_with_retry(
+            self._call, system, prompt, temperature, max_tokens=max_tokens or 1200, stop=stop,
+        )
