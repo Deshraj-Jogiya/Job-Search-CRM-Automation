@@ -84,11 +84,17 @@ class TestD1YearsClaimViolation:
 
 
 class TestD2UnverifiedPercentageViolation:
-    def test_invented_percentage_flags_attention_reason(self, db):
+    def test_invented_percentage_is_a_soft_note_not_a_hard_stop(self, db):
+        # Downgraded deliberately (2026-09-15): C4 already mechanically
+        # hedges this in the saved document regardless (see
+        # test_unverified_percentage_is_hedged_in_saved_document below),
+        # so blocking automation on TOP of that was real manual burden
+        # with no matching safety benefit -- every real tailoring run
+        # tested against this was landing in Needs Review. Still logged,
+        # just never a hard stop by itself.
         application = _application(db, _BASE_PROFILE)
         result = _run_tailor_application(db, application, "Data engineer.", ["Reduced latency by 47%."])
-        assert result.attention_reason is not None
-        assert "47%" in result.attention_reason
+        assert result.attention_reason is None
 
     def test_hedged_percentage_does_not_flag(self, db):
         application = _application(db, _BASE_PROFILE)
@@ -97,11 +103,13 @@ class TestD2UnverifiedPercentageViolation:
 
 
 class TestInverseSelfDeprecatingCheck:
-    def test_self_deprecating_phrase_flags_attention_reason(self, db):
+    def test_self_deprecating_phrase_is_a_soft_note_not_a_hard_stop(self, db):
+        # Downgraded deliberately (2026-09-15): a tone nit, not a
+        # fabrication -- see the percentage downgrade above for the
+        # same reasoning. Still logged, just never a hard stop.
         application = _application(db, _BASE_PROFILE)
         result = _run_tailor_application(db, application, "Data engineer.", ["Only 3 months on this, but shipped it."])
-        assert result.attention_reason is not None
-        assert "only 3 months" in result.attention_reason.lower()
+        assert result.attention_reason is None
 
 
 class TestBulletFabricationCheck:
