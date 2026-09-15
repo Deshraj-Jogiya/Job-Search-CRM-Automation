@@ -18,14 +18,17 @@ class OllamaProvider(LLMProvider):
         self.host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
         self.model = os.getenv("OLLAMA_MODEL", "llama3.1")
 
-    def _call(self, system: str, prompt: str, temperature: float) -> str:
+    def _call(self, system: str, prompt: str, temperature: float, stop: list[str] | None = None) -> str:
+        options = {"temperature": temperature}
+        if stop:
+            options["stop"] = stop
         response = requests.post(
             f"{self.host}/api/chat",
             json={
                 "model": self.model,
                 "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
                 "stream": False,
-                "options": {"temperature": temperature},
+                "options": options,
             },
             timeout=120,
         )
@@ -49,5 +52,8 @@ class OllamaProvider(LLMProvider):
         # other providers, not forwarded (matches complete_text below).
         return self._call_with_retry(self._call, system, prompt, temperature)
 
-    def complete_text(self, system: str, prompt: str, temperature: float = 0.4, max_tokens: int = None) -> str:
-        return self._call_with_retry(self._call, system, prompt, temperature)
+    def complete_text(
+        self, system: str, prompt: str, temperature: float = 0.4, max_tokens: int = None,
+        stop: list[str] | None = None,
+    ) -> str:
+        return self._call_with_retry(self._call, system, prompt, temperature, stop=stop)

@@ -46,7 +46,7 @@ Available tools:
 
 
 class LLMLike(Protocol):
-    def complete_text(self, system: str, prompt: str) -> str: ...
+    def complete_text(self, system: str, prompt: str, stop: list[str] | None = None) -> str: ...
 
 
 @dataclass
@@ -94,7 +94,16 @@ def run_research_agent(db: Session, llm: LLMLike, question: str, max_steps: int 
     used_a_real_tool = False
 
     for _ in range(max_steps):
-        response = llm.complete_text(system=SYSTEM_PROMPT, prompt=transcript)
+        # Real root cause found live 2026-09-15: without a hard stop
+        # sequence, a model asked for "Action Input: X" would keep
+        # generating right past that point and hallucinate its OWN
+        # plausible-sounding "Observation: ..." and Final Answer in the
+        # very same completion -- the code never got a chance to inject
+        # the real one. stop=["Observation:"] physically cuts generation
+        # off there; the used_a_real_tool gate below is a second,
+        # independent safeguard for the separate failure mode of a model
+        # skipping straight to a Final Answer with no Action at all.
+        response = llm.complete_text(system=SYSTEM_PROMPT, prompt=transcript, stop=["Observation:"])
         transcript += response + "\n"
 
         final_match = _FINAL_ANSWER_RE.search(response)

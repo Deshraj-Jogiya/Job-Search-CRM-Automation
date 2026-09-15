@@ -23,12 +23,13 @@ class OpenAICompatibleProvider(LLMProvider):
         self.client = OpenAI(api_key=api_key, base_url=os.getenv("OPENAI_API_BASE") or None)
         self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
-    def _call(self, system: str, prompt: str, temperature: float, max_tokens: int) -> str:
+    def _call(self, system: str, prompt: str, temperature: float, max_tokens: int, stop: list[str] | None = None) -> str:
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}],
             temperature=temperature,
             max_tokens=max_tokens,
+            **({"stop": stop} if stop else {}),
         )
         if response.usage:
             # Real gap found 2026-09-15: this provider (the one README.md
@@ -49,5 +50,10 @@ class OpenAICompatibleProvider(LLMProvider):
     def complete_json(self, system: str, prompt: str, temperature: float = 0.3, max_tokens: int = None) -> str:
         return self._call_with_retry(self._call, system, prompt, temperature, max_tokens=max_tokens or 2000)
 
-    def complete_text(self, system: str, prompt: str, temperature: float = 0.4, max_tokens: int = None) -> str:
-        return self._call_with_retry(self._call, system, prompt, temperature, max_tokens=max_tokens or 1200)
+    def complete_text(
+        self, system: str, prompt: str, temperature: float = 0.4, max_tokens: int = None,
+        stop: list[str] | None = None,
+    ) -> str:
+        return self._call_with_retry(
+            self._call, system, prompt, temperature, max_tokens=max_tokens or 1200, stop=stop,
+        )
