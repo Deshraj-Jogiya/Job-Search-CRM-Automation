@@ -60,6 +60,18 @@
         <span class="card-value">{{ total_applications }}</span>
     </div>
     <div class="card">
+        <span class="card-label">Applied</span>
+        <span class="card-value">{{ progress.applied }}</span>
+    </div>
+    <div class="card">
+        <span class="card-label">Interviewing</span>
+        <span class="card-value">{{ progress.interviewed }}{% if progress.interview_rate_of_applied is not none %} <span class="muted-note">({{ progress.interview_rate_of_applied }}%)</span>{% endif %}</span>
+    </div>
+    <div class="card">
+        <span class="card-label">Offers</span>
+        <span class="card-value">{{ progress.offers }}</span>
+    </div>
+    <div class="card">
         <span class="card-label">Profile Variants</span>
         <span class="card-value">{{ profile_variants|length }}</span>
     </div>
@@ -68,6 +80,12 @@
         <span class="card-value">${{ "%.2f"|format(llm_usage.all_time.estimated_cost_usd) }}</span>
     </div>
 </section>
+{% if progress.applied %}
+<p class="muted-note">
+    Full breakdown (reply rates, week-over-week trend, resume-version comparison) on the
+    <a href="/metrics">Metrics page</a>.
+</p>
+{% endif %}
 
 <section class="settings-panel">
     <h2>Real LLM Usage</h2>
