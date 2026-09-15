@@ -1,6 +1,7 @@
 from datetime import date
 
 from app.services.resume_rules import (
+    check_ai_cliche_language,
     check_bare_percentage,
     check_years_claim,
     classify_role,
@@ -8,6 +9,7 @@ from app.services.resume_rules import (
     filter_skills,
     hedge_unverified_metrics,
     parse_date_range,
+    rewrite_ai_cliche_language,
     select_certifications_for_resume,
     select_projects_for_variant,
     total_experience_months,
@@ -268,6 +270,44 @@ class TestCheckBarePercentage:
 
     def test_negative_percentage_includes_the_sign_in_the_claim(self):
         assert check_bare_percentage("Reduced drift by -35%.") == ["-35%"]
+
+
+class TestAiClicheLanguage:
+    def test_leveraged_is_rewritten_to_used_preserving_capitalization(self):
+        assert rewrite_ai_cliche_language("Leveraged Python to automate reporting.") == \
+            "Used Python to automate reporting."
+
+    def test_mid_sentence_lowercase_replacement(self):
+        result = rewrite_ai_cliche_language("Worked with analysts, leveraging SQL daily.")
+        assert result == "Worked with analysts, using SQL daily."
+
+    def test_spearheaded_utilized_seamless_synergy_all_rewritten(self):
+        result = rewrite_ai_cliche_language(
+            "Spearheaded a rollout, utilized Airflow, and enabled seamless synergy across teams."
+        )
+        assert "Spearheaded" not in result
+        assert "utilized" not in result
+        assert "seamless" not in result
+        assert "synergy" not in result
+        assert result == "Led a rollout, used Airflow, and enabled smooth collaboration across teams."
+
+    def test_unrelated_bullet_untouched(self):
+        text = "Built a Kubernetes pipeline that processed 500GB/day across 12 sources."
+        assert rewrite_ai_cliche_language(text) == text
+
+    def test_technical_orchestrated_left_alone(self):
+        # Deliberately NOT in the replacement list -- "orchestrated" can
+        # be a genuine, accurate technical term (workflow orchestration),
+        # unlike "leveraged"/"utilized" which are always filler.
+        text = "Orchestrated Airflow DAGs across three environments."
+        assert rewrite_ai_cliche_language(text) == text
+
+    def test_check_reports_lowercased_hits(self):
+        hits = check_ai_cliche_language("Leveraged and Utilized two tools seamlessly.")
+        assert hits == ["leveraged", "utilized", "seamlessly"]
+
+    def test_check_empty_when_no_cliches(self):
+        assert check_ai_cliche_language("Built a real-time ingestion pipeline.") == []
 
 
 _PROJECT_SELECTION_TEST_CONFIG = {

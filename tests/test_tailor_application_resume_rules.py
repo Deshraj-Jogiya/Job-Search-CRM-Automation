@@ -106,6 +106,58 @@ class TestMetricHedgingWired:
         assert application_row.attention_reason is None
 
 
+class TestAiClicheLanguageWired:
+    def test_cliche_wording_rewritten_in_saved_resume_and_not_flagged(self, db):
+        profile = {
+            "name": "Test", "summary": "d", "skills": {}, "projects": [],
+            "experience": [{"role": "DE", "company": "X", "date": "Jan 2024 - Present", "bullets": []}],
+            "education": [], "certifications": [],
+        }
+        application = _application(db, profile)
+        experience = [{
+            "role": "DE", "company": "X", "date": "Jan 2024 - Present",
+            "bullets": ["Leveraged Airflow to seamlessly automate reporting."],
+        }]
+        saved = _run_tailor_application(db, application, experience, [])
+        bullet = saved["experience"][0]["bullets"][0]
+        assert "Leveraged" not in bullet
+        assert "seamlessly" not in bullet
+        assert bullet == "Used Airflow to smoothly automate reporting."
+
+        application_row = db.query(JobApplication).filter(JobApplication.id == application.id).first()
+        assert application_row.attention_reason is None
+
+    def test_cover_letter_also_gets_cliche_cleanup(self, db):
+        profile = {
+            "name": "Test", "summary": "d", "skills": {}, "experience": [], "projects": [],
+            "education": [], "certifications": [],
+        }
+        application = _application(db, profile)
+        with (
+            patch(
+                "app.services.tailoring_service.run_multi_pass_tailoring",
+                return_value=([], [], 90, [], []),
+            ),
+            patch(
+                "app.services.tailoring_service._tailor_summary_skills",
+                return_value={"summary": "d", "skills": {}},
+            ),
+            patch(
+                "app.services.tailoring_service.generate_cover_letter",
+                return_value="I utilized my background to deliver results.",
+            ),
+            patch("app.services.tailoring_service.score_cover_letter", return_value=80),
+        ):
+            tailoring_service.tailor_application(db, application.id)
+
+        doc = (
+            db.query(TailoredDocument)
+            .filter(TailoredDocument.application_id == application.id, TailoredDocument.document_type == "cover_letter")
+            .first()
+        )
+        assert doc.content == "I used my background to deliver results."
+
+
 def _config_with_test_project_slugs():
     """The real config, deep-copied, with ONLY projects_by_variant's
     data_engineering slugs swapped for this test's short fixture names

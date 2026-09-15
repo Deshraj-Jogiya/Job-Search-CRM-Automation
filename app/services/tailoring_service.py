@@ -795,22 +795,32 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
     unverified_percentage_violations = sorted(
         {claim for bullet in raw_bullets for claim in resume_rules.check_unverified_bare_percentage(bullet, config)}
     )
+    cliche_hits = sorted(
+        {hit for bullet in raw_bullets for hit in resume_rules.check_ai_cliche_language(bullet)}
+    )
     self_deprecating_hits = sorted(
         {hit for bullet in raw_bullets for hit in resume_rules.check_self_deprecating_content(bullet)}
     )
 
-    # C3/C4: filter skills to only what's backed by a real bullet/summary,
-    # and hedge any not-yet-verified %/multiplier claim -- applied to the
-    # SAVED content so every renderer (PDF, DOCX) gets it for free
-    # without needing its own copy of these rules.
+    # C3/C4/C9: filter skills to only what's backed by a real bullet/summary,
+    # hedge any not-yet-verified %/multiplier claim, and swap out generic
+    # AI-cliche wording -- applied to the SAVED content so every renderer
+    # (PDF, DOCX) gets it for free without needing its own copy of these
+    # rules.
     raw_skills = extras.get("skills", profile_content.get("skills"))
     filtered_skills, dropped_skills = resume_rules.filter_skills(
         raw_skills, tailored_experience, tailored_projects, final_summary, config
     )
     for entry in tailored_experience:
-        entry["bullets"] = [resume_rules.hedge_unverified_metrics(b, config) for b in entry.get("bullets", [])]
+        entry["bullets"] = [
+            resume_rules.rewrite_ai_cliche_language(resume_rules.hedge_unverified_metrics(b, config))
+            for b in entry.get("bullets", [])
+        ]
     for project in tailored_projects:
-        project["bullets"] = [resume_rules.hedge_unverified_metrics(b, config) for b in project.get("bullets", [])]
+        project["bullets"] = [
+            resume_rules.rewrite_ai_cliche_language(resume_rules.hedge_unverified_metrics(b, config))
+            for b in project.get("bullets", [])
+        ]
 
     resume_doc = {
         "name": profile_content.get("name"),
@@ -832,6 +842,13 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
             f"'{posting.job_title}' at {posting.company_name_raw}: {dropped_skills}",
             "INFO",
         )
+    if cliche_hits:
+        log_activity(
+            db,
+            f"Rewrote {len(cliche_hits)} generic AI-cliche word(s) to plain language on '{posting.job_title}' "
+            f"at {posting.company_name_raw} automatically: {cliche_hits}",
+            "INFO",
+        )
 
     _upsert_document(db, application.id, "resume", json.dumps(resume_doc, indent=2), ats_score=final_score)
 
@@ -842,6 +859,11 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
         cl_score = score_cover_letter(cl_text, jd_text)
     except Exception as e:
         raise MatchingServiceError(f"Cover letter generation failed: {e}") from e
+
+    # C9: same cliche-language cleanup as the resume bullets above,
+    # applied after scoring (a handful of swapped-out filler words don't
+    # need a second LLM call to re-verify compellingness).
+    cl_text = resume_rules.rewrite_ai_cliche_language(cl_text)
 
     _upsert_document(db, application.id, "cover_letter", cl_text, ats_score=cl_score)
 
