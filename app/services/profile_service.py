@@ -14,7 +14,7 @@ import os
 import json
 import requests
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from ..models import ProfileVariant, ProfileVersion
 from .llm import get_llm_provider, parse_json_response
@@ -224,6 +224,54 @@ def get_active_version(db: Session, variant_id: int) -> ProfileVersion | None:
         .filter(ProfileVersion.variant_id == variant_id, ProfileVersion.is_active == True)  # noqa: E712
         .first()
     )
+
+
+def get_variant_display_data(db: Session, variant_id: int) -> dict:
+    """Everything the Profile page needs for one variant -- moved out of
+    the router (2026-09-15) both to be testable and to fix a real,
+    verified inefficiency: this used to fetch every version's full
+    content_json (a complete resume's worth of JSON per row -- 64 rows
+    on the real live profile) just to pick the one active version and
+    any pending ones out of it in Python. The version-history panel
+    genuinely needs every version, but only its lightweight metadata
+    (source/date/active flag/summary), never the full content -- so
+    that's the only query that scans every row now; active/pending are
+    fetched directly by the filter that actually identifies them, each
+    getting their real content_json."""
+    versions = (
+        db.query(ProfileVersion)
+        .filter(ProfileVersion.variant_id == variant_id)
+        .order_by(ProfileVersion.created_at.desc())
+        .options(load_only(
+            ProfileVersion.id, ProfileVersion.source, ProfileVersion.created_at,
+            ProfileVersion.is_active, ProfileVersion.change_summary,
+        ))
+        .all()
+    )
+    active_version = get_active_version(db, variant_id)
+    pending_versions = (
+        db.query(ProfileVersion)
+        .filter(
+            ProfileVersion.variant_id == variant_id,
+            ProfileVersion.is_active == False,  # noqa: E712
+            ProfileVersion.source == "linkedin_diff",
+        )
+        .order_by(ProfileVersion.created_at.desc())
+        .all()
+    )
+    active_content = json.loads(active_version.content_json) if active_version else {}
+    # Pending LinkedIn-diff versions already require an explicit human
+    # approve/reject click -- this doesn't block that, it just makes
+    # sure the human reviewing actually sees a shrink risk right there
+    # instead of having to spot it inside a raw JSON diff.
+    for pending in pending_versions:
+        pending.regression_warnings = detect_profile_regressions(active_content, json.loads(pending.content_json))
+    return {
+        "versions": versions,
+        "active_version": active_version,
+        "pending_versions": pending_versions,
+        "active_content": active_content,
+    }
 
 
 def create_variant(db: Session, name: str, is_default: bool = False) -> ProfileVariant:
