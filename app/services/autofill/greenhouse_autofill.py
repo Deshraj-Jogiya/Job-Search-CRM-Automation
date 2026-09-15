@@ -39,12 +39,28 @@ rather than guess when nothing rendered matches the target value.
 
 import json
 
-from playwright.sync_api import Page
+from playwright.sync_api import Frame, Page
 
 from ..llm import get_llm_provider, parse_json_response
 from .common_answers import is_referral_source_question, mechanical_common_answer, referral_source_answer
 
 _RECONCILE_PASSES = 4
+
+
+def _owning_page(scope: Page | Frame) -> Page:
+    """scope is a real top-level Page for a plain Greenhouse-hosted
+    board (job-boards.greenhouse.io/<company>), but a Frame when the
+    real form is embedded via iframe on the employer's own branded
+    careers page (Greenhouse's own "embed" widget -- confirmed live on
+    a real Samsara posting, autofill_service.py switches scope to that
+    iframe once it detects one). .locator()/.evaluate()/.get_by_role()
+    are common to both and correctly scoped either way, but a file-
+    chooser dialog and keyboard input are real PAGE-level browser APIs
+    with no per-frame equivalent -- Frame has no .expect_file_chooser()
+    or .keyboard at all. Frame.page always returns its real owning
+    Page; a plain Page has no such attribute, so this falls back to
+    scope itself unchanged in the non-embedded case."""
+    return getattr(scope, "page", scope)
 
 # Greenhouse's Voluntary Self-Identification / EEO block sits OUTSIDE
 # the question_<n> custom-question sweep, on its own stable ids --
@@ -104,12 +120,12 @@ def _eeo_field_values(page: Page, profile: dict) -> dict:
     return values
 
 
-def _upload_via_file_chooser(page: Page, attach_button_selector: str, file_path: str) -> bool:
+def _upload_via_file_chooser(page: Page | Frame, attach_button_selector: str, file_path: str) -> bool:
     attach_button = page.locator(attach_button_selector)
     if attach_button.count() == 0:
         return False
     try:
-        with page.expect_file_chooser(timeout=5000) as fc_info:
+        with _owning_page(page).expect_file_chooser(timeout=5000) as fc_info:
             attach_button.click()
         fc_info.value.set_files(file_path)
         return True
@@ -287,7 +303,7 @@ def _fill_react_select_field(page: Page, field_id: str, value: str) -> bool:
 
     if not match:
         try:
-            page.keyboard.press("Escape")
+            _owning_page(page).keyboard.press("Escape")
         except Exception:
             pass
         return False

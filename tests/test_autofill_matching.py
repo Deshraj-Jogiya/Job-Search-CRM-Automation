@@ -10,6 +10,7 @@ a close-but-wrong option, and that policy is exactly what's under test.
 
 from unittest.mock import MagicMock, patch
 
+from app.services import autofill_service
 from app.services.autofill import ashby_autofill, greenhouse_autofill, lever_autofill
 
 
@@ -143,3 +144,91 @@ class TestDraftCustomAnswersDegradesGracefully:
         with patch("app.services.autofill.ashby_autofill.get_llm_provider", return_value=self._fake_llm(clean)):
             result = ashby_autofill._draft_custom_answers(self._questions, {}, "jd text", "Acme")
         assert result == {"q1": "Because I love the mission."}
+
+
+class FakeFrame:
+    """Stands in for a Playwright Frame -- just enough surface
+    (.url, .page) to test _resolve_fill_scope/_owning_page without a
+    real browser."""
+
+    def __init__(self, url, owning_page=None):
+        self.url = url
+        if owning_page is not None:
+            self.page = owning_page
+
+
+class FakeTopPage:
+    """Stands in for a Playwright Page -- .frames includes a synthetic
+    main_frame entry (matching real Playwright, where page.frames[0] is
+    always the main frame) plus whatever nested frames the test needs."""
+
+    def __init__(self, url, nested_frames=()):
+        self.url = url
+        self.main_frame = FakeFrame(url)
+        self.frames = [self.main_frame, *nested_frames]
+
+
+class TestResolveFillScope:
+    """Real, live gap: an employer embedding an ATS's form via iframe
+    on their own branded careers page (confirmed live -- Samsara embeds
+    a Greenhouse form at samsara.com/company/careers/..., not
+    job-boards.greenhouse.io) left every .locator() call in the
+    autofill modules searching the top-level page for fields that only
+    existed inside the iframe -- a silent zero-fields-filled result,
+    no exception. Matched by the ATS's own real hostname so this
+    generalizes to Lever/Ashby too, not just the one embed pattern
+    already confirmed live."""
+
+    def test_already_on_the_ats_own_hosted_board_returns_the_page_unchanged(self):
+        page = FakeTopPage("https://job-boards.greenhouse.io/acme/jobs/123")
+        assert autofill_service._resolve_fill_scope(page, "greenhouse") is page
+
+    def test_subdomain_of_the_ats_own_host_also_counts_as_the_page(self):
+        page = FakeTopPage("https://boards.greenhouse.io/acme/jobs/123")
+        assert autofill_service._resolve_fill_scope(page, "greenhouse") is page
+
+    def test_embedded_iframe_on_the_employers_own_domain_is_detected(self):
+        embed_frame = FakeFrame("https://job-boards.greenhouse.io/embed/job_app?for=acme&token=xyz")
+        page = FakeTopPage("https://www.acme.com/careers/123?gh_jid=123", nested_frames=[embed_frame])
+        assert autofill_service._resolve_fill_scope(page, "greenhouse") is embed_frame
+
+    def test_lever_embed_is_also_detected_not_just_greenhouse(self):
+        # The mechanism is generic (hostname-matched), not hardcoded to
+        # the one embed pattern already confirmed live for Greenhouse.
+        embed_frame = FakeFrame("https://jobs.lever.co/acme/embed/abc123")
+        page = FakeTopPage("https://www.acme.com/careers/123", nested_frames=[embed_frame])
+        assert autofill_service._resolve_fill_scope(page, "lever") is embed_frame
+
+    def test_no_matching_frame_falls_back_to_the_page(self):
+        unrelated_frame = FakeFrame("https://analytics.example.com/tracker.html")
+        page = FakeTopPage("https://www.acme.com/careers/123", nested_frames=[unrelated_frame])
+        assert autofill_service._resolve_fill_scope(page, "greenhouse") is page
+
+    def test_unknown_source_falls_back_to_the_page(self):
+        page = FakeTopPage("https://www.acme.com/careers/123")
+        assert autofill_service._resolve_fill_scope(page, "some_future_source") is page
+
+
+class TestOwningPageHelper:
+    """Each autofill module's own _owning_page: a Frame's real file-
+    chooser/keyboard calls have no per-frame equivalent in Playwright,
+    so these must resolve back to the frame's real owning Page."""
+
+    def test_greenhouse_owning_page_passes_through_a_real_page(self):
+        page = FakeTopPage("https://job-boards.greenhouse.io/acme/jobs/1")
+        assert greenhouse_autofill._owning_page(page) is page
+
+    def test_greenhouse_owning_page_resolves_a_frame_to_its_page(self):
+        page = FakeTopPage("https://www.acme.com/careers")
+        frame = FakeFrame("https://job-boards.greenhouse.io/embed/job_app", owning_page=page)
+        assert greenhouse_autofill._owning_page(frame) is page
+
+    def test_lever_owning_page_resolves_a_frame_to_its_page(self):
+        page = FakeTopPage("https://www.acme.com/careers")
+        frame = FakeFrame("https://jobs.lever.co/acme/embed/1", owning_page=page)
+        assert lever_autofill._owning_page(frame) is page
+
+    def test_ashby_owning_page_resolves_a_frame_to_its_page(self):
+        page = FakeTopPage("https://www.acme.com/careers")
+        frame = FakeFrame("https://jobs.ashbyhq.com/acme/embed/1", owning_page=page)
+        assert ashby_autofill._owning_page(frame) is page

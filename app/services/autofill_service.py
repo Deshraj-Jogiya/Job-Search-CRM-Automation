@@ -44,6 +44,53 @@ _AUTOFILL_FUNCTIONS = {
 }
 _SUPPORTED_SOURCES = set(_AUTOFILL_FUNCTIONS)
 
+# Real, confirmed hostnames each ATS serves its own hosted board from --
+# used to find the real form regardless of whether it's on that hosted
+# board directly, or embedded via iframe on an employer's own branded
+# careers page (confirmed live: Samsara embeds a Greenhouse form at
+# samsara.com/company/careers/..., not job-boards.greenhouse.io, with
+# the real fields inside a nested `job-boards.greenhouse.io/embed/...`
+# frame that only appears after the "Apply" click). Universal across
+# all three ATSs this app fills, not a Greenhouse-only fix -- the same
+# embedding pattern is realistic for any of them, even though only the
+# Greenhouse case has been seen live so far. See _resolve_fill_scope.
+_ATS_HOSTNAMES = {
+    "greenhouse": ("job-boards.greenhouse.io", "boards.greenhouse.io"),
+    "lever": ("jobs.lever.co",),
+    "ashby": ("jobs.ashbyhq.com",),
+}
+
+
+def _hostname_matches(url: str, expected_hosts: tuple[str, ...]) -> bool:
+    host = (urlparse(url).hostname or "").lower()
+    return any(host == h or host.endswith("." + h) for h in expected_hosts)
+
+
+def _resolve_fill_scope(page, source: str):
+    """Returns the real Playwright scope that actually contains the
+    ATS's own form fields -- the top-level Page in the common case, or
+    a nested Frame when the employer embeds the same ATS's form on
+    their own domain instead of sending candidates to the ATS's own
+    hosted board. Matched by the ATS's own real hostname (not one
+    hardcoded embed URL), so this generalizes to Lever/Ashby too, not
+    just the one embed pattern already confirmed live. A Frame supports
+    the same .locator()/.evaluate()/.get_by_role() calls every autofill
+    module already uses; each module's own _owning_page() helper covers
+    the few real PAGE-level APIs (file chooser, keyboard) a Frame has
+    no equivalent for.
+
+    Falls back to the top-level page, unchanged from before this
+    existed, whenever no matching frame is found -- this only ever
+    narrows the search to a more specific real scope, never removes
+    the page as a valid target."""
+    expected_hosts = _ATS_HOSTNAMES.get(source, ())
+    if not expected_hosts or _hostname_matches(page.url, expected_hosts):
+        return page
+    for frame in page.frames:
+        if frame != page.main_frame and _hostname_matches(frame.url, expected_hosts):
+            return frame
+    return page
+
 # Submission auto-detection. Deliberately mechanical (no LLM) and
 # deliberately conservative -- a false positive here would mark a real
 # application as "Applied" when it wasn't, which is worse than missing a
@@ -202,14 +249,36 @@ def run_autofill(db: Session, application_id: int) -> None:
             # Both hosted boards often show the JD first with an "Apply"
             # button that reveals/navigates to the real form -- click it
             # if present, harmless no-op if the form is already visible.
+            # Also the trigger for an embedded ATS iframe to appear (see
+            # _resolve_fill_scope) -- confirmed live, it doesn't exist
+            # until after this click.
             try:
                 page.get_by_role("button", name="Apply", exact=False).first.click(timeout=3000)
+                page.wait_for_timeout(2000)
             except Exception:
                 pass
 
+        # The real form lives on the top-level page in the common case,
+        # but inside a nested frame when the employer embeds the ATS's
+        # form on their own domain -- see _resolve_fill_scope's own
+        # docstring. A silent zero-fields-filled result (no exception,
+        # just nothing matched) was the real, live symptom this fixes:
+        # every .locator() call in the autofill modules was searching
+        # the top-level page for fields that only existed inside the
+        # iframe.
+        fill_scope = _resolve_fill_scope(page, posting.source)
+        if fill_scope is not page:
+            log_activity(
+                db,
+                f"Detected '{posting.job_title}' at {posting.company_name_raw}'s application form embedded "
+                "in an iframe on the employer's own page rather than the ATS's own hosted board -- filling "
+                "inside that frame.",
+                "INFO",
+            )
+
         autofill_fn = _AUTOFILL_FUNCTIONS[posting.source]
         result = autofill_fn(
-            page,
+            fill_scope,
             profile_content,
             resume_pdf_path,
             cover_letter_pdf_path,
