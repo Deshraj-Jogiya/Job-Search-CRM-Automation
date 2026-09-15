@@ -250,6 +250,74 @@ def _refine_experience_and_projects_pass(experience: list, projects: list, jd_te
     }
 
 
+_MAX_FABRICATION_CORRECTION_PASSES = 2
+
+
+def _correct_fabricated_content_pass(
+    experience: list, projects: list, jd_text: str, unsupported_terms: list, bullet_findings: list,
+) -> dict:
+    """Targeted correction, not another full re-tailor -- given the
+    EXACT findings the mechanical (_find_unsupported_keywords) and LLM
+    (check_bullet_fabrication) fabrication checks just produced,
+    rewrites only the specific bullets responsible. Distinct from
+    _refine_experience_and_projects_pass above, which refines to ADD
+    genuine coverage for a missing keyword -- this refines to REMOVE an
+    overreach the previous pass already made.
+
+    Built because the fabrication checks, on their own, only ever
+    stopped and asked a human to decide -- every real tailoring run
+    this was tested against landed in manual review, which defeats the
+    actual point of automating this in the first place (the user's own
+    words: "makes things harder than manual tailoring"). The checks
+    themselves stay exactly as strict; what changes is that a real
+    finding now gets one targeted attempt at an honest fix before ever
+    reaching a human, not instead of ever reaching one -- see
+    tailor_application's own correction loop, which still falls
+    through to the existing Needs-Review flag if this can't produce a
+    clean result within a bounded number of attempts."""
+    findings_text = ""
+    if unsupported_terms:
+        findings_text += (
+            "These specific claims are NOT backed by anything in the candidate's real profile -- remove or "
+            f"replace them: {json.dumps(unsupported_terms)}\n"
+        )
+    if bullet_findings:
+        findings_text += (
+            "A separate fact-check judged these specific bullets to contain an invented claim -- fix exactly "
+            f"what's described: {json.dumps(bullet_findings)}\n"
+        )
+    llm = get_llm_provider()
+    raw = llm.complete_json(
+        system=(
+            "You are an expert resume editor correcting a previous draft that overreached. You return only "
+            "raw JSON."
+        ),
+        prompt=(
+            "A mechanical fact-check just found real problems in your previous draft of this candidate's "
+            "tailored resume:\n\n"
+            f"{findings_text}\n"
+            "Rewrite ONLY the specific bullets responsible for these findings -- remove the unsupported claim "
+            "or rework the bullet around what the candidate's real experience genuinely shows. If there's no "
+            "honest replacement, simply drop that detail rather than inventing a new one to fill the gap. "
+            "Leaving a bullet shorter and honest is always correct over adding anything unverified. Every "
+            "bullet NOT implicated by a finding above must stay exactly as it was, verbatim -- same roles, "
+            "same order, same dates/names.\n\n"
+            f"Current experience:\n{json.dumps(experience, indent=2)}\n\n"
+            f"Current projects:\n{json.dumps(projects, indent=2)}\n\n"
+            f"Job description (context only, never a source of facts about the candidate):\n{jd_text[:2000]}\n\n"
+            'Respond with EXACTLY this JSON shape: {"experience": [...], "projects": [...]}\n'
+            "Do not wrap the output in markdown code fences."
+        ),
+        temperature=0.3,
+        max_tokens=4000,
+    )
+    result = parse_json_response(raw)
+    return {
+        "experience": result.get("experience", experience),
+        "projects": result.get("projects", projects)[:_MAX_TAILORED_PROJECTS],
+    }
+
+
 def run_multi_pass_tailoring(experience: list, projects: list, jd_text: str) -> tuple[list, list, int, list, list]:
     """The real tailor -> verify -> refine loop. Returns
     (final_experience, final_projects, final_score,
@@ -652,6 +720,64 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
         except Exception:
             log_exception(f"Bullet fabrication check failed for application {application_id} -- skipped, not blocking tailoring.")
 
+    # Self-correction, not just detection: a real finding here used to
+    # go straight to a human every time -- in practice that meant EVERY
+    # tailoring run needed manual review, which defeats automating this
+    # at all. Bounded, targeted retry: feed the exact findings back for
+    # a corrective rewrite, then re-verify with the SAME real checks
+    # (never trusted blindly) before either accepting the correction or
+    # trying again. Still falls through to the existing Needs-Review
+    # flag below if it can't produce something clean within the bound --
+    # this narrows how OFTEN a human is needed, it never weakens what
+    # counts as a real violation.
+    correction_passes = 0
+    while (unsupported or bullet_fabrications) and not structural_violations and correction_passes < _MAX_FABRICATION_CORRECTION_PASSES:
+        try:
+            corrected = _correct_fabricated_content_pass(
+                tailored_experience, tailored_projects, jd_text, unsupported, bullet_fabrications,
+            )
+        except Exception:
+            log_exception(f"Fabrication correction pass failed for application {application_id} -- falling through to manual review.")
+            break
+
+        candidate_experience = corrected["experience"]
+        candidate_projects_corrected = corrected["projects"]
+        candidate_structural_violations = _verify_structural_fidelity(
+            profile_content.get("experience", []), candidate_experience
+        )
+        if candidate_structural_violations:
+            # The correction pass itself broke something more fundamental
+            # (changed a company/role/date) -- don't keep digging, let
+            # the existing structural-violation flag below catch it.
+            structural_violations = candidate_structural_violations
+            break
+
+        verification = _verify_ats_score(candidate_experience, candidate_projects_corrected, jd_text)
+        final_score = int(verification.get("score", final_score))
+        remaining_missing = verification.get("missing_keywords", [])
+        resolved_keywords = [kw for kw in initial_missing if kw not in remaining_missing]
+        unsupported = _find_unsupported_keywords(profile_content, resolved_keywords)
+
+        bullet_fabrications = []
+        try:
+            bullet_fabrications = check_bullet_fabrication(
+                profile_content.get("experience", []), candidate_experience,
+                candidate_projects, candidate_projects_corrected, jd_text,
+            )
+        except Exception:
+            log_exception(f"Bullet fabrication re-check failed for application {application_id} -- skipped, not blocking tailoring.")
+
+        tailored_experience, tailored_projects = candidate_experience, candidate_projects_corrected
+        correction_passes += 1
+
+    if correction_passes and not unsupported and not bullet_fabrications and not structural_violations:
+        log_activity(
+            db,
+            f"Corrected {correction_passes} real fabrication finding(s) on '{posting.job_title}' at "
+            f"{posting.company_name_raw} automatically -- no manual review needed.",
+            "INFO",
+        )
+
     final_summary = extras.get("summary", profile_content.get("summary"))
 
     # D1/D2/inverse (Part C1/C4's prose-level extension) -- detected
@@ -733,11 +859,21 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
     application.profile_variant_id = variant_id
     application.status = "Tailored"
 
-    any_violation = (
-        all_unsupported or structural_violations or years_claim_violations
-        or unverified_percentage_violations or self_deprecating_hits or bullet_fabrications
-    )
-    if any_violation:
+    # Hard stops vs. soft notes -- a real, deliberate split, not every
+    # check treated the same. all_unsupported/structural_violations/
+    # years_claim_violations/bullet_fabrications are genuine honesty
+    # problems (the resume claims something untrue) and, for the two
+    # that survive the correction loop above, a human should still see
+    # them. unverified_percentage_violations and self_deprecating_hits
+    # are NOT the same category of risk: C4 (hedge_unverified_metrics,
+    # below) already mechanically hedges every unverified percentage in
+    # the actual saved/rendered document regardless of this flag, and
+    # volunteered self-deprecating phrasing is a tone nit, not a
+    # fabrication -- blocking automation on either was real,
+    # unnecessary manual burden with no matching safety benefit. Both
+    # still get logged, just never as a hard stop.
+    hard_stop_violations = all_unsupported or structural_violations or years_claim_violations or bullet_fabrications
+    if hard_stop_violations:
         reason_parts = []
         if all_unsupported:
             reason_parts.append(
@@ -753,15 +889,6 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
             reason_parts.append(
                 f"The summary claims {', '.join(years_claim_violations)}, which exceeds your real "
                 f"computed experience of {total_months // 12} year(s) ({total_months} months)."
-            )
-        if unverified_percentage_violations:
-            reason_parts.append(
-                f"Unverified metric claim(s) in a bullet: {', '.join(unverified_percentage_violations)} -- "
-                "confirm these are real or add them to verified_metrics in config/resume_rules.yaml."
-            )
-        if self_deprecating_hits:
-            reason_parts.append(
-                f"Volunteered self-deprecating phrasing not asked for by the JD: {', '.join(self_deprecating_hits)}."
             )
         if bullet_fabrications:
             reason_parts.append(
@@ -783,12 +910,11 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
                 f"{structural_violations} -- resume/cover letter need manual review.",
                 "WARNING",
             )
-        if years_claim_violations or unverified_percentage_violations or self_deprecating_hits:
+        if years_claim_violations:
             log_activity(
                 db,
-                f"PROSE-LEVEL WARNING (D1/D2/inverse) on '{posting.job_title}' at {posting.company_name_raw}: "
-                f"years={years_claim_violations}, unverified%={unverified_percentage_violations}, "
-                f"self-deprecating={self_deprecating_hits} -- resume needs manual review.",
+                f"PROSE-LEVEL WARNING (D1) on '{posting.job_title}' at {posting.company_name_raw}: "
+                f"years={years_claim_violations} -- resume needs manual review.",
                 "WARNING",
             )
         if bullet_fabrications:
@@ -800,6 +926,15 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
             )
     else:
         application.attention_reason = None
+
+    if unverified_percentage_violations or self_deprecating_hits:
+        log_activity(
+            db,
+            f"Soft note (not blocking) on '{posting.job_title}' at {posting.company_name_raw}: "
+            f"unverified%={unverified_percentage_violations} (already hedged in the saved document), "
+            f"self-deprecating={self_deprecating_hits}.",
+            "INFO",
+        )
 
     db.commit()
 
