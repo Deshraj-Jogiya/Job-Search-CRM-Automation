@@ -22,10 +22,21 @@ Resume upload is a custom dropzone needing the same
 
 import json
 
-from playwright.sync_api import Page
+from playwright.sync_api import Frame, Page
 
 from ..llm import get_llm_provider, parse_json_response
 from .common_answers import is_referral_source_question, mechanical_common_answer, referral_source_answer
+
+
+def _owning_page(scope: Page | Frame) -> Page:
+    """See greenhouse_autofill.py's own _owning_page -- same reasoning:
+    scope is a Frame when a company embeds this ATS's form via iframe
+    on their own branded careers page instead of the plain hosted
+    board (autofill_service.py switches scope to that iframe once it
+    detects one, matched by this ATS's own real hostname). A file-
+    chooser dialog is a real PAGE-level browser API with no per-frame
+    equivalent."""
+    return getattr(scope, "page", scope)
 
 
 def _standard_field_values(profile: dict) -> dict:
@@ -38,7 +49,7 @@ def _standard_field_values(profile: dict) -> dict:
     return values
 
 
-def _upload_resume(page: Page, resume_path: str) -> bool:
+def _upload_resume(page: Page | Frame, resume_path: str) -> bool:
     # Playwright's text engine (`text=`), not get_by_text -- get_by_text
     # resolves to a non-reliably-clickable inner node here, which fails
     # to trigger the real file chooser without raising an exception.
@@ -46,7 +57,7 @@ def _upload_resume(page: Page, resume_path: str) -> bool:
     if upload_trigger.count() == 0:
         return False
     try:
-        with page.expect_file_chooser(timeout=5000) as fc_info:
+        with _owning_page(page).expect_file_chooser(timeout=5000) as fc_info:
             upload_trigger.click()
         fc_info.value.set_files(resume_path)
         return True
