@@ -119,12 +119,14 @@ def test_jobs_list_shows_interview_prep_ready_badge(db):
         .all()
     )
     html = env.get_template("jobs.html").render(
-        applications=applications,
+        application_groups=jobs_router._group_applications_by_stage(applications),
+        applications_total=len(applications),
         sources=[],
         keywords=[],
         seniority_exclusions=[],
         location_exclusions=[],
         target_companies=[],
+        target_companies_total=0,
         automation_enabled=False,
         message=None,
         error=None,

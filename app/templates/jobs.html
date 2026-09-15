@@ -20,284 +20,338 @@
 <div class="flash flash-error" role="alert">{{ error }}</div>
 {% endif %}
 
-<section class="settings-panel">
-    <div class="variant-header">
-        <h2>Job Sources</h2>
-        <form method="post" action="/jobs/intake/run" class="inline-form">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button type="submit">Search Now</button>
-        </form>
+{% macro job_card(app) %}
+<li class="job-item">
+    <div class="job-item-header">
+        <a href="/jobs/{{ app.id }}">{{ app.posting.job_title }}</a>
+        <span class="badge">{{ app.posting.source }}</span>
+        <span class="badge">{{ app.status }}</span>
+        {% if app.match_score %}<span class="badge badge-active">{{ app.match_score }}% match</span>{% endif %}
+        {% if app.active_interview_prep %}<span class="badge badge-active">interview prep ready</span>{% endif %}
     </div>
-    {% if not automation_enabled %}
-    <p class="muted-note">Automation is currently OFF -- scheduled and manual searches are both paused. Toggle it on the <a href="/">dashboard</a>.</p>
-    {% endif %}
-    <ul class="version-history">
-        {% for source in sources %}
-        <li>
-            <div class="row-info">
-                <span class="badge {% if source.is_active %}badge-active{% endif %}">{{ source.name }}</span>
-                {{ "active" if source.is_active else "paused" }}
-                &middot; last polled: {{ source.last_polled_at.strftime("%Y-%m-%d %H:%M") if source.last_polled_at else "never" }} UTC
-                &middot; calls this period: {{ source.calls_used_this_period }}
-                {% if source.last_error == "not_configured" %}
-                &middot; <span class="badge">not configured</span>
-                {% elif source.last_error %}
-                &middot; <span class="flash-error-inline">{{ source.last_error }}</span>
-                {% endif %}
-            </div>
-            <div class="row-actions">
-                <form method="post" action="/jobs/sources/{{ source.id }}/toggle" class="inline-form">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <button type="submit" class="btn-secondary">{{ "Pause" if source.is_active else "Resume" }}</button>
-                </form>
-            </div>
-        </li>
-        {% else %}
-        <li class="muted-note">No sources polled yet -- run a search once to get started.</li>
-        {% endfor %}
-    </ul>
-</section>
-
-<section class="settings-panel">
-    <h2>Search Keywords</h2>
-    <form method="post" action="/jobs/keywords" class="inline-form-row">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <label class="visually-hidden" for="keyword-input">Search keyword</label>
-        <input type="text" id="keyword-input" name="keyword" placeholder="e.g. Data Engineer" required>
-        <button type="submit">Add</button>
-    </form>
-    {% set active_keywords = keywords|selectattr('is_active')|list %}
-    {% set paused_keywords = keywords|rejectattr('is_active')|list %}
-    {% if active_keywords %}
-    <ul class="tag-chip-list">
-        {% for kw in active_keywords %}
-        <li class="tag-chip tag-chip-active">
-            <form method="post" action="/jobs/keywords/{{ kw.id }}/toggle">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <button type="submit" class="tag-chip-label" title="Click to pause">{{ kw.keyword }}</button>
-            </form>
-        </li>
-        {% endfor %}
-    </ul>
-    {% else %}
-    <p class="muted-note" role="alert">No custom keywords configured -- search falls back to 5 generic default
-        titles rather than anything tailored to you. This should fill in automatically from your active profile
-        the next time a search runs; if it stays generic, set up a profile on the Profile page first.</p>
-    {% endif %}
-    {% if paused_keywords %}
-    <form method="post" action="/jobs/keywords/reactivate" class="inline-form-row">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <label class="visually-hidden" for="paused-keyword-select">Paused keyword</label>
-        <select id="paused-keyword-select" name="keyword_id">
-            {% for kw in paused_keywords %}
-            <option value="{{ kw.id }}">{{ kw.keyword }}</option>
-            {% endfor %}
-        </select>
-        <button type="submit" class="btn-secondary">Re-add</button>
-    </form>
-    {% endif %}
-</section>
-
-<section class="settings-panel">
-    <h2>Seniority Exclusions</h2>
-    <p class="muted-note">Title-level terms to exclude from direct company job boards (Greenhouse/Lever/Ashby/Recruitee/Personio) --
-        a company's own board has no seniority filter, so this is what keeps a Staff/Director/VP-level posting
-        from ever reaching you if that's not the level you're targeting.</p>
-    <form method="post" action="/jobs/seniority-exclusions" class="inline-form-row">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <label class="visually-hidden" for="seniority-exclusion-input">Seniority exclusion term</label>
-        <input type="text" id="seniority-exclusion-input" name="term" placeholder="e.g. Staff" required>
-        <button type="submit">Add</button>
-    </form>
-    {% set active_seniority = seniority_exclusions|selectattr('is_active')|list %}
-    {% set paused_seniority = seniority_exclusions|rejectattr('is_active')|list %}
-    {% if active_seniority %}
-    <ul class="tag-chip-list">
-        {% for ex in active_seniority %}
-        <li class="tag-chip tag-chip-active">
-            <form method="post" action="/jobs/seniority-exclusions/{{ ex.id }}/toggle">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <button type="submit" class="tag-chip-label" title="Click to pause">{{ ex.term }}</button>
-            </form>
-        </li>
-        {% endfor %}
-    </ul>
-    {% else %}
-    <p class="muted-note">No seniority exclusions configured -- these boards won't filter by level.
-        This should fill in automatically from your active profile the next time a search runs.</p>
-    {% endif %}
-    {% if paused_seniority %}
-    <form method="post" action="/jobs/seniority-exclusions/reactivate" class="inline-form-row">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <label class="visually-hidden" for="paused-seniority-select">Paused seniority exclusion</label>
-        <select id="paused-seniority-select" name="exclusion_id">
-            {% for ex in paused_seniority %}
-            <option value="{{ ex.id }}">{{ ex.term }}</option>
-            {% endfor %}
-        </select>
-        <button type="submit" class="btn-secondary">Re-add</button>
-    </form>
-    {% endif %}
-</section>
-
-<section class="settings-panel">
-    <h2>Location Exclusions</h2>
-    <p class="muted-note">Location terms (countries/regions) to exclude everywhere, across every source -- a
-        company's own direct job board (Greenhouse/Lever/Ashby/Recruitee/Personio) has no location filter at all,
-        so without this, roles open only in another country can reach scoring/tailoring even though you're not
-        eligible for them. The base search location for Adzuna/LinkedIn is set separately under Settings on the
-        dashboard.</p>
-    <form method="post" action="/jobs/location-exclusions" class="inline-form-row">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <label class="visually-hidden" for="location-exclusion-input">Location exclusion term</label>
-        <input type="text" id="location-exclusion-input" name="term" placeholder="e.g. India" required>
-        <button type="submit">Add</button>
-    </form>
-    {% set active_location = location_exclusions|selectattr('is_active')|list %}
-    {% set paused_location = location_exclusions|rejectattr('is_active')|list %}
-    {% if active_location %}
-    <ul class="tag-chip-list">
-        {% for ex in active_location %}
-        <li class="tag-chip tag-chip-active">
-            <form method="post" action="/jobs/location-exclusions/{{ ex.id }}/toggle">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <button type="submit" class="tag-chip-label" title="Click to pause">{{ ex.term }}</button>
-            </form>
-        </li>
-        {% endfor %}
-    </ul>
-    {% else %}
-    <p class="muted-note">No location exclusions configured -- search will not filter by country. This should
-        fill in with a default non-US list the next time a search runs.</p>
-    {% endif %}
-    {% if paused_location %}
-    <form method="post" action="/jobs/location-exclusions/reactivate" class="inline-form-row">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <label class="visually-hidden" for="paused-location-select">Paused location exclusion</label>
-        <select id="paused-location-select" name="exclusion_id">
-            {% for ex in paused_location %}
-            <option value="{{ ex.id }}">{{ ex.term }}</option>
-            {% endfor %}
-        </select>
-        <button type="submit" class="btn-secondary">Re-add</button>
-    </form>
-    {% endif %}
-</section>
-
-<section class="settings-panel">
-    <h2>Target Companies (Direct ATS Boards)</h2>
     <p class="muted-note">
-        Greenhouse/Lever/Ashby/Recruitee/Personio/Workable/SmartRecruiters board links are auto-detected from
-        company names seen via LinkedIn/Adzuna (a few each time a search runs). Add or correct one manually below
-        if a company you care about wasn't picked up -- it's the short id in that company's careers page URL, e.g.
-        boards.greenhouse.io/<strong>stripe</strong>, jobs.lever.co/<strong>netflix</strong>,
-        jobs.ashbyhq.com/<strong>notion</strong>, <strong>notion</strong>.recruitee.com,
-        <strong>notion</strong>.jobs.personio.com, apply.workable.com/<strong>notion</strong>, or
-        SmartRecruiters' own company identifier (e.g. jobs.smartrecruiters.com/<strong>notion</strong>).
+        {{ app.posting.company_name_raw }}
+        &middot; first seen {{ app.posting.first_seen_at.strftime("%Y-%m-%d") }}
+        &middot; <a href="{{ app.posting.job_url }}" target="_blank" rel="noopener noreferrer">view posting &#8599;</a>
+        {% if app.status == "Pending Confirmation" and app.confirmation_deadline %}
+        &middot; auto-proceeds {{ app.confirmation_deadline.strftime("%Y-%m-%d %H:%M") }} UTC
+        {% endif %}
     </p>
-    <form method="post" action="/jobs/companies/slug" class="inline-form-row">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <label class="visually-hidden" for="company-name-input">Company name</label>
-        <input type="text" id="company-name-input" name="company_name" placeholder="Company name" required>
-        <label class="visually-hidden" for="ats-type-select">Platform</label>
-        <select id="ats-type-select" name="ats_type">
-            <option value="greenhouse">Greenhouse</option>
-            <option value="lever">Lever</option>
-            <option value="ashby">Ashby</option>
-            <option value="recruitee">Recruitee</option>
-            <option value="personio">Personio</option>
-            <option value="workable">Workable</option>
-            <option value="smartrecruiters">SmartRecruiters</option>
-        </select>
-        <label class="visually-hidden" for="slug-input">Careers page id</label>
-        <input type="text" id="slug-input" name="slug" placeholder="careers page id" required>
-        <button type="submit">Save</button>
-    </form>
-    {% if target_companies %}
-    <ul class="version-history">
-        {% for c in target_companies %}
-        <li>
-            <strong>{{ c.name }}</strong>
-            {% if c.greenhouse_slug %}<span class="badge badge-active">greenhouse: {{ c.greenhouse_slug }}</span>{% endif %}
-            {% if c.lever_slug %}<span class="badge badge-active">lever: {{ c.lever_slug }}</span>{% endif %}
-            {% if c.ashby_slug %}<span class="badge badge-active">ashby: {{ c.ashby_slug }}</span>{% endif %}
-            {% if c.recruitee_slug %}<span class="badge badge-active">recruitee: {{ c.recruitee_slug }}</span>{% endif %}
-            {% if c.personio_slug %}<span class="badge badge-active">personio: {{ c.personio_slug }}</span>{% endif %}
-            {% if c.workable_slug %}<span class="badge badge-active">workable: {{ c.workable_slug }}</span>{% endif %}
-            {% if c.smartrecruiters_slug %}<span class="badge badge-active">smartrecruiters: {{ c.smartrecruiters_slug }}</span>{% endif %}
-        </li>
-        {% endfor %}
-    </ul>
-    {% else %}
-    <p class="muted-note">No boards detected yet -- run a few searches to let auto-detection work through your company list, or add one manually above.</p>
+    {% if app.attention_reason %}
+    <p class="flash-error-inline">{{ app.attention_reason }}</p>
     {% endif %}
-</section>
+    {% if app.posting.staleness_flag or app.posting.scam_flag_reason or app.posting.eligibility_flag_reason or app.posting.repost_count > 0 or app.posting.sponsorship_blocked %}
+    <div class="flag-row">
+        {% if app.posting.staleness_flag %}<span class="flag-warning">stale listing</span>{% endif %}
+        {% if app.posting.repost_count > 0 %}
+        <span class="flag-warning">repost x{{ app.posting.repost_count }}</span>
+        <form method="post" action="/jobs/postings/{{ app.posting.id }}/not-a-duplicate" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn-link">not actually a duplicate</button>
+        </form>
+        {% endif %}
+        {% if app.posting.scam_flag_reason %}<span class="flag-warning">scam pattern: {{ app.posting.scam_flag_reason }}</span>{% endif %}
+        {% if app.posting.eligibility_flag_reason %}<span class="flag-warning">eligibility: {{ app.posting.eligibility_flag_reason }}</span>{% endif %}
+        {% if app.posting.sponsorship_blocked %}
+        {% for label in (app.posting.signal_matches.blocked if app.posting.signal_matches else []) %}
+        <span class="flag-warning">sponsorship blocked: {{ label }}</span>
+        <form method="post" action="/jobs/postings/{{ app.posting.id }}/sponsorship-flag-wrong" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="label" value="{{ label }}">
+            <button type="submit" class="btn-link">this flag was wrong</button>
+        </form>
+        {% endfor %}
+        {% endif %}
+    </div>
+    {% endif %}
+    <p class="muted-note">
+        {% if app.posting.offered_salary_min %}
+        Salary: ${{ "{:,}".format(app.posting.offered_salary_min) }}{% if app.posting.offered_salary_max != app.posting.offered_salary_min %} - ${{ "{:,}".format(app.posting.offered_salary_max) }}{% endif %}
+        {% if app.posting.wage_level_per_posting %}(Level {{ app.posting.wage_level_per_posting }}){% endif %}
+        ({{ app.posting.offered_salary_source }})
+        {% endif %}
+        <form method="post" action="/jobs/postings/{{ app.posting.id }}/salary" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="number" name="salary_min" placeholder="min $" min="1" style="width:90px;display:inline-block;">
+            <input type="number" name="salary_max" placeholder="max $" min="1" style="width:90px;display:inline-block;">
+            <button type="submit" class="btn-link">{{ "correct salary" if app.posting.offered_salary_min else "set salary" }}</button>
+        </form>
+    </p>
+</li>
+{% endmacro %}
+
+<details class="sub-panel">
+    <summary>Search Settings</summary>
+
+    <section class="settings-panel">
+        <div class="variant-header">
+            <h2>Job Sources</h2>
+            <form method="post" action="/jobs/intake/run" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit">Search Now</button>
+            </form>
+        </div>
+        {% if not automation_enabled %}
+        <p class="muted-note">Automation is currently OFF -- scheduled and manual searches are both paused. Toggle it on the <a href="/">dashboard</a>.</p>
+        {% endif %}
+        <ul class="version-history">
+            {% for source in sources %}
+            <li>
+                <div class="row-info">
+                    <span class="badge {% if source.is_active %}badge-active{% endif %}">{{ source.name }}</span>
+                    {{ "active" if source.is_active else "paused" }}
+                    &middot; last polled: {{ source.last_polled_at.strftime("%Y-%m-%d %H:%M") if source.last_polled_at else "never" }} UTC
+                    &middot; calls this period: {{ source.calls_used_this_period }}
+                    {% if source.last_error == "not_configured" %}
+                    &middot; <span class="badge">not configured</span>
+                    {% elif source.last_error %}
+                    &middot; <span class="flash-error-inline">{{ source.last_error }}</span>
+                    {% endif %}
+                </div>
+                <div class="row-actions">
+                    <form method="post" action="/jobs/sources/{{ source.id }}/toggle" class="inline-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="btn-secondary">{{ "Pause" if source.is_active else "Resume" }}</button>
+                    </form>
+                </div>
+            </li>
+            {% else %}
+            <li class="muted-note">No sources polled yet -- run a search once to get started.</li>
+            {% endfor %}
+        </ul>
+    </section>
+
+    <section class="settings-panel">
+        <h2>Search Keywords</h2>
+        <form method="post" action="/jobs/keywords" class="inline-form-row">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label class="visually-hidden" for="keyword-input">Search keyword</label>
+            <input type="text" id="keyword-input" name="keyword" placeholder="e.g. Data Engineer" required>
+            <button type="submit">Add</button>
+        </form>
+        {% set active_keywords = keywords|selectattr('is_active')|list %}
+        {% set paused_keywords = keywords|rejectattr('is_active')|list %}
+        {% if active_keywords %}
+        <ul class="tag-chip-list">
+            {% for kw in active_keywords %}
+            <li class="tag-chip tag-chip-active">
+                <form method="post" action="/jobs/keywords/{{ kw.id }}/toggle">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="tag-chip-label" title="Click to pause">{{ kw.keyword }}</button>
+                </form>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted-note" role="alert">No custom keywords configured -- search falls back to 5 generic default
+            titles rather than anything tailored to you. This should fill in automatically from your active profile
+            the next time a search runs; if it stays generic, set up a profile on the Profile page first.</p>
+        {% endif %}
+        {% if paused_keywords %}
+        <form method="post" action="/jobs/keywords/reactivate" class="inline-form-row">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label class="visually-hidden" for="paused-keyword-select">Paused keyword</label>
+            <select id="paused-keyword-select" name="keyword_id">
+                {% for kw in paused_keywords %}
+                <option value="{{ kw.id }}">{{ kw.keyword }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn-secondary">Re-add</button>
+        </form>
+        {% endif %}
+    </section>
+
+    <section class="settings-panel">
+        <h2>Seniority Exclusions</h2>
+        <p class="muted-note">Title-level terms to exclude from direct company job boards (Greenhouse/Lever/Ashby/Recruitee/Personio) --
+            a company's own board has no seniority filter, so this is what keeps a Staff/Director/VP-level posting
+            from ever reaching you if that's not the level you're targeting.</p>
+        <form method="post" action="/jobs/seniority-exclusions" class="inline-form-row">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label class="visually-hidden" for="seniority-exclusion-input">Seniority exclusion term</label>
+            <input type="text" id="seniority-exclusion-input" name="term" placeholder="e.g. Staff" required>
+            <button type="submit">Add</button>
+        </form>
+        {% set active_seniority = seniority_exclusions|selectattr('is_active')|list %}
+        {% set paused_seniority = seniority_exclusions|rejectattr('is_active')|list %}
+        {% if active_seniority %}
+        <ul class="tag-chip-list">
+            {% for ex in active_seniority %}
+            <li class="tag-chip tag-chip-active">
+                <form method="post" action="/jobs/seniority-exclusions/{{ ex.id }}/toggle">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="tag-chip-label" title="Click to pause">{{ ex.term }}</button>
+                </form>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted-note">No seniority exclusions configured -- these boards won't filter by level.
+            This should fill in automatically from your active profile the next time a search runs.</p>
+        {% endif %}
+        {% if paused_seniority %}
+        <form method="post" action="/jobs/seniority-exclusions/reactivate" class="inline-form-row">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label class="visually-hidden" for="paused-seniority-select">Paused seniority exclusion</label>
+            <select id="paused-seniority-select" name="exclusion_id">
+                {% for ex in paused_seniority %}
+                <option value="{{ ex.id }}">{{ ex.term }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn-secondary">Re-add</button>
+        </form>
+        {% endif %}
+    </section>
+
+    <section class="settings-panel">
+        <h2>Location Exclusions</h2>
+        <p class="muted-note">Location terms (countries/regions) to exclude everywhere, across every source -- a
+            company's own direct job board (Greenhouse/Lever/Ashby/Recruitee/Personio) has no location filter at all,
+            so without this, roles open only in another country can reach scoring/tailoring even though you're not
+            eligible for them. The base search location for Adzuna/LinkedIn is set separately under Settings on the
+            dashboard.</p>
+        <form method="post" action="/jobs/location-exclusions" class="inline-form-row">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label class="visually-hidden" for="location-exclusion-input">Location exclusion term</label>
+            <input type="text" id="location-exclusion-input" name="term" placeholder="e.g. India" required>
+            <button type="submit">Add</button>
+        </form>
+        {% set active_location = location_exclusions|selectattr('is_active')|list %}
+        {% set paused_location = location_exclusions|rejectattr('is_active')|list %}
+        {% if active_location %}
+        <ul class="tag-chip-list">
+            {% for ex in active_location %}
+            <li class="tag-chip tag-chip-active">
+                <form method="post" action="/jobs/location-exclusions/{{ ex.id }}/toggle">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="tag-chip-label" title="Click to pause">{{ ex.term }}</button>
+                </form>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted-note">No location exclusions configured -- search will not filter by country. This should
+            fill in with a default non-US list the next time a search runs.</p>
+        {% endif %}
+        {% if paused_location %}
+        <form method="post" action="/jobs/location-exclusions/reactivate" class="inline-form-row">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label class="visually-hidden" for="paused-location-select">Paused location exclusion</label>
+            <select id="paused-location-select" name="exclusion_id">
+                {% for ex in paused_location %}
+                <option value="{{ ex.id }}">{{ ex.term }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn-secondary">Re-add</button>
+        </form>
+        {% endif %}
+    </section>
+</details>
+
+<details class="sub-panel">
+    <summary>Target Companies (Direct ATS Boards) -- {{ target_companies_total }}</summary>
+    <section class="settings-panel">
+        <p class="muted-note">
+            Greenhouse/Lever/Ashby/Recruitee/Personio/Workable/SmartRecruiters board links are auto-detected from
+            company names seen via LinkedIn/Adzuna (a few each time a search runs). Add or correct one manually below
+            if a company you care about wasn't picked up -- it's the short id in that company's careers page URL, e.g.
+            boards.greenhouse.io/<strong>stripe</strong>, jobs.lever.co/<strong>netflix</strong>,
+            jobs.ashbyhq.com/<strong>notion</strong>, <strong>notion</strong>.recruitee.com,
+            <strong>notion</strong>.jobs.personio.com, apply.workable.com/<strong>notion</strong>, or
+            SmartRecruiters' own company identifier (e.g. jobs.smartrecruiters.com/<strong>notion</strong>).
+        </p>
+        <form method="post" action="/jobs/companies/slug" class="inline-form-row">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label class="visually-hidden" for="company-name-input">Company name</label>
+            <input type="text" id="company-name-input" name="company_name" placeholder="Company name" required>
+            <label class="visually-hidden" for="ats-type-select">Platform</label>
+            <select id="ats-type-select" name="ats_type">
+                <option value="greenhouse">Greenhouse</option>
+                <option value="lever">Lever</option>
+                <option value="ashby">Ashby</option>
+                <option value="recruitee">Recruitee</option>
+                <option value="personio">Personio</option>
+                <option value="workable">Workable</option>
+                <option value="smartrecruiters">SmartRecruiters</option>
+            </select>
+            <label class="visually-hidden" for="slug-input">Careers page id</label>
+            <input type="text" id="slug-input" name="slug" placeholder="careers page id" required>
+            <button type="submit">Save</button>
+        </form>
+        {% if target_companies %}
+        <ul class="version-history">
+            {% for c in target_companies %}
+            <li>
+                <strong>{{ c.name }}</strong>
+                {% if c.greenhouse_slug %}<span class="badge badge-active">greenhouse: {{ c.greenhouse_slug }}</span>{% endif %}
+                {% if c.lever_slug %}<span class="badge badge-active">lever: {{ c.lever_slug }}</span>{% endif %}
+                {% if c.ashby_slug %}<span class="badge badge-active">ashby: {{ c.ashby_slug }}</span>{% endif %}
+                {% if c.recruitee_slug %}<span class="badge badge-active">recruitee: {{ c.recruitee_slug }}</span>{% endif %}
+                {% if c.personio_slug %}<span class="badge badge-active">personio: {{ c.personio_slug }}</span>{% endif %}
+                {% if c.workable_slug %}<span class="badge badge-active">workable: {{ c.workable_slug }}</span>{% endif %}
+                {% if c.smartrecruiters_slug %}<span class="badge badge-active">smartrecruiters: {{ c.smartrecruiters_slug }}</span>{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+        {% if target_companies_total > target_companies|length %}
+        <p class="muted-note">Showing {{ target_companies|length }} of {{ target_companies_total }} -- the rest aren't
+            hidden for any reason, this list just isn't the place to browse all of them. Use the search box above to
+            find or correct a specific company.</p>
+        {% endif %}
+        {% else %}
+        <p class="muted-note">No boards detected yet -- run a few searches to let auto-detection work through your company list, or add one manually above.</p>
+        {% endif %}
+    </section>
+</details>
 
 <section class="variant-block">
-    <h2>Job Postings ({{ applications|length }})</h2>
-    {% if applications %}
-    <ul class="job-list">
-        {% for app in applications %}
-        <li class="job-item">
-            <div class="job-item-header">
-                <a href="/jobs/{{ app.id }}">{{ app.posting.job_title }}</a>
-                <span class="badge">{{ app.posting.source }}</span>
-                <span class="badge">{{ app.status }}</span>
-                {% if app.match_score %}<span class="badge badge-active">{{ app.match_score }}% match</span>{% endif %}
-                {% if app.active_interview_prep %}<span class="badge badge-active">interview prep ready</span>{% endif %}
-            </div>
-            <p class="muted-note">
-                {{ app.posting.company_name_raw }}
-                &middot; first seen {{ app.posting.first_seen_at.strftime("%Y-%m-%d") }}
-                &middot; <a href="{{ app.posting.job_url }}" target="_blank" rel="noopener noreferrer">view posting &#8599;</a>
-                {% if app.status == "Pending Confirmation" and app.confirmation_deadline %}
-                &middot; auto-proceeds {{ app.confirmation_deadline.strftime("%Y-%m-%d %H:%M") }} UTC
-                {% endif %}
-            </p>
-            {% if app.attention_reason %}
-            <p class="flash-error-inline">{{ app.attention_reason }}</p>
-            {% endif %}
-            {% if app.posting.staleness_flag or app.posting.scam_flag_reason or app.posting.eligibility_flag_reason or app.posting.repost_count > 0 or app.posting.sponsorship_blocked %}
-            <div class="flag-row">
-                {% if app.posting.staleness_flag %}<span class="flag-warning">stale listing</span>{% endif %}
-                {% if app.posting.repost_count > 0 %}
-                <span class="flag-warning">repost x{{ app.posting.repost_count }}</span>
-                <form method="post" action="/jobs/postings/{{ app.posting.id }}/not-a-duplicate" class="inline-form">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <button type="submit" class="btn-link">not actually a duplicate</button>
-                </form>
-                {% endif %}
-                {% if app.posting.scam_flag_reason %}<span class="flag-warning">scam pattern: {{ app.posting.scam_flag_reason }}</span>{% endif %}
-                {% if app.posting.eligibility_flag_reason %}<span class="flag-warning">eligibility: {{ app.posting.eligibility_flag_reason }}</span>{% endif %}
-                {% if app.posting.sponsorship_blocked %}
-                {% for label in (app.posting.signal_matches.blocked if app.posting.signal_matches else []) %}
-                <span class="flag-warning">sponsorship blocked: {{ label }}</span>
-                <form method="post" action="/jobs/postings/{{ app.posting.id }}/sponsorship-flag-wrong" class="inline-form">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <input type="hidden" name="label" value="{{ label }}">
-                    <button type="submit" class="btn-link">this flag was wrong</button>
-                </form>
-                {% endfor %}
-                {% endif %}
-            </div>
-            {% endif %}
-            <p class="muted-note">
-                {% if app.posting.offered_salary_min %}
-                Salary: ${{ "{:,}".format(app.posting.offered_salary_min) }}{% if app.posting.offered_salary_max != app.posting.offered_salary_min %} - ${{ "{:,}".format(app.posting.offered_salary_max) }}{% endif %}
-                {% if app.posting.wage_level_per_posting %}(Level {{ app.posting.wage_level_per_posting }}){% endif %}
-                ({{ app.posting.offered_salary_source }})
-                {% endif %}
-                <form method="post" action="/jobs/postings/{{ app.posting.id }}/salary" class="inline-form">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <input type="number" name="salary_min" placeholder="min $" min="1" style="width:90px;display:inline-block;">
-                    <input type="number" name="salary_max" placeholder="max $" min="1" style="width:90px;display:inline-block;">
-                    <button type="submit" class="btn-link">{{ "correct salary" if app.posting.offered_salary_min else "set salary" }}</button>
-                </form>
-            </p>
-        </li>
-        {% endfor %}
-    </ul>
-    {% else %}
+    <h2>Job Postings ({{ applications_total }})</h2>
+
+    <details class="sub-panel" open>
+        <summary>Needs Attention -- {{ application_groups.needs_attention|length }}</summary>
+        {% if application_groups.needs_attention %}
+        <ul class="job-list">
+            {% for app in application_groups.needs_attention %}{{ job_card(app) }}{% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted-note">Nothing waiting on you right now.</p>
+        {% endif %}
+    </details>
+
+    <details class="sub-panel" open>
+        <summary>In Progress -- {{ application_groups.in_progress|length }}</summary>
+        {% if application_groups.in_progress %}
+        <ul class="job-list">
+            {% for app in application_groups.in_progress %}{{ job_card(app) }}{% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted-note">Nothing currently being scored or tailored.</p>
+        {% endif %}
+    </details>
+
+    <details class="sub-panel" open>
+        <summary>Applied &amp; Waiting -- {{ application_groups.applied|length }}</summary>
+        {% if application_groups.applied %}
+        <ul class="job-list">
+            {% for app in application_groups.applied %}{{ job_card(app) }}{% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted-note">Nothing submitted yet.</p>
+        {% endif %}
+    </details>
+
+    <details class="sub-panel">
+        <summary>Closed -- {{ application_groups.closed|length }}</summary>
+        {% if application_groups.closed %}
+        <ul class="job-list">
+            {% for app in application_groups.closed %}{{ job_card(app) }}{% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted-note">Nothing closed out yet.</p>
+        {% endif %}
+    </details>
+
+    {% if applications_total == 0 %}
     <p class="muted-note">No postings found yet -- click "Search Now" above to start, or wait for the next scheduled search.</p>
     {% endif %}
 </section>
