@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from ..database import utcnow
 from ..models import BehavioralStory, ProfileVariant
 from .llm import get_llm_provider, parse_json_response
-from .profile_service import get_active_version
+from .profile_service import get_active_version, strip_confidential_projects
 
 
 class BehavioralStoryServiceError(Exception):
@@ -39,6 +39,12 @@ def generate_story_drafts(db: Session, variant_id: int) -> list[BehavioralStory]
         raise BehavioralStoryServiceError("This profile variant has no active version yet.")
 
     content = json.loads(version.content_json)
+    # 2026-09-15: this was the one real entry point that generates
+    # content a candidate might say out loud in an interview without
+    # ever applying the confidential-project filter every sibling entry
+    # point (interview prep, mock-interview debrief) already applies --
+    # see strip_confidential_projects' own docstring.
+    content = strip_confidential_projects(content)
 
     llm = get_llm_provider()
     raw = llm.complete_json(

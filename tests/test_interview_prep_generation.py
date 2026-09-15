@@ -13,10 +13,10 @@ from unittest.mock import patch
 from app import models
 from app.services.interview_prep_service import (
     _generate_predicted_rounds,
-    _strip_confidential_projects,
     check_answer_grounding,
     resolve_grounding_profile,
 )
+from app.services.profile_service import strip_confidential_projects
 from tests.conftest import make_application, make_company, make_posting, make_variant
 
 
@@ -117,7 +117,7 @@ def test_strip_confidential_projects_removes_flagged_entries():
         ],
         "experience": [{"title": "Engineer"}],
     }
-    result = _strip_confidential_projects(profile)
+    result = strip_confidential_projects(profile)
     names = [p["name"] for p in result["projects"]]
     assert names == ["Personal Solo Project"]
     assert result["experience"] == [{"title": "Engineer"}]
@@ -125,12 +125,12 @@ def test_strip_confidential_projects_removes_flagged_entries():
 
 def test_strip_confidential_projects_no_op_when_none_flagged():
     profile = {"projects": [{"name": "A"}, {"name": "B"}]}
-    result = _strip_confidential_projects(profile)
+    result = strip_confidential_projects(profile)
     assert result == profile
 
 
 def test_strip_confidential_projects_handles_missing_projects_key():
-    assert _strip_confidential_projects({"experience": []}) == {"experience": []}
+    assert strip_confidential_projects({"experience": []}) == {"experience": []}
 
 
 class TestResolveGroundingProfile:
