@@ -52,16 +52,64 @@ def test_agent_stops_after_max_steps_without_a_final_answer(db):
     assert len(result.steps) == 2
 
 
-def test_agent_handles_an_unknown_tool_gracefully(db):
+def test_agent_handles_an_unknown_tool_gracefully_then_recovers_with_a_real_one(db):
+    # An unknown-tool attempt does NOT count as grounding -- see the
+    # ungrounded-final-answer tests below for why. If the model tries a
+    # bad tool and then actually calls a real one, that real Observation
+    # is what allows the Final Answer through.
+    db.add(Company(name="Acme Corp", normalized_name="acme corp", status="Active", status_reason=None))
+    db.commit()
+
     llm = ScriptedLLM([
         "Thought: trying a made-up tool.\nAction: fly_to_the_moon\nAction Input: now",
-        "Thought: that didn't work.\nFinal Answer: I couldn't complete that request.",
+        "Thought: let me use a real tool instead.\nAction: search_company\nAction Input: Acme Corp",
+        "Thought: now I know.\nFinal Answer: Acme Corp is Active.",
     ])
 
     result = run_research_agent(db, llm, "Do something unsupported")
 
     assert "Unknown tool" in result.steps[0].observation
-    assert result.final_answer == "I couldn't complete that request."
+    assert result.steps[1].action == "search_company"
+    assert result.final_answer == "Acme Corp is Active."
+
+
+class TestUngroundedFinalAnswerRejected:
+    """Real bug found live 2026-09-15: asked "How many applications are
+    marked applied?" against a real database where the true count was 1
+    (or 2, depending on definition -- checked directly), the model
+    answered "7" on its very first response having called zero tools --
+    a confident, specific, completely fabricated number. The system
+    prompt only instructed tool use; nothing mechanically enforced it."""
+
+    def test_final_answer_before_any_tool_call_is_rejected_not_trusted(self, db):
+        llm = ScriptedLLM([
+            # Exactly what happened live: a Final Answer with no prior
+            # tool call at all.
+            "Thought: I think I know this.\nFinal Answer: 7 applications.",
+            "Thought: let me actually check.\nAction: count_applications\nAction Input: applied",
+            "Thought: now I have the real number.\nFinal Answer: 1 application(s) with status 'applied'.",
+        ])
+
+        result = run_research_agent(db, llm, "How many applications are marked applied?")
+
+        # The fabricated "7" must never reach the final answer.
+        assert result.final_answer == "1 application(s) with status 'applied'."
+        assert any(s.action == "count_applications" for s in result.steps)
+
+    def test_repeated_ungrounded_final_answers_fall_through_honestly(self, db):
+        # If the model never manages a real tool call within budget, the
+        # existing honest "did not reach a final answer" fallback must
+        # win -- never a fabricated number, even under a tight step limit.
+        llm = ScriptedLLM([
+            "Thought: guessing.\nFinal Answer: 7 applications.",
+            "Thought: guessing again.\nFinal Answer: 12 applications.",
+        ])
+
+        result = run_research_agent(db, llm, "How many applications?", max_steps=2)
+
+        assert "did not reach a final answer" in result.final_answer
+        assert "7" not in result.final_answer
+        assert "12" not in result.final_answer
 
 
 def test_count_applications_tool_reflects_real_database_state(db):
