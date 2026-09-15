@@ -33,7 +33,7 @@ from .routers import analytics as analytics_router
 from .routers import queue as queue_router
 from .routers import metrics as metrics_router
 from .routers import adaptation as adaptation_router
-from .services import auth_service, backup_service, llm_usage_service, profile_service, trend_research_service
+from .services import analytics_service, auth_service, backup_service, llm_usage_service, profile_service, trend_research_service
 from .services import scheduler as bg_scheduler
 from .services.activity_logger import log_activity
 from .services.llm import get_llm_provider
@@ -281,6 +281,12 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     # someone happens to visit /adaptation on their own.
     pending_trend_proposal_count = len(trend_research_service.pending_trend_proposals(db))
     llm_usage = llm_usage_service.get_usage_summary(db)
+    # Real gap found 2026-09-15 via a full-codebase UX audit: this data
+    # already existed (analytics_service.conversion_rates, live on
+    # /analytics) but nobody actually lands on /analytics day to day --
+    # this is a surfacing fix, not a new build. Reused directly rather
+    # than duplicated.
+    progress = analytics_service.conversion_rates(db)
     recent_research_queries = (
         db.query(ResearchAgentQuery).order_by(ResearchAgentQuery.created_at.desc()).limit(5).all()
     )
@@ -310,6 +316,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
             "profile_completeness_warnings": profile_completeness_warnings,
             "pending_trend_proposal_count": pending_trend_proposal_count,
             "llm_usage": llm_usage,
+            "progress": progress,
             "message": request.query_params.get("message"),
             "error": request.query_params.get("error"),
         },
