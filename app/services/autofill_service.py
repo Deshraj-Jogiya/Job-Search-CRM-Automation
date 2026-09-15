@@ -66,8 +66,8 @@ def _hostname_matches(url: str, expected_hosts: tuple[str, ...]) -> bool:
     return any(host == h or host.endswith("." + h) for h in expected_hosts)
 
 
-_FILL_SCOPE_POLL_ATTEMPTS = 8
-_FILL_SCOPE_POLL_INTERVAL_MS = 750
+_FILL_SCOPE_POLL_ATTEMPTS = 15
+_FILL_SCOPE_POLL_INTERVAL_MS = 1000
 
 
 def _resolve_fill_scope_with_retry(page, source: str):
@@ -76,11 +76,15 @@ def _resolve_fill_scope_with_retry(page, source: str):
     Greenhouse form still came back with zero fields filled even after
     _resolve_fill_scope existed, because a single fixed 2-second wait
     after the "Apply" click wasn't always long enough for the embed
-    iframe to actually attach (a throwaway diagnostic script that
-    happened to wait 4 seconds found it fine, which is what pointed at
-    timing rather than the detection logic itself being wrong).
-    Up to ~6 real seconds total before giving up and falling back to
-    the top-level page, unchanged from before either fix existed."""
+    iframe to actually attach. A first attempt at polling (8 tries,
+    750ms apart, ~6s total) was STILL too short for real, observed
+    behavior: a live diagnostic showed the iframe genuinely attaching
+    quickly but sitting at "about:blank" for several seconds before its
+    own navigation to the real Greenhouse embed URL actually completes
+    -- this isn't a fixed, predictable delay, so the fix is a longer
+    real budget, not a smarter guess at one exact number. Up to ~15
+    real seconds total before giving up and falling back to the
+    top-level page, unchanged from before either fix existed."""
     for attempt in range(_FILL_SCOPE_POLL_ATTEMPTS):
         scope = _resolve_fill_scope(page, source)
         if scope is not page:
