@@ -73,9 +73,25 @@ TOOLS: dict[str, Callable[[Session, str], str]] = {
 def run_research_agent(db: Session, llm: LLMLike, question: str, max_steps: int = MAX_STEPS) -> AgentResult:
     """Runs the real Thought/Action/Observation loop, calling real tools
     against the real database, until the model emits a Final Answer or
-    max_steps is reached."""
+    max_steps is reached.
+
+    Real bug found live 2026-09-15: asked "How many applications are
+    marked applied?" against a real database where the true answer was
+    1 (or 2, depending on definition -- checked directly), the model
+    answered "7" on its very first response, having called zero tools --
+    a confident, specific, completely ungrounded number. The system
+    prompt only ever INSTRUCTED tool use; nothing MECHANICALLY enforced
+    it, so the model skipping straight to a Final Answer worked exactly
+    as the code allowed. used_a_real_tool below closes that: a Final
+    Answer offered before any real tool has actually returned an
+    Observation is rejected and the model is told why, same "never trust
+    the LLM's self-report, mechanically verify" posture as every other
+    LLM output in this codebase (see tailoring_service.py's fabrication
+    checks). Calling an unknown/nonexistent tool does NOT count as a
+    real tool use -- that's an error observation, not grounding."""
     transcript = f"Question: {question}\n"
     steps: list[AgentStep] = []
+    used_a_real_tool = False
 
     for _ in range(max_steps):
         response = llm.complete_text(system=SYSTEM_PROMPT, prompt=transcript)
@@ -83,6 +99,13 @@ def run_research_agent(db: Session, llm: LLMLike, question: str, max_steps: int 
 
         final_match = _FINAL_ANSWER_RE.search(response)
         if final_match:
+            if not used_a_real_tool:
+                transcript += (
+                    "SYSTEM: That Final Answer is rejected -- you have not called any real tool yet, "
+                    "so there is nothing grounding it. Call a real tool (search_company or "
+                    "count_applications) and wait for its Observation before answering.\n"
+                )
+                continue
             answer = final_match.group(1).strip()
             steps.append(AgentStep(final_answer=answer))
             return AgentResult(final_answer=answer, steps=steps)
@@ -94,7 +117,11 @@ def run_research_agent(db: Session, llm: LLMLike, question: str, max_steps: int 
 
         tool_name, tool_input = action_match.group(1).strip(), action_match.group(2).strip()
         tool = TOOLS.get(tool_name)
-        observation = tool(db, tool_input) if tool else f"Unknown tool: {tool_name}"
+        if tool:
+            observation = tool(db, tool_input)
+            used_a_real_tool = True
+        else:
+            observation = f"Unknown tool: {tool_name}"
 
         steps.append(AgentStep(action=tool_name, action_input=tool_input, observation=observation))
         transcript += f"Observation: {observation}\n"
