@@ -3,6 +3,7 @@ from datetime import date
 from app.services.resume_rules import (
     check_ai_cliche_language,
     check_bare_percentage,
+    check_weak_bullet_opener,
     check_years_claim,
     classify_role,
     detect_concurrent_overlaps,
@@ -308,6 +309,37 @@ class TestAiClicheLanguage:
 
     def test_check_empty_when_no_cliches(self):
         assert check_ai_cliche_language("Built a real-time ingestion pipeline.") == []
+
+
+class TestCheckWeakBulletOpener:
+    def test_responsible_for_is_flagged(self):
+        assert check_weak_bullet_opener("Responsible for managing a team of 5 engineers.") == "responsible for"
+
+    def test_worked_on_is_flagged(self):
+        assert check_weak_bullet_opener("Worked on the data pipeline migration.") == "worked on"
+
+    def test_helped_with_helped_to_assisted_duties_included_all_flagged(self):
+        assert check_weak_bullet_opener("Helped with onboarding new hires.") == "helped with"
+        assert check_weak_bullet_opener("Helped to reduce latency across services.") == "helped to"
+        assert check_weak_bullet_opener("Assisted in the migration to Kubernetes.") == "assisted in"
+        assert check_weak_bullet_opener("Duties included managing the on-call rotation.") == "duties included"
+
+    def test_strong_action_verb_opener_is_not_flagged(self):
+        assert check_weak_bullet_opener("Built a real-time ingestion pipeline processing 500GB/day.") is None
+        assert check_weak_bullet_opener("Led a team of 5 engineers through a platform migration.") is None
+
+    def test_only_checks_the_opening_not_the_whole_bullet(self):
+        # A bullet that leads with a real action but happens to contain
+        # "worked on" later should NOT be flagged -- this only checks
+        # what the bullet opens with.
+        assert check_weak_bullet_opener("Built the system my predecessor had worked on for years.") is None
+
+    def test_case_insensitive_and_whitespace_tolerant(self):
+        assert check_weak_bullet_opener("  responsible FOR the API redesign.") == "responsible for"
+
+    def test_empty_bullet_returns_none(self):
+        assert check_weak_bullet_opener("") is None
+        assert check_weak_bullet_opener(None) is None
 
 
 _PROJECT_SELECTION_TEST_CONFIG = {
