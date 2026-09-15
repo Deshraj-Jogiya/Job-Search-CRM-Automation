@@ -210,6 +210,46 @@ class TestResolveFillScope:
         assert autofill_service._resolve_fill_scope(page, "some_future_source") is page
 
 
+class TestUsesEmployerWrappedDomain:
+    """Real production finding (2026-09-15): the embedded-iframe case
+    _resolve_fill_scope detects is NOT just a fill-target problem --
+    for Samsara specifically it's a network-level dead end (5/5 real
+    attempts, 0 fields filled every time even with the retry poll). This
+    check lets run_autofill recognize the same known-broken shape (apply
+    URL not on the ATS's own first-party board) up front and skip the
+    doomed browser launch instead of discovering it 15-20s later."""
+
+    def test_first_party_greenhouse_board_is_not_wrapped(self):
+        assert autofill_service._uses_employer_wrapped_domain(
+            "https://job-boards.greenhouse.io/acme/jobs/123", "greenhouse"
+        ) is False
+
+    def test_first_party_ashby_board_is_not_wrapped(self):
+        assert autofill_service._uses_employer_wrapped_domain(
+            "https://jobs.ashbyhq.com/acme/xyz", "ashby"
+        ) is False
+
+    def test_employer_domain_wrapping_greenhouse_is_flagged(self):
+        # Real example: Samsara's own careers page, confirmed live to
+        # embed Greenhouse via an unreachable iframe.
+        assert autofill_service._uses_employer_wrapped_domain(
+            "https://www.samsara.com/company/careers/roles/8024110?gh_jid=8024110", "greenhouse"
+        ) is True
+
+    def test_third_party_job_board_wrapper_is_also_flagged(self):
+        # Real example: Lyft posts through app.careerpuck.com, a
+        # third-party job-board product -- not Lyft's own domain, but
+        # still not job-boards.greenhouse.io either.
+        assert autofill_service._uses_employer_wrapped_domain(
+            "https://app.careerpuck.com/job-board/lyft/job/8376875002?gh_jid=8376875002", "greenhouse"
+        ) is True
+
+    def test_unknown_source_is_never_flagged(self):
+        assert autofill_service._uses_employer_wrapped_domain(
+            "https://careers.example.com/job/123", "some_future_source"
+        ) is False
+
+
 class FakePollingPage(FakeTopPage):
     """Like FakeTopPage, but the embed frame only "attaches" after a
     configurable number of wait_for_timeout calls -- reproduces the
