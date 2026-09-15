@@ -152,6 +152,41 @@ def _interview_prep_in_background(application_id: int):
         db.close()
 
 
+_STAGE_GROUPS = (
+    ("needs_attention", ("Pending Confirmation", "Needs Review")),
+    ("in_progress", ("Draft", "Ingested", "Tailored", "Approved")),
+    ("applied", ("Applied", "Interviewing", "Offer")),
+    ("closed", ("Rejected", "Not Selected")),
+)
+# Real gap found 2026-09-15: the Jobs page rendered every application in
+# one flat reverse-chronological list, no grouping, no way to see "just
+# what needs a decision right now" without scanning past everything else
+# -- confirmed via real UX research that unbounded/ungrouped lists are
+# right for "endless discovery" feeds, wrong for a task-driven tool like
+# this one. Grouped by real pipeline stage instead; any status not
+# explicitly named above (a future status added later and not yet
+# sorted into a group) falls into "in_progress" rather than silently
+# vanishing from the page.
+_STAGE_STATUS_TO_GROUP = {status: group for group, statuses in _STAGE_GROUPS for status in statuses}
+
+
+def _group_applications_by_stage(applications: list) -> dict:
+    grouped = {group: [] for group, _ in _STAGE_GROUPS}
+    for application in applications:
+        grouped[_STAGE_STATUS_TO_GROUP.get(application.status, "in_progress")].append(application)
+    return grouped
+
+
+# Real gap found 2026-09-15: 354 real target companies on the live
+# instance, rendered inline with zero limit, above the applications a
+# user actually came to this page to check -- the single biggest
+# contributor to the page feeling like an endless, purposeless scroll.
+# This is a rarely-touched reference/config list (not a daily task list
+# the way applications are), so a full paginated UI is more machinery
+# than the real usage pattern warrants -- capped + collapsed instead.
+_TARGET_COMPANIES_PREVIEW_LIMIT = 50
+
+
 @router.get("", response_class=HTMLResponse)
 def jobs_page(request: Request, db: Session = Depends(get_db)):
     applications = (
@@ -186,12 +221,14 @@ def jobs_page(request: Request, db: Session = Depends(get_db)):
         request,
         "jobs.html",
         {
-            "applications": applications,
+            "application_groups": _group_applications_by_stage(applications),
+            "applications_total": len(applications),
             "sources": sources,
             "keywords": keywords,
             "seniority_exclusions": seniority_exclusions,
             "location_exclusions": location_exclusions,
-            "target_companies": target_companies,
+            "target_companies": target_companies[:_TARGET_COMPANIES_PREVIEW_LIMIT],
+            "target_companies_total": len(target_companies),
             "automation_enabled": settings.automation_enabled,
             "message": request.query_params.get("message"),
             "error": request.query_params.get("error"),
