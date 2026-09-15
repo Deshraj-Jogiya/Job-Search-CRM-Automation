@@ -28,6 +28,39 @@ class ProfileServiceError(Exception):
     rather than letting a 500 through."""
 
 
+def strip_confidential_projects(profile_content: dict) -> dict:
+    """A project entry can be marked {"confidential": true} when the
+    candidate genuinely can't discuss it -- team/client work under an
+    NDA or ownership constraint, not something a resume bullet's
+    existence implies permission to detail out loud. interview_prep_
+    service, mock_interview_service, and behavioral_story_service all
+    generate content a candidate might actually SAY in a real interview,
+    so this filters those entries out of the grounding data entirely
+    before it ever reaches the LLM -- not just a prompt instruction
+    asking it to avoid them, which a model can miss or ignore. A resume
+    bullet for a confidential project can still exist on the actual
+    resume (tailoring isn't affected by this); this only keeps it out of
+    material used to draft something spoken. Real incident: found
+    2026-08-29 when a batch of personal-vs-team project confusion
+    surfaced 5 real team projects sitting unflagged among otherwise-solo
+    entries in this candidate's live profile. Lives here (not in
+    interview_prep_service, where it originated) because
+    behavioral_story_service needed it too and interview_prep_service
+    already imports behavioral_story_service -- a module-level import
+    the other way would have been circular. Found 2026-09-15, via a
+    full-codebase audit, that behavioral_story_service.generate_story_drafts
+    built its prompt straight from the unfiltered profile -- the exact
+    same leak class this function exists to close, through the one real
+    entry point that had never been re-checked against it."""
+    projects = profile_content.get("projects")
+    if not projects:
+        return profile_content
+    filtered = [p for p in projects if not p.get("confidential")]
+    if len(filtered) == len(projects):
+        return profile_content
+    return {**profile_content, "projects": filtered}
+
+
 # Real incident this exists to catch: a profile sat for 5 days across 8
 # separate manual saves with a completely missing second degree and
 # zero certifications -- never flagged, never noticed, because a raw

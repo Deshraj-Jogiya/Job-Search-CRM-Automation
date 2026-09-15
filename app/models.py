@@ -534,6 +534,14 @@ class MockInterviewSession(Base):
 
     started_at = Column(DateTime, default=utcnow)
     ended_at = Column(DateTime, nullable=True)
+    # Real gap found 2026-09-15 (same class of bug as InterviewPrep.
+    # used_tailored_resume): end_session() has always called
+    # resolve_grounding_profile(), which prefers the tailored resume,
+    # but discarded that fact instead of recording it -- there was no
+    # way to know which profile actually graded a given debrief.
+    # Nullable because it's unknown for sessions completed before this
+    # column existed.
+    used_tailored_resume = Column(Boolean, nullable=True)
 
     application = relationship("JobApplication", back_populates="mock_interview_sessions")
     turns = relationship(
