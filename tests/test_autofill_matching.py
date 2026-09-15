@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 
 from app.services import autofill_service
 from app.services.autofill import ashby_autofill, greenhouse_autofill, lever_autofill
+from app.services.autofill_service import _safe_filename_part
 
 
 class FakePage:
@@ -253,6 +254,24 @@ class TestResolveFillScopeWithRetry:
         embed_frame = FakeFrame("https://job-boards.greenhouse.io/embed/job_app")
         page = FakePollingPage("https://www.acme.com/careers", embed_frame, attaches_after_waits=999)
         assert autofill_service._resolve_fill_scope_with_retry(page, "greenhouse") is page
+
+
+class TestSafeFilenamePart:
+    """The manual-fallback download directory (_MANUAL_DOWNLOADS_DIR) is
+    named from real company/job-title text, which can contain slashes,
+    quotes, or other characters unsafe as a directory name."""
+
+    def test_normal_text_passes_through(self):
+        assert _safe_filename_part("Samsara") == "Samsara"
+
+    def test_unsafe_characters_are_replaced(self):
+        assert _safe_filename_part("AB InBev | Growth Group") == "AB_InBev_Growth_Group"
+
+    def test_slash_in_job_title_is_replaced(self):
+        assert _safe_filename_part("Data Engineer/Scientist") == "Data_Engineer_Scientist"
+
+    def test_long_text_is_truncated(self):
+        assert len(_safe_filename_part("x" * 200)) == 80
 
 
 class TestOwningPageHelper:

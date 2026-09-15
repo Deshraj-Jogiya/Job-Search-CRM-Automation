@@ -22,6 +22,8 @@ recognized; the manual button still exists for everything else.
 
 import json
 import os
+import re
+import shutil
 import tempfile
 import threading
 from urllib.parse import urlparse
@@ -43,6 +45,25 @@ _AUTOFILL_FUNCTIONS = {
     "ashby": autofill_ashby_application,
 }
 _SUPPORTED_SOURCES = set(_AUTOFILL_FUNCTIONS)
+
+# A stable, predictable location for the human to manually find the
+# already-tailored resume/cover letter, distinct from the random
+# tempfile.mkdtemp() directory used internally for the file-chooser
+# upload -- that directory's name changes every single run, so it was
+# never something a human could realistically navigate to via a native
+# file-picker dialog when autofill can't complete on its own (a real,
+# separate gap surfaced live: some employer-embedded application forms
+# never finish loading in an automated browser at all, at which point
+# the only path forward is a human completing that one form manually,
+# and they need the real file, not just an empty form). Gitignored,
+# outside the repo's own tracked layout.
+_MANUAL_DOWNLOADS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "downloads")
+
+_UNSAFE_FILENAME_CHARS = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def _safe_filename_part(text: str) -> str:
+    return _UNSAFE_FILENAME_CHARS.sub("_", text.strip())[:80]
 
 # Real, confirmed hostnames each ATS serves its own hosted board from --
 # used to find the real form regardless of whether it's on that hosted
@@ -239,10 +260,26 @@ def run_autofill(db: Session, application_id: int) -> None:
         with open(cover_letter_pdf_path, "wb") as f:
             f.write(render_cover_letter_pdf(cl_doc.content, resume_content.get("name", "")))
 
+    # Stable copy for manual fallback -- see _MANUAL_DOWNLOADS_DIR's own
+    # comment. Best-effort: a failure here must never block the real
+    # autofill attempt over a convenience copy.
+    manual_copy_dir = None
+    try:
+        os.makedirs(_MANUAL_DOWNLOADS_DIR, exist_ok=True)
+        label = f"{_safe_filename_part(posting.company_name_raw)}_{_safe_filename_part(posting.job_title)}"
+        manual_copy_dir = os.path.join(_MANUAL_DOWNLOADS_DIR, label)
+        os.makedirs(manual_copy_dir, exist_ok=True)
+        shutil.copy(resume_pdf_path, os.path.join(manual_copy_dir, os.path.basename(resume_pdf_path)))
+        if cover_letter_pdf_path:
+            shutil.copy(cover_letter_pdf_path, os.path.join(manual_copy_dir, os.path.basename(cover_letter_pdf_path)))
+    except Exception:
+        manual_copy_dir = None
+
     log_activity(
         db,
         f"Opening a real browser to pre-fill the application for "
-        f"'{posting.job_title}' at {posting.company_name_raw}...",
+        f"'{posting.job_title}' at {posting.company_name_raw}..."
+        + (f" If you need to attach the resume/cover letter manually, they're also saved at {manual_copy_dir}." if manual_copy_dir else ""),
         "INFO",
     )
 
