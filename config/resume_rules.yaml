@@ -59,6 +59,21 @@ metrics:
   # was getting defensively hedged into "approximately X%" past the
   # 2-per-page cap even though all of them are true.
   verified_metrics:
+    # Real, source-profile-verbatim numbers, found while auditing a
+    # recurring flag: the exact same three kept getting flagged as
+    # "unverified" on every tailored resume that touched the Jetson
+    # Infinity role or the Predictive Contract Risk Model project,
+    # because they were never added here despite being 100% real --
+    # "+3% robotic arm precision, +10% workflow efficiency" (Jetson
+    # Infinity) and "86.20% accuracy (0.87 ROC-AUC)" (Predictive
+    # Contract Risk Model). Both signed and unsigned forms included
+    # since the tailoring LLM doesn't consistently keep the original's
+    # leading "+".
+    - "3%"
+    - "+3%"
+    - "10%"
+    - "+10%"
+    - "86.20%"
     - "12%"
     - "15%"
     - "17%"
