@@ -1,6 +1,7 @@
 import os
 from openai import OpenAI
 from .base import LLMProvider
+from .usage_logging import log_usage
 
 
 class OpenAICompatibleProvider(LLMProvider):
@@ -29,6 +30,20 @@ class OpenAICompatibleProvider(LLMProvider):
             temperature=temperature,
             max_tokens=max_tokens,
         )
+        if response.usage:
+            # Real gap found 2026-09-15: this provider (the one README.md
+            # points forkers to for Gemini's free tier) never logged
+            # usage at all, unlike anthropic_provider.py -- the dashboard's
+            # cost card would silently show nothing the moment anyone
+            # switched providers. cost_usd left None (unpriced, not
+            # guessed) -- no verified real pricing table for the open set
+            # of OpenAI-compatible endpoints/models this can point at;
+            # same honest fallback anthropic_provider.py already uses for
+            # a model outside ITS OWN pricing table.
+            log_usage(
+                "openai_compatible", self.model,
+                response.usage.prompt_tokens, response.usage.completion_tokens, None,
+            )
         return response.choices[0].message.content.strip()
 
     def complete_json(self, system: str, prompt: str, temperature: float = 0.3, max_tokens: int = None) -> str:

@@ -1,6 +1,7 @@
 import os
 import requests
 from .base import LLMProvider
+from .usage_logging import log_usage
 
 
 class OllamaProvider(LLMProvider):
@@ -29,7 +30,18 @@ class OllamaProvider(LLMProvider):
             timeout=120,
         )
         response.raise_for_status()
-        return response.json()["message"]["content"].strip()
+        body = response.json()
+        # Real gap found 2026-09-15: never logged usage at all, unlike
+        # anthropic_provider.py -- the dashboard's cost card would
+        # silently show nothing for forkers running the genuinely-free
+        # local option. prompt_eval_count/eval_count are Ollama's own
+        # real token counts (not estimated) from the same response, no
+        # extra call needed. cost_usd is a real 0.0, not None/unpriced --
+        # local inference has no per-token charge, that's a fact about
+        # this provider, not a missing price lookup.
+        if "prompt_eval_count" in body and "eval_count" in body:
+            log_usage("ollama", self.model, body["prompt_eval_count"], body["eval_count"], 0.0)
+        return body["message"]["content"].strip()
 
     def complete_json(self, system: str, prompt: str, temperature: float = 0.3, max_tokens: int = None) -> str:
         # Ollama's local /api/chat endpoint isn't token-capped the same
