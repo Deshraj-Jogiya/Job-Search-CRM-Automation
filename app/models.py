@@ -908,3 +908,24 @@ class AdaptiveParameterValue(Base):
     parameter = Column(String, nullable=False, unique=True)
     value = Column(Float, nullable=False)
     updated_at = Column(DateTime, default=utcnow)
+
+
+class ResearchAgentQuery(Base):
+    """One real question asked of research_agent.py's ReAct loop, plus
+    its answer and step trail. Real gap found 2026-09-15 via a
+    full-codebase audit: research_agent.py was a complete, tested
+    feature with zero way to reach it -- no route, no template, no
+    button. This is the persistence half of actually wiring it in,
+    matching every other LLM-backed feature here (score/tailor/
+    interview-prep): the loop runs in a background thread (it can be up
+    to 6 sequential LLM calls), so the result has to land somewhere the
+    dashboard can show after a refresh rather than in the request/
+    response cycle itself."""
+    __tablename__ = "research_agent_queries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    question = Column(Text, nullable=False)
+    answer = Column(Text, nullable=True)  # null while still running
+    steps_json = Column(Text, nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utcnow)

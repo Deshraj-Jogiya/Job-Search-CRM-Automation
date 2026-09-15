@@ -104,6 +104,30 @@
     {% endif %}
 </section>
 
+<section class="settings-panel">
+    <h2>Ask About Your Search</h2>
+    <p class="muted-note">Ask a plain-English question about your own real data -- e.g. "What's the status of Acme Corp?" or "How many applications are marked applied?"</p>
+    <form method="post" action="/research-agent/ask" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="text" name="question" placeholder="Ask a question..." required style="min-width: 320px;">
+        <button type="submit">Ask</button>
+    </form>
+    {% if recent_research_queries %}
+    <div class="sub-panel" style="margin-top: 1rem;">
+        {% for q in recent_research_queries %}
+        <p><strong>{{ q.question }}</strong></p>
+        {% if q.error %}
+        <p class="muted-note">Something went wrong answering this: {{ q.error }}</p>
+        {% elif q.answer %}
+        <p>{{ q.answer }}</p>
+        {% else %}
+        <p class="muted-note">Still thinking -- refresh in a few seconds.</p>
+        {% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
+</section>
+
 {% if ready_to_start %}
 <section class="settings-panel">
     <h2>Ready to start your job hunt?</h2>
