@@ -718,6 +718,17 @@ class GlobalSettings(Base):
     fast_track_window_hours = Column(Float, default=2.0)
     rejected_retention_days = Column(Integer, default=7)
 
+    # Real gap found 2026-09-15 via a full-codebase audit: activity_logs
+    # is a write-only audit trail (6,216 real rows and counting on the
+    # live instance) with no retention policy anywhere -- unbounded
+    # forever on a 500MB free Postgres tier. 90 days covers a realistic
+    # "what happened last month" debugging window without keeping every
+    # log line from a months-old job search indefinitely; same pattern
+    # as rejected_retention_days above, its own dedicated setting rather
+    # than reusing that one since these are unrelated concerns (data
+    # hygiene vs. a job-hunting retention choice).
+    activity_log_retention_days = Column(Integer, default=90)
+
     # Minimum match_score required for a clean, autofill-
     # supported application to skip straight to auto-launching a real
     # browser. Originally there was no score gate here at all -- routing

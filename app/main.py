@@ -455,6 +455,7 @@ def update_settings(
     notification_digest_interval_minutes: int = Form(...),
     automated_backups_enabled: bool = Form(False),
     backup_retention_count: int = Form(14),
+    activity_log_retention_days: int = Form(90),
     db: Session = Depends(get_db),
 ):
     """Every tunable number in the product is editable here -- nothing
@@ -481,5 +482,6 @@ def update_settings(
     settings.local_timezone = local_timezone.strip()
     settings.automated_backups_enabled = automated_backups_enabled
     settings.backup_retention_count = backup_retention_count
+    settings.activity_log_retention_days = activity_log_retention_days
     db.commit()
     return RedirectResponse(url="/", status_code=303)
