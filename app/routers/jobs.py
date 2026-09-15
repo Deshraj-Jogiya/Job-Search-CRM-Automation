@@ -712,7 +712,19 @@ def generate_interview_prep_now(application_id: int, db: Session = Depends(get_d
         return _redirect_detail(application_id, error="Can't generate interview prep for a Rejected application.")
     threading.Thread(target=_interview_prep_in_background, args=(application_id,), daemon=True).start()
     return _redirect_detail(
-        application_id, message="Generating interview prep -- runs a couple of AI passes, refresh in ~20-40s."
+        application_id,
+        # Real gap found live 2026-09-15: this said "~20-40s" -- for a
+        # real company with a detailed multi-round process (confirmed
+        # live: QuantumBlack's real 7-round pipeline took 5+ minutes,
+        # even WITH _generate_predicted_rounds' own parallelization),
+        # that estimate is off by an order of magnitude. Per-round Q&A
+        # generation runs in parallel already (see that function's own
+        # docstring); there's no further speedup available without
+        # cutting real coverage, so the honest fix is a wider, truthful
+        # estimate, not a faster promise this can't keep.
+        message="Generating interview prep -- runs several real AI passes, one per predicted round. "
+                "Usually 1-3 minutes; can run longer for a company with a detailed, many-round process. "
+                "Refresh this page in a bit.",
     )
 
 
