@@ -17,6 +17,10 @@ env/
 # Retained application logs (Phase 18 -- rotated locally, not committed)
 logs/
 
+# Stable manual-fallback copies of tailored resumes/cover letters --
+# see autofill_service.py's _MANUAL_DOWNLOADS_DIR
+downloads/
+
 # Restore staging + pre-restore safety-net backups (Phase 9 restore) --
 # real encrypted snapshots of the live database, never committed
 backups/
