@@ -1,5 +1,7 @@
+import json
 import os
 import secrets
+import threading
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -18,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from .app_mode import is_showcase_mode
 from .database import engine, Base, SessionLocal, get_db, utcnow
-from .models import AdminAccount, GlobalSettings, SearchKeyword, get_or_create_settings, JobApplication, ProfileVariant
+from .models import AdminAccount, GlobalSettings, SearchKeyword, get_or_create_settings, JobApplication, ProfileVariant, ResearchAgentQuery
 from .csrf import CSRFMiddleware
 from .templating import render
 from .routers import auth as auth_router
@@ -34,6 +36,8 @@ from .routers import adaptation as adaptation_router
 from .services import auth_service, backup_service, llm_usage_service, profile_service, trend_research_service
 from .services import scheduler as bg_scheduler
 from .services.activity_logger import log_activity
+from .services.llm import get_llm_provider
+from .services.research_agent import run_research_agent
 
 Base.metadata.create_all(bind=engine)
 
@@ -213,6 +217,48 @@ def health_check(db: Session = Depends(get_db)):
     )
 
 
+def _research_agent_in_background(query_id: int, question: str):
+    db = SessionLocal()
+    try:
+        result = run_research_agent(db, get_llm_provider(), question)
+        query = db.query(ResearchAgentQuery).filter(ResearchAgentQuery.id == query_id).first()
+        if query:
+            query.answer = result.final_answer
+            query.steps_json = json.dumps([
+                {"thought": s.thought, "action": s.action, "action_input": s.action_input, "observation": s.observation}
+                for s in result.steps
+            ])
+            db.commit()
+    except Exception as e:
+        query = db.query(ResearchAgentQuery).filter(ResearchAgentQuery.id == query_id).first()
+        if query:
+            query.error = str(e)
+            db.commit()
+    finally:
+        db.close()
+
+
+@app.post("/research-agent/ask", dependencies=app_dependencies)
+def ask_research_agent(question: str = Form(...)):
+    """Real, tested capability (research_agent.py) that had zero way to
+    reach it until this route -- see that module's own docstring. Runs
+    in a background thread like every other LLM-backed action here (up
+    to 6 sequential calls), result lands in ResearchAgentQuery for the
+    dashboard to show after a refresh."""
+    db = SessionLocal()
+    try:
+        query = ResearchAgentQuery(question=question.strip())
+        db.add(query)
+        db.commit()
+        db.refresh(query)
+        query_id = query.id
+    finally:
+        db.close()
+
+    threading.Thread(target=_research_agent_in_background, args=(query_id, question.strip()), daemon=True).start()
+    return RedirectResponse(url="/?message=" + quote("Asked -- refresh in a few seconds for the answer."), status_code=303)
+
+
 @app.get("/", response_class=HTMLResponse, dependencies=app_dependencies)
 def dashboard(request: Request, db: Session = Depends(get_db)):
     settings = get_or_create_settings(db)
@@ -235,6 +281,11 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     # someone happens to visit /adaptation on their own.
     pending_trend_proposal_count = len(trend_research_service.pending_trend_proposals(db))
     llm_usage = llm_usage_service.get_usage_summary(db)
+    recent_research_queries = (
+        db.query(ResearchAgentQuery).order_by(ResearchAgentQuery.created_at.desc()).limit(5).all()
+    )
+    for q in recent_research_queries:
+        q.steps = json.loads(q.steps_json) if q.steps_json else []
 
     return render(
         request,
@@ -246,6 +297,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
             "backup_configured": backup_service.is_configured(),
             "showcase_mode": is_showcase_mode(),
             "intake_unconfigured": settings.automation_enabled and not has_active_keywords,
+            "recent_research_queries": recent_research_queries,
             # Onboarding call-to-action: a real profile exists, search
             # keywords are configured (ensure_intake_targeting derives
             # these automatically once a profile exists, so this is
