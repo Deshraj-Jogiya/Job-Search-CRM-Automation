@@ -674,6 +674,7 @@ def generate_interview_prep(db: Session, application_id: int) -> JobApplication:
         predicted_rounds_json=json.dumps(predicted_rounds),
         is_active=True,
         generated_at=utcnow(),
+        used_tailored_resume=used_tailored_resume,
     )
     db.add(prep)
     db.commit()

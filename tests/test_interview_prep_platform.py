@@ -16,8 +16,8 @@ from tests.conftest import make_application, make_company, make_posting, make_va
 env = Environment(loader=FileSystemLoader("app/templates"))
 
 
-def _with_prep_row(db, application):
-    prep = models.InterviewPrep(application_id=application.id)
+def _with_prep_row(db, application, **overrides):
+    prep = models.InterviewPrep(application_id=application.id, **overrides)
     db.add(prep)
     db.commit()
     db.refresh(application)
@@ -102,6 +102,46 @@ def test_predicted_rounds_include_per_round_download_link(db):
 
     assert f"/jobs/{application.id}/interview-prep/download?round_name=Recruiter%20Screen" in html
     assert "Download This Round Only" in html
+
+
+def test_grounding_badge_shows_tailored_resume_when_used(db):
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application = make_application(db, posting, status="Applied", applied_at=utcnow())
+    application = _with_prep_row(db, application, used_tailored_resume=True)
+
+    html = _base_detail_context(
+        application, posting, general_prep={"strengths_to_emphasize": ["x"]},
+    )
+
+    assert "Grounded in your tailored resume for this application" in html
+
+
+def test_grounding_badge_shows_base_profile_warning_when_not_tailored(db):
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application = make_application(db, posting, status="Applied", applied_at=utcnow())
+    application = _with_prep_row(db, application, used_tailored_resume=False)
+
+    html = _base_detail_context(
+        application, posting, general_prep={"strengths_to_emphasize": ["x"]},
+    )
+
+    assert "Grounded in your general profile" in html
+
+
+def test_grounding_badge_absent_for_prep_rows_from_before_this_column_existed(db):
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application = make_application(db, posting, status="Applied", applied_at=utcnow())
+    application = _with_prep_row(db, application)  # used_tailored_resume left as its column default (None)
+
+    html = _base_detail_context(
+        application, posting, general_prep={"strengths_to_emphasize": ["x"]},
+    )
+
+    assert "Grounded in your tailored resume" not in html
+    assert "Grounded in your general profile" not in html
 
 
 def test_version_history_hidden_with_only_one_version(db):
