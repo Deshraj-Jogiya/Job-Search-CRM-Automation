@@ -27,7 +27,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from ..database import SessionLocal
 from ..models import get_or_create_settings
 from . import backup_service, confirmation_service, intake_service, notification_service, trend_research_service
-from .activity_logger import log_activity
+from .activity_logger import log_activity, sweep_activity_log_retention
 
 scheduler = BackgroundScheduler()
 
@@ -79,6 +79,14 @@ def _backup_tick() -> None:
     _run_isolated("scheduled backup", backup_service.run_scheduled_backup)
 
 
+def _activity_log_retention_tick() -> None:
+    # Deliberately not gated by automation_enabled either, same reasoning
+    # as backups -- this is data hygiene (bounding an unbounded audit
+    # table), not the job search itself, so it should keep working even
+    # while automation is paused.
+    _run_isolated("activity-log retention sweep", sweep_activity_log_retention)
+
+
 def _trend_check_tick() -> None:
     # Deliberately not gated by automation_enabled either, same reasoning
     # as backups -- this keeps the RESUME-BUILDING RULES current, not the
@@ -94,6 +102,9 @@ def start_scheduler() -> None:
     if not scheduler.running:
         scheduler.add_job(_tick, trigger="interval", minutes=_TICK_MINUTES, name="job_intake_tick")
         scheduler.add_job(_backup_tick, trigger="interval", hours=_BACKUP_INTERVAL_HOURS, name="scheduled_backup")
+        scheduler.add_job(
+            _activity_log_retention_tick, trigger="interval", hours=_BACKUP_INTERVAL_HOURS, name="activity_log_retention",
+        )
         scheduler.add_job(_trend_check_tick, trigger="interval", days=_TREND_CHECK_INTERVAL_DAYS, name="trend_check")
         scheduler.start()
         print(
