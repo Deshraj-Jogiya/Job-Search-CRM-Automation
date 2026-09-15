@@ -238,19 +238,29 @@ def run_autofill(db: Session, application_id: int) -> None:
         _watch_for_submission_and_close(db, application_id, page)
 
 
+_UNRECOGNIZED_CLOSE_TEXT_SNIPPET_CHARS = 500
+
+
 def _watch_for_submission_and_close(db: Session, application_id: int, page) -> None:
     baseline_url, baseline_text = _page_snapshot(page)
+    last_url, last_text = baseline_url, baseline_text
     confirmed = False
 
     while True:
         try:
             if page.is_closed():
+                if not confirmed:
+                    _log_unrecognized_close(db, application_id, last_url, last_text)
                 return
         except Exception:
+            if not confirmed:
+                _log_unrecognized_close(db, application_id, last_url, last_text)
             return
 
         if not confirmed:
             current_url, current_text = _page_snapshot(page)
+            if current_url or current_text:
+                last_url, last_text = current_url, current_text
             if _looks_like_submission_confirmation(current_url, current_text, baseline_url, baseline_text):
                 confirmed = True
                 _auto_mark_applied(db, application_id, current_url)
@@ -259,6 +269,32 @@ def _watch_for_submission_and_close(db: Session, application_id: int, page) -> N
             page.wait_for_timeout(_SUBMISSION_POLL_INTERVAL_SECONDS * 1000)
         except Exception:
             return
+
+
+def _log_unrecognized_close(db: Session, application_id: int, last_url: str, last_text: str) -> None:
+    """The browser closed without this module's own curated pattern
+    list recognizing a submission confirmation -- either the human
+    closed it without submitting, or they did submit and the real
+    confirmation page just doesn't match anything in
+    _CONFIRMATION_URL_KEYWORDS/_CONFIRMATION_TEXT_PHRASES yet (this is
+    real: it happened on a genuine Ashby submission, and no reliable
+    public documentation of Ashby's exact confirmation page text/URL
+    was found to add a pattern for ahead of time -- guessing one would
+    risk a false positive elsewhere for no verified benefit). Logging
+    the real last-seen page here turns the NEXT occurrence into real
+    evidence to extend the pattern list with, instead of another guess."""
+    application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+    if not application:
+        return
+    snippet = (last_text or "")[-_UNRECOGNIZED_CLOSE_TEXT_SNIPPET_CHARS:]
+    log_activity(
+        db,
+        f"Autofill browser closed for '{application.posting.job_title}' at {application.posting.company_name_raw} "
+        f"without a recognized submission confirmation. If you did submit it, mark it Applied manually -- and if "
+        f"you have a moment, this is real evidence to extend the pattern list with. Last URL: {last_url!r}. "
+        f"Last page text (end): {snippet!r}",
+        "INFO",
+    )
 
 
 def _auto_mark_applied(db: Session, application_id: int, confirmation_url: str) -> None:

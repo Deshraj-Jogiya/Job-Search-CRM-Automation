@@ -5,6 +5,7 @@ real browser."""
 
 import pytest
 
+from app.models import ActivityLog
 from app.services import autofill_service
 from app.services.autofill_service import (
     _auto_mark_applied,
@@ -122,6 +123,53 @@ def test_watch_loop_leaves_application_untouched_if_never_confirmed(db, settings
 
     db.refresh(application)
     assert application.status == "Approved"
+
+
+def test_unrecognized_close_logs_the_real_last_seen_page(db, settings):
+    """A real Ashby submission's confirmation page didn't match any
+    curated pattern -- rather than guess at one with no verified
+    evidence, the system now logs the actual last-seen page so a real
+    future occurrence gives real data to extend the pattern list from."""
+    company = make_company(db)
+    posting = make_posting(db, company, source="ashby")
+    application = make_application(db, posting, status="Approved")
+
+    page = FakePage(
+        [
+            {"url": "https://jobs.ashbyhq.com/acme/1", "text": "apply now", "closed": False},
+            {"url": "https://jobs.ashbyhq.com/acme/1/success", "text": "you're all set!", "closed": False},
+            {"url": "https://jobs.ashbyhq.com/acme/1/success", "text": "you're all set!", "closed": True},
+        ]
+    )
+
+    _watch_for_submission_and_close(db, application.id, page)
+
+    db.refresh(application)
+    assert application.status == "Approved"  # not auto-confirmed -- "you're all set!" isn't a recognized phrase
+
+    log = db.query(ActivityLog).order_by(ActivityLog.id.desc()).first()
+    assert "without a recognized submission confirmation" in log.message
+    assert "jobs.ashbyhq.com/acme/1/success" in log.message
+    assert "you're all set!" in log.message
+
+
+def test_confirmed_submission_does_not_log_an_unrecognized_close(db, settings):
+    company = make_company(db)
+    posting = make_posting(db, company, source="greenhouse")
+    application = make_application(db, posting, status="Approved")
+
+    page = FakePage(
+        [
+            {"url": "https://boards.greenhouse.io/acme/jobs/1", "text": "apply now", "closed": False},
+            {"url": "https://boards.greenhouse.io/acme/jobs/1/thank-you", "text": "thank you for applying", "closed": False},
+            {"url": "https://boards.greenhouse.io/acme/jobs/1/thank-you", "text": "thank you for applying", "closed": True},
+        ]
+    )
+
+    _watch_for_submission_and_close(db, application.id, page)
+
+    log = db.query(ActivityLog).order_by(ActivityLog.id.desc()).first()
+    assert "without a recognized submission confirmation" not in log.message
 
 
 def test_auto_mark_applied_skips_gracefully_if_already_applied(db, settings):
