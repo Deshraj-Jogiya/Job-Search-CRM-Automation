@@ -1,6 +1,7 @@
 import os
 from anthropic import Anthropic
 from .base import LLMProvider
+from .usage_logging import log_usage
 
 # $/million tokens, real published rates -- needs a manual update whenever
 # Anthropic changes pricing (there's no pricing API to read this from live).
@@ -15,36 +16,11 @@ _PRICE_PER_MILLION_TOKENS = {
 
 
 def _log_usage(model: str, input_tokens: int, output_tokens: int) -> None:
-    """Writes one real row per call, own independent DB session -- kept
-    fully decoupled from whatever caller/transaction triggered this call
-    (this module has no db parameter anywhere and touching every one of
-    its dozens of call sites to thread one through would be a large,
-    invasive change for what this needs). A failure here must never
-    break the real LLM call it's just trying to record -- swallowed,
-    not raised, same posture as this codebase's own log_activity calls
-    that are allowed to fail without taking down the thing they're
-    logging."""
-    try:
-        from ...database import SessionLocal
-        from ...models import LlmUsageLog
-
-        prices = _PRICE_PER_MILLION_TOKENS.get(model)
-        cost = None
-        if prices:
-            cost = (input_tokens / 1_000_000 * prices["input"]) + (output_tokens / 1_000_000 * prices["output"])
-
-        db = SessionLocal()
-        try:
-            db.add(LlmUsageLog(
-                provider="anthropic", model=model,
-                input_tokens=input_tokens, output_tokens=output_tokens,
-                estimated_cost_usd=cost,
-            ))
-            db.commit()
-        finally:
-            db.close()
-    except Exception:
-        pass
+    prices = _PRICE_PER_MILLION_TOKENS.get(model)
+    cost = None
+    if prices:
+        cost = (input_tokens / 1_000_000 * prices["input"]) + (output_tokens / 1_000_000 * prices["output"])
+    log_usage("anthropic", model, input_tokens, output_tokens, cost)
 
 
 class AnthropicProvider(LLMProvider):

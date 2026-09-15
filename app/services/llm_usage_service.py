@@ -1,8 +1,9 @@
 """Reads real LlmUsageLog rows (see app/models.py's own docstring on
-that table, and app/services/llm/anthropic_provider.py's _log_usage --
-this module is pure read/aggregation, nothing writes here). Added after
-the user asked what a real submission actually cost and the honest
-answer was that nothing tracked it before this."""
+that table, and app/services/llm/usage_logging.py's log_usage, called by
+all three providers as of 2026-09-15 -- this module is pure read/
+aggregation, nothing writes here). Added after the user asked what a
+real submission actually cost and the honest answer was that nothing
+tracked it before this."""
 
 from datetime import timedelta
 
@@ -15,8 +16,15 @@ from ..models import LlmUsageLog
 
 def get_usage_summary(db: Session) -> dict:
     """All-time and last-24h totals. estimated_cost_usd is None on a
-    row whenever the model wasn't in anthropic_provider.py's pricing
-    table at call time -- summed separately from priced calls so an
+    row whenever the provider that wrote it had no real, verified price
+    for that model at call time (every openai_compatible_provider.py
+    call, currently -- no verified pricing table for the open set of
+    OpenAI-compatible endpoints/models it can point at) -- summed
+    separately from priced calls so an unpriced call silently
+    understating the total stays visible (unpriced_calls > 0) rather
+    than hidden inside a smaller-than-real number. Ollama's estimated_
+    cost_usd is a real 0.0, not None -- local inference genuinely has no
+    per-token charge, so it correctly counts as "priced" at zero.
     unpriced call silently understating the total stays visible
     (unpriced_calls > 0) rather than hidden inside a smaller-than-real
     number."""
