@@ -314,7 +314,7 @@ def end_session(db: Session, session_id: int, visual_metrics: dict = None) -> Mo
 
     application = db.query(JobApplication).filter(JobApplication.id == session.application_id).first()
     try:
-        profile_content, _, _ = resolve_grounding_profile(db, application)
+        profile_content, _, used_tailored_resume = resolve_grounding_profile(db, application)
     except InterviewPrepServiceError as e:
         raise MockInterviewServiceError(str(e)) from e
 
@@ -391,10 +391,16 @@ def end_session(db: Session, session_id: int, visual_metrics: dict = None) -> Mo
     session.debrief_json = json.dumps(debrief)
     session.status = "completed"
     session.ended_at = utcnow()
+    session.used_tailored_resume = used_tailored_resume
     db.commit()
     db.refresh(session)
 
-    log_activity(db, f"Completed a mock interview session for '{session.round_name}'.", "INFO")
+    log_activity(
+        db,
+        f"Completed a mock interview session for '{session.round_name}'"
+        + (" grounded in the tailored resume." if used_tailored_resume else " grounded in the base profile."),
+        "INFO",
+    )
     return session
 
 

@@ -8,6 +8,7 @@ external-API/LLM calls aren't unit tested, only the pure logic around
 them (CRUD, status transitions, filtering)."""
 
 import json
+from unittest.mock import patch
 
 import pytest
 
@@ -104,6 +105,47 @@ def test_delete_story_removes_it(db):
     behavioral_story_service.delete_story(db, story_id)
 
     assert db.query(models.BehavioralStory).filter(models.BehavioralStory.id == story_id).first() is None
+
+
+def test_generate_story_drafts_excludes_confidential_projects_from_the_prompt(db):
+    # Real gap found 2026-09-15 via a full-codebase audit: this is the
+    # one entry point that generates content a candidate might say out
+    # loud in an interview without ever applying the confidential-
+    # project filter every sibling entry point already applies (see
+    # profile_service.strip_confidential_projects' own docstring).
+    # Deliberately breaks this file's stated "don't unit test the LLM
+    # call itself" convention for one targeted case: confirming the
+    # right DATA reaches the prompt is exactly what a real fix here
+    # needs verified, not just that a draft comes back.
+    variant = models.ProfileVariant(name="Test", is_default=True)
+    db.add(variant)
+    db.commit()
+    db.refresh(variant)
+    content = {
+        "name": "Test",
+        "projects": [
+            {"name": "Personal Solo Project", "bullets": ["Built X."]},
+            {"name": "Team NDA Project", "bullets": ["Contributed to Y."], "confidential": True},
+        ],
+    }
+    version = models.ProfileVersion(
+        variant_id=variant.id, content_json=json.dumps(content), source="manual", is_active=True,
+    )
+    db.add(version)
+    db.commit()
+
+    captured_prompt = {}
+
+    def fake_complete_json(**kwargs):
+        captured_prompt["prompt"] = kwargs.get("prompt", "")
+        return json.dumps({"stories": []})
+
+    with patch("app.services.behavioral_story_service.get_llm_provider") as mock_llm:
+        mock_llm.return_value.complete_json.side_effect = fake_complete_json
+        behavioral_story_service.generate_story_drafts(db, variant.id)
+
+    assert "Personal Solo Project" in captured_prompt["prompt"]
+    assert "Team NDA Project" not in captured_prompt["prompt"]
 
 
 def test_generate_story_drafts_raises_for_missing_variant(db):

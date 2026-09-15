@@ -221,6 +221,61 @@ def test_end_session_generates_debrief_and_completes(db):
     assert debrief["overall_summary"] == "Solid first pass."
 
 
+def test_end_session_records_used_tailored_resume_false_without_a_tailored_doc(db):
+    make_variant(db)
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application = make_application(db, posting)
+    _make_prep(db, application)
+    session = mock_interview_service.start_session(db, application.id, "Recruiter Screen", "warm_up")
+
+    fake_qa_response = json.dumps({"next_line": "ok", "is_followup": False, "suggest_level_up": False, "level_up_note": ""})
+    with patch("app.services.mock_interview_service.get_llm_provider") as mock_llm:
+        mock_llm.return_value.complete_json.return_value = fake_qa_response
+        mock_interview_service.submit_answer(db, session.id, "my answer")
+
+    fake_debrief = json.dumps({"overall_summary": "ok", "scorecard": {}})
+    with patch("app.services.mock_interview_service.get_llm_provider") as mock_llm:
+        mock_llm.return_value.complete_json.return_value = fake_debrief
+        result = mock_interview_service.end_session(db, session.id)
+
+    assert result.used_tailored_resume is False
+
+
+def test_end_session_records_used_tailored_resume_true_with_a_tailored_doc(db):
+    make_variant(db, content={"name": "Test", "experience": [{"role": "Generic role"}]})
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application = make_application(db, posting)
+    _make_prep(db, application)
+    tailored = models.TailoredDocument(
+        application_id=application.id, document_type="resume",
+        content=json.dumps({"name": "Test", "experience": [{"role": "JD-specific tailored role"}]}),
+    )
+    db.add(tailored)
+    db.commit()
+    session = mock_interview_service.start_session(db, application.id, "Recruiter Screen", "warm_up")
+
+    fake_qa_response = json.dumps({"next_line": "ok", "is_followup": False, "suggest_level_up": False, "level_up_note": ""})
+    with patch("app.services.mock_interview_service.get_llm_provider") as mock_llm:
+        mock_llm.return_value.complete_json.return_value = fake_qa_response
+        mock_interview_service.submit_answer(db, session.id, "my answer")
+
+    captured_prompt = {}
+
+    def fake_complete_json(**kwargs):
+        captured_prompt["prompt"] = kwargs.get("prompt", "")
+        return json.dumps({"overall_summary": "ok", "scorecard": {}})
+
+    with patch("app.services.mock_interview_service.get_llm_provider") as mock_llm:
+        mock_llm.return_value.complete_json.side_effect = fake_complete_json
+        result = mock_interview_service.end_session(db, session.id)
+
+    assert result.used_tailored_resume is True
+    assert "JD-specific tailored role" in captured_prompt["prompt"]
+    assert "Generic role" not in captured_prompt["prompt"]
+
+
 def test_end_session_is_idempotent_when_already_completed(db):
     company = make_company(db)
     posting = make_posting(db, company)

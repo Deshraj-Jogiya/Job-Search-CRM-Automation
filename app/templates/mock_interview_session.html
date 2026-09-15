@@ -66,6 +66,11 @@
 
     {% if debrief %}
     <h3>Debrief</h3>
+    {% if session.used_tailored_resume %}
+    <p class="badge badge-active">Grounded in your tailored resume for this application</p>
+    {% elif session.used_tailored_resume is sameas false %}
+    <p class="badge">Grounded in your general profile -- tailor this application's resume first, then start a new session, for feedback specific to this JD</p>
+    {% endif %}
     <p>{{ debrief.overall_summary }}</p>
 
     {% if debrief.comparison and debrief.comparison.has_previous %}
