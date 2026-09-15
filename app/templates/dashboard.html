@@ -249,6 +249,10 @@
         </label>
         {% endif %}
 
+        <label>Delete activity log entries older than this many days
+            <input type="number" name="activity_log_retention_days" value="{{ settings.activity_log_retention_days }}" min="1">
+        </label>
+
         <label class="checkbox-label">
             <input type="checkbox" name="quiet_hours_enabled" value="true" {{ "checked" if settings.quiet_hours_enabled }}>
             Enable quiet hours (pause deadlines during this time)
