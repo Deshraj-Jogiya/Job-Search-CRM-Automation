@@ -383,6 +383,28 @@ class TailoredDocument(Base):
     application = relationship("JobApplication", back_populates="documents")
 
 
+class LlmUsageLog(Base):
+    """One row per real LLM API call -- real token counts straight off
+    the provider's own response, not an estimate. Written by the
+    provider itself (anthropic_provider.py) via its own independent DB
+    session, decoupled from whatever caller/transaction triggered the
+    call -- added after the user asked what a real submission actually
+    cost and the honest answer was "nothing tracks that." estimated_cost_usd
+    is computed at write time from a pricing table that needs manual
+    updates when Anthropic changes prices (see anthropic_provider.py) --
+    a real, dated estimate, not a live-billed figure; the account's own
+    Anthropic Console usage page is the only fully authoritative source."""
+    __tablename__ = "llm_usage_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    provider = Column(String, nullable=False)  # 'anthropic' | 'openai_compatible' | 'ollama'
+    model = Column(String, nullable=False)
+    input_tokens = Column(Integer, nullable=False)
+    output_tokens = Column(Integer, nullable=False)
+    estimated_cost_usd = Column(Float, nullable=True)  # null when the provider/model has no known pricing (e.g. local Ollama)
+    created_at = Column(DateTime, default=utcnow)
+
+
 # ---------------------------------------------------------------------------
 # Outreach (review-gated, capped)
 # ---------------------------------------------------------------------------
