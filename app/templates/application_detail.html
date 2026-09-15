@@ -121,6 +121,11 @@
             {% endif %}
             {% if general_prep or company_prep %}
             <p class="muted-note">Generated {{ interview_prep.generated_at.strftime("%Y-%m-%d %H:%M") }} UTC.</p>
+            {% if interview_prep.used_tailored_resume %}
+            <p class="badge badge-active">Grounded in your tailored resume for this application</p>
+            {% elif interview_prep.used_tailored_resume is sameas false %}
+            <p class="badge">Grounded in your general profile -- tailor this application's resume first, then regenerate, for prep specific to this JD</p>
+            {% endif %}
 
             {% if prep_versions and prep_versions|length > 1 %}
             <details class="sub-panel">

@@ -463,6 +463,13 @@ class InterviewPrep(Base):
     predicted_rounds_json = Column(Text, nullable=True)   # round-by-round structured plan, grounded in process_research when available
     is_active = Column(Boolean, default=True)
     generated_at = Column(DateTime, default=utcnow)
+    # Real gap found 2026-09-15: resolve_grounding_profile() has always
+    # preferred the tailored resume over the base profile when one
+    # exists, but that fact only ever reached an activity-log line --
+    # nothing on the prep itself let the page show which one grounded
+    # THIS version. Nullable because it's unknown for prep rows
+    # generated before this column existed.
+    used_tailored_resume = Column(Boolean, nullable=True)
 
     application = relationship("JobApplication", back_populates="interview_preps")
 

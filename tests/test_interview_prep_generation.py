@@ -7,13 +7,17 @@ its two LLM-calling helpers mocked out -- this is exactly the wiring
 that broke three times in real testing before being fixed, and had zero
 coverage until now."""
 
+import json
 from unittest.mock import patch
 
+from app import models
 from app.services.interview_prep_service import (
     _generate_predicted_rounds,
     _strip_confidential_projects,
     check_answer_grounding,
+    resolve_grounding_profile,
 )
+from tests.conftest import make_application, make_company, make_posting, make_variant
 
 
 def test_check_answer_grounding_flags_uncited_metric():
@@ -127,3 +131,40 @@ def test_strip_confidential_projects_no_op_when_none_flagged():
 
 def test_strip_confidential_projects_handles_missing_projects_key():
     assert _strip_confidential_projects({"experience": []}) == {"experience": []}
+
+
+class TestResolveGroundingProfile:
+    """Real gap found 2026-09-15: this has always preferred the tailored
+    resume over the base profile when one exists (the user explicitly
+    kept the two separate for exactly this reason), but it had zero
+    test coverage and no way for the interview-prep page itself to show
+    which one grounded a given generation."""
+
+    def test_falls_back_to_base_profile_when_nothing_tailored_yet(self, db):
+        make_variant(db, content={"name": "Test", "experience": [{"role": "Generic role"}]})
+        company = make_company(db)
+        posting = make_posting(db, company)
+        application = make_application(db, posting)
+
+        profile_content, variant_id, used_tailored_resume = resolve_grounding_profile(db, application)
+
+        assert used_tailored_resume is False
+        assert profile_content["experience"] == [{"role": "Generic role"}]
+
+    def test_prefers_the_tailored_resume_when_one_exists(self, db):
+        make_variant(db, content={"name": "Test", "experience": [{"role": "Generic role"}]})
+        company = make_company(db)
+        posting = make_posting(db, company)
+        application = make_application(db, posting)
+
+        tailored = models.TailoredDocument(
+            application_id=application.id, document_type="resume",
+            content=json.dumps({"name": "Test", "experience": [{"role": "JD-specific tailored role"}]}),
+        )
+        db.add(tailored)
+        db.commit()
+
+        profile_content, variant_id, used_tailored_resume = resolve_grounding_profile(db, application)
+
+        assert used_tailored_resume is True
+        assert profile_content["experience"] == [{"role": "JD-specific tailored role"}]
