@@ -14,7 +14,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import BehavioralStory, ProfileVariant, ProfileVersion
+from ..models import BehavioralStory, ProfileVariant
 from ..services import behavioral_story_service, profile_service
 from ..services.behavioral_story_service import BehavioralStoryServiceError
 from ..services.profile_service import ProfileServiceError
@@ -45,23 +45,11 @@ def profile_page(request: Request, db: Session = Depends(get_db)):
 
     variant_data = []
     for variant in variants:
-        versions = (
-            db.query(ProfileVersion)
-            .filter(ProfileVersion.variant_id == variant.id)
-            .order_by(ProfileVersion.created_at.desc())
-            .all()
-        )
-        active_version = next((v for v in versions if v.is_active), None)
-        pending_versions = [v for v in versions if not v.is_active and v.source == "linkedin_diff"]
-        active_content = json.loads(active_version.content_json) if active_version else {}
-        # Pending LinkedIn-diff versions already require an explicit
-        # human approve/reject click -- this doesn't block that, it just
-        # makes sure the human reviewing actually sees a shrink risk
-        # right there instead of having to spot it inside a raw JSON diff.
-        for pending in pending_versions:
-            pending.regression_warnings = profile_service.detect_profile_regressions(
-                active_content, json.loads(pending.content_json)
-            )
+        display = profile_service.get_variant_display_data(db, variant.id)
+        active_version = display["active_version"]
+        pending_versions = display["pending_versions"]
+        versions = display["versions"]
+        active_content = display["active_content"]
         variant_data.append(
             {
                 "variant": variant,
