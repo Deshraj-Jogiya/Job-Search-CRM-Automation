@@ -63,6 +63,45 @@
         <span class="card-label">Profile Variants</span>
         <span class="card-value">{{ profile_variants|length }}</span>
     </div>
+    <div class="card">
+        <span class="card-label">Real LLM Cost (all time)</span>
+        <span class="card-value">${{ "%.2f"|format(llm_usage.all_time.estimated_cost_usd) }}</span>
+    </div>
+</section>
+
+<section class="settings-panel">
+    <h2>Real LLM Usage</h2>
+    <p class="muted-note">
+        Real token counts straight from each Anthropic API response, not an estimate -- but the dollar figure is
+        computed from a pricing table this app maintains and can go stale if Anthropic changes prices; your
+        <a href="https://console.anthropic.com/settings/usage" target="_blank" rel="noopener">Anthropic Console usage page</a>
+        is the only fully authoritative source. Calls before {{ "today" }} aren't included if this feature was added
+        after they happened -- see the note below if any call shows no cost.
+    </p>
+    <div class="table-scroll">
+        <table class="review-table">
+            <thead><tr><th></th><th>Calls</th><th>Input Tokens</th><th>Output Tokens</th><th>Estimated Cost</th></tr></thead>
+            <tbody>
+                <tr>
+                    <td>Last 24h</td>
+                    <td>{{ llm_usage.last_24h.calls }}</td>
+                    <td>{{ "{:,}".format(llm_usage.last_24h.input_tokens) }}</td>
+                    <td>{{ "{:,}".format(llm_usage.last_24h.output_tokens) }}</td>
+                    <td>${{ "%.2f"|format(llm_usage.last_24h.estimated_cost_usd) }}</td>
+                </tr>
+                <tr>
+                    <td>All time</td>
+                    <td>{{ llm_usage.all_time.calls }}</td>
+                    <td>{{ "{:,}".format(llm_usage.all_time.input_tokens) }}</td>
+                    <td>{{ "{:,}".format(llm_usage.all_time.output_tokens) }}</td>
+                    <td>${{ "%.2f"|format(llm_usage.all_time.estimated_cost_usd) }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    {% if llm_usage.all_time.unpriced_calls %}
+    <p class="muted-note">{{ llm_usage.all_time.unpriced_calls }} call(s) used a model not in the pricing table -- their tokens are counted above but not their cost, so the real total is somewhat higher than shown.</p>
+    {% endif %}
 </section>
 
 {% if ready_to_start %}
