@@ -19,6 +19,9 @@ C4: hedges any percentage/multiplier not in the config's verified
 allowlist ("roughly"/"approximately"/"about"/"~"); exact scope figures
 (counts, volumes, uptime) are never hedged.
 C6: picks the right project set per profile variant from config.
+C9: mechanically rewrites generic AI-sounding filler words ("leveraged",
+"spearheaded", "utilized", "seamless", "synergy", ...) to the plainest
+accurate synonym -- a style fix, never flagged for manual review.
 C8: work-authorization text is never generated or inferred -- config
 says whether to include a line at all, and supplies the exact text
 verbatim if so.
@@ -409,6 +412,55 @@ def check_unverified_bare_percentage(bullet_text: str, config: dict | None = Non
     config = config or get_config()
     verified = set(config["metrics"]["verified_metrics"])
     return [claim for claim in check_bare_percentage(bullet_text) if claim not in verified]
+
+
+# ---------------------------------------------------------------------------
+# C9 -- AI-cliche language
+# ---------------------------------------------------------------------------
+# Generic filler verbs/adjectives that read as AI-generated regardless of
+# who wrote them -- mechanically rewritten to the plainest accurate word.
+# Deliberately narrow: words that can carry genuine technical meaning in a
+# resume bullet ("orchestrated" real workflow orchestration, "robust"
+# error handling, "streamlined" a literal pipeline, "dynamic" programming)
+# are left alone rather than risk rewriting away accurate language just to
+# chase a style list. This is a tone fix, never surfaced for manual
+# review -- same posture as C4's hedging above.
+_AI_CLICHE_REPLACEMENTS = {
+    "leveraged": "used", "leverages": "uses", "leverage": "use", "leveraging": "using",
+    "spearheaded": "led", "spearheads": "leads", "spearhead": "lead", "spearheading": "leading",
+    "utilized": "used", "utilised": "used", "utilizes": "uses", "utilises": "uses",
+    "utilize": "use", "utilise": "use", "utilizing": "using", "utilising": "using",
+    "seamlessly": "smoothly", "seamless": "smooth",
+    "synergies": "collaboration", "synergy": "collaboration",
+}
+
+_AI_CLICHE_RE = re.compile(
+    r"\b(" + "|".join(re.escape(w) for w in sorted(_AI_CLICHE_REPLACEMENTS, key=len, reverse=True)) + r")\b",
+    re.IGNORECASE,
+)
+
+
+def check_ai_cliche_language(bullet_text: str) -> list[str]:
+    """Which cliche words (lowercased) appear in bullet_text -- used only
+    to log what rewrite_ai_cliche_language below is about to change."""
+    return [m.group(0).lower() for m in _AI_CLICHE_RE.finditer(bullet_text or "")]
+
+
+def rewrite_ai_cliche_language(bullet_text: str) -> str:
+    """Mechanically swaps each matched cliche word for its plain synonym,
+    preserving the original word's capitalization. Never changes meaning
+    or claims -- vocabulary only."""
+
+    def _replace(match: re.Match) -> str:
+        original = match.group(0)
+        replacement = _AI_CLICHE_REPLACEMENTS[original.lower()]
+        if original.isupper():
+            return replacement.upper()
+        if original[0].isupper():
+            return replacement.capitalize()
+        return replacement
+
+    return _AI_CLICHE_RE.sub(_replace, bullet_text or "")
 
 
 # ---------------------------------------------------------------------------
