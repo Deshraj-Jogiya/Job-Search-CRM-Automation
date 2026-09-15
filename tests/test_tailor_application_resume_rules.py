@@ -79,8 +79,15 @@ class TestSkillFilteringWired:
 
 class TestMetricHedgingWired:
     def test_unverified_percentage_is_hedged_in_saved_document(self, db):
+        # experience has one placeholder entry matching the mocked
+        # tailored output below (role/company/date all identical) --
+        # deliberately NOT empty like other tests in this file, since an
+        # entry-count mismatch there would trip the real, unrelated
+        # structural-fidelity check and mask what this test actually
+        # means to isolate: percentage-hedging behavior alone.
         profile = {
-            "name": "Test", "summary": "d", "skills": {}, "experience": [], "projects": [],
+            "name": "Test", "summary": "d", "skills": {}, "projects": [],
+            "experience": [{"role": "DE", "company": "X", "date": "Jan 2024 - Present", "bullets": []}],
             "education": [], "certifications": [],
         }
         application = _application(db, profile)
@@ -91,11 +98,12 @@ class TestMetricHedgingWired:
         experience = [{"role": "DE", "company": "X", "date": "Jan 2024 - Present", "bullets": ["Cut latency by 77%."]}]
         saved = _run_tailor_application(db, application, experience, [])
         assert "roughly 77%" in saved["experience"][0]["bullets"][0]
-        # ...but the RAW (pre-hedge) claim was still flagged for review --
-        # hedging the saved doc doesn't suppress the fabrication signal.
+        # Deliberately NOT a hard stop (2026-09-15) -- the saved document
+        # is already safely hedged above, so this doesn't block automation
+        # on top of that; it's still logged as a soft, non-blocking note
+        # (see tailor_application's own "Soft note" log_activity call).
         application_row = db.query(JobApplication).filter(JobApplication.id == application.id).first()
-        assert application_row.attention_reason is not None
-        assert "77%" in application_row.attention_reason
+        assert application_row.attention_reason is None
 
 
 def _config_with_test_project_slugs():
