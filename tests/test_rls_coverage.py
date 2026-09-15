@@ -24,6 +24,7 @@ _ALEMBIC_VERSIONS_DIR = os.path.join(
 _RLS_MIGRATION_FILES = [
     "1e948a01be48_enable_row_level_security_on_all_app_.py",
     "7a1c2e9f4b3d_enable_rls_on_tables_added_since_the_.py",
+    "70dba536fd0f_add_research_agent_queries_table.py",
 ]
 
 
