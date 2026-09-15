@@ -111,3 +111,51 @@ def test_keyword_with_no_real_matching_atomic_term_still_flagged():
     profile = {"skills": {"devops": ["Docker", "Kubernetes"]}}
     result = _find_unsupported_keywords(profile, ["Infrastructure automation (Pulumi/Chef)"])
     assert result == ["Infrastructure automation (Pulumi/Chef)"]
+
+
+# Real false positive, flagged directly by the candidate: a real bullet
+# describing presenting/reporting real work ("presented the analysis to
+# stakeholders", "submitted the report") routinely never names a word
+# processor or slide tool by brand at all -- so a JD keyword like
+# "Microsoft Word" or "PowerPoint" was getting flagged as unsupported
+# fabrication even though writing/presenting real work trivially implies
+# using SOME tool in this category. Fixed by excluding generic office/
+# presentation tool names from the fabrication check entirely, not just
+# grouping them (grouping alone would still require the profile to name
+# some tool in the group, which these accomplishment-style bullets don't).
+
+def test_generic_word_processor_keyword_is_never_flagged_even_with_no_profile_mention():
+    profile = {"experience": [{"bullets": ["Presented the quarterly data analysis to senior stakeholders."]}]}
+    assert _find_unsupported_keywords(profile, ["Microsoft Word"]) == []
+
+
+def test_generic_presentation_tool_keyword_is_never_flagged():
+    profile = {"experience": [{"bullets": ["Submitted a written report summarizing key findings."]}]}
+    assert _find_unsupported_keywords(profile, ["PowerPoint"]) == []
+
+
+def test_generic_office_suite_keyword_is_never_flagged():
+    profile = {"skills": {"languages": ["Python", "SQL"]}}
+    assert _find_unsupported_keywords(profile, ["Google Suite"]) == []
+
+
+def test_generic_tool_exclusion_does_not_false_match_unrelated_real_terms():
+    # "word" and "docs" are real substrings of unrelated technical terms
+    # -- must not silently excuse a genuinely unsupported claim just
+    # because it happens to contain one of these short words.
+    profile = {"skills": {"languages": ["Python"]}}
+    assert _find_unsupported_keywords(profile, ["Keyword extraction pipeline"]) == ["Keyword extraction pipeline"]
+    assert _find_unsupported_keywords(profile, ["Docstring generation with LLMs"]) == ["Docstring generation with LLMs"]
+
+
+def test_spreadsheet_tools_are_deliberately_not_excused():
+    # Excel/Sheets represent real, distinct data-manipulation skill --
+    # unlike Word/PowerPoint, still requires real evidence in the profile.
+    profile = {"experience": [{"bullets": ["Presented the quarterly data analysis to senior stakeholders."]}]}
+    assert _find_unsupported_keywords(profile, ["Excel"]) == ["Excel"]
+
+
+def test_real_technical_fabrication_still_flagged_alongside_generic_tools():
+    profile = {"experience": [{"bullets": ["Presented findings to stakeholders using PowerPoint."]}]}
+    result = _find_unsupported_keywords(profile, ["PowerPoint", "NetSuite integration"])
+    assert result == ["NetSuite integration"]

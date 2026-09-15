@@ -73,6 +73,27 @@ _TOOL_EQUIVALENCE_GROUPS = [
      "chi-square test", "t-test", "z-test", "statistical significance testing", "population stability index"},
 ]
 
+# Generic document-writing/presentation tools -- deliberately NOT in
+# _TOOL_EQUIVALENCE_GROUPS above, which still requires the profile to
+# name SOME tool in the group. These don't even clear that bar: a real
+# accomplishment bullet ("presented findings to stakeholders", "wrote
+# the quarterly report") routinely never names a word processor or
+# slide tool by brand at all, so requiring one to appear anywhere in
+# the profile text was still flagging an honest claim. The candidate
+# flagged this directly: writing up or presenting real work implies
+# using SOME tool in this category, full stop -- claiming "Word" or
+# "PowerPoint" or "Google Docs" is not a meaningful, checkable
+# technical claim the way naming a specific enterprise platform is, so
+# it's excluded from the fabrication check entirely rather than merely
+# grouped. Spreadsheet tools (Excel, Google Sheets) are deliberately
+# NOT included -- those represent real, distinct data-manipulation
+# skill, not just document/report writing.
+_GENERIC_OFFICE_TOOLS = {
+    "microsoft word", "word", "google docs", "docs", "notepad", "notepad++", "wordpad", "text editor",
+    "microsoft powerpoint", "powerpoint", "google slides", "keynote", "microsoft office", "google workspace",
+    "google suite", "g suite", "office 365", "ms office",
+}
+
 # Re-tailoring one of these would silently undo a decision the human
 # already made (submitted, cleared to submit, or explicitly passed on) --
 # refuse rather than reverting status back into the confirmation queue.
@@ -314,6 +335,14 @@ def _find_unsupported_keywords(original_profile_content: dict, resolved_keywords
     def _is_supported(keyword: str) -> bool:
         kw_lower = keyword.lower()
         if kw_lower in haystack:
+            return True
+        # Word-boundary regex, not substring containment, deliberately
+        # different from the equivalence-group check below -- several of
+        # these terms ("word", "docs", "office") are short, ordinary
+        # English words that are real substrings of unrelated terms
+        # ("password", "keywords", "docstring", "wordpress") a naive
+        # `term in kw_lower` check would wrongly match.
+        if any(re.search(rf"\b{re.escape(term)}\b", kw_lower) for term in _GENERIC_OFFICE_TOOLS):
             return True
         for group in _TOOL_EQUIVALENCE_GROUPS:
             keyword_touches_group = any(term in kw_lower for term in group)
