@@ -209,6 +209,52 @@ class TestResolveFillScope:
         assert autofill_service._resolve_fill_scope(page, "some_future_source") is page
 
 
+class FakePollingPage(FakeTopPage):
+    """Like FakeTopPage, but the embed frame only "attaches" after a
+    configurable number of wait_for_timeout calls -- reproduces the
+    real live timing gap a single fixed delay missed (a throwaway
+    diagnostic script waiting 4s found the frame fine; production's
+    original fixed 2s wait sometimes didn't)."""
+
+    def __init__(self, url, embed_frame, attaches_after_waits):
+        super().__init__(url)
+        self._embed_frame = embed_frame
+        self._attaches_after_waits = attaches_after_waits
+        self._waits_seen = 0
+
+    @property
+    def frames(self):
+        if self._waits_seen >= self._attaches_after_waits:
+            return [self.main_frame, self._embed_frame]
+        return [self.main_frame]
+
+    @frames.setter
+    def frames(self, _value):
+        pass  # FakeTopPage.__init__ assigns self.frames once -- ignored, frames is computed above instead
+
+    def wait_for_timeout(self, _ms):
+        self._waits_seen += 1
+
+
+class TestResolveFillScopeWithRetry:
+    def test_frame_appearing_on_the_first_check_needs_no_wait(self):
+        embed_frame = FakeFrame("https://job-boards.greenhouse.io/embed/job_app")
+        page = FakePollingPage("https://www.acme.com/careers", embed_frame, attaches_after_waits=0)
+        assert autofill_service._resolve_fill_scope_with_retry(page, "greenhouse") is embed_frame
+
+    def test_frame_appearing_only_after_several_polls_is_still_found(self):
+        # Reproduces the real live gap: the frame doesn't exist on the
+        # first check, only after several real waits.
+        embed_frame = FakeFrame("https://job-boards.greenhouse.io/embed/job_app")
+        page = FakePollingPage("https://www.acme.com/careers", embed_frame, attaches_after_waits=5)
+        assert autofill_service._resolve_fill_scope_with_retry(page, "greenhouse") is embed_frame
+
+    def test_frame_never_appearing_falls_back_to_the_page_after_polling(self):
+        embed_frame = FakeFrame("https://job-boards.greenhouse.io/embed/job_app")
+        page = FakePollingPage("https://www.acme.com/careers", embed_frame, attaches_after_waits=999)
+        assert autofill_service._resolve_fill_scope_with_retry(page, "greenhouse") is page
+
+
 class TestOwningPageHelper:
     """Each autofill module's own _owning_page: a Frame's real file-
     chooser/keyboard calls have no per-frame equivalent in Playwright,

@@ -66,6 +66,30 @@ def _hostname_matches(url: str, expected_hosts: tuple[str, ...]) -> bool:
     return any(host == h or host.endswith("." + h) for h in expected_hosts)
 
 
+_FILL_SCOPE_POLL_ATTEMPTS = 8
+_FILL_SCOPE_POLL_INTERVAL_MS = 750
+
+
+def _resolve_fill_scope_with_retry(page, source: str):
+    """_resolve_fill_scope, polled rather than checked once after a
+    single fixed delay -- a real live test against Samsara's embedded
+    Greenhouse form still came back with zero fields filled even after
+    _resolve_fill_scope existed, because a single fixed 2-second wait
+    after the "Apply" click wasn't always long enough for the embed
+    iframe to actually attach (a throwaway diagnostic script that
+    happened to wait 4 seconds found it fine, which is what pointed at
+    timing rather than the detection logic itself being wrong).
+    Up to ~6 real seconds total before giving up and falling back to
+    the top-level page, unchanged from before either fix existed."""
+    for attempt in range(_FILL_SCOPE_POLL_ATTEMPTS):
+        scope = _resolve_fill_scope(page, source)
+        if scope is not page:
+            return scope
+        if attempt < _FILL_SCOPE_POLL_ATTEMPTS - 1:
+            page.wait_for_timeout(_FILL_SCOPE_POLL_INTERVAL_MS)
+    return page
+
+
 def _resolve_fill_scope(page, source: str):
     """Returns the real Playwright scope that actually contains the
     ATS's own form fields -- the top-level Page in the common case, or
@@ -254,19 +278,18 @@ def run_autofill(db: Session, application_id: int) -> None:
             # until after this click.
             try:
                 page.get_by_role("button", name="Apply", exact=False).first.click(timeout=3000)
-                page.wait_for_timeout(2000)
             except Exception:
                 pass
 
         # The real form lives on the top-level page in the common case,
         # but inside a nested frame when the employer embeds the ATS's
-        # form on their own domain -- see _resolve_fill_scope's own
-        # docstring. A silent zero-fields-filled result (no exception,
-        # just nothing matched) was the real, live symptom this fixes:
-        # every .locator() call in the autofill modules was searching
-        # the top-level page for fields that only existed inside the
-        # iframe.
-        fill_scope = _resolve_fill_scope(page, posting.source)
+        # form on their own domain -- see _resolve_fill_scope_with_retry's
+        # own docstring. A silent zero-fields-filled result (no
+        # exception, just nothing matched) was the real, live symptom
+        # this fixes: every .locator() call in the autofill modules was
+        # searching the top-level page for fields that only existed
+        # inside the iframe.
+        fill_scope = _resolve_fill_scope_with_retry(page, posting.source)
         if fill_scope is not page:
             log_activity(
                 db,
