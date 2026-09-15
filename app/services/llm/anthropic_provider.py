@@ -2,6 +2,50 @@ import os
 from anthropic import Anthropic
 from .base import LLMProvider
 
+# $/million tokens, real published rates -- needs a manual update whenever
+# Anthropic changes pricing (there's no pricing API to read this from live).
+# Checked 2026-09-14. Unknown models fall back to None (cost left unrecorded
+# rather than guessed) -- see _log_usage.
+_PRICE_PER_MILLION_TOKENS = {
+    "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
+    "claude-sonnet-5": {"input": 2.00, "output": 10.00},
+    "claude-opus-5": {"input": 5.00, "output": 25.00},
+    "claude-haiku-4-5-20251001": {"input": 1.00, "output": 5.00},
+}
+
+
+def _log_usage(model: str, input_tokens: int, output_tokens: int) -> None:
+    """Writes one real row per call, own independent DB session -- kept
+    fully decoupled from whatever caller/transaction triggered this call
+    (this module has no db parameter anywhere and touching every one of
+    its dozens of call sites to thread one through would be a large,
+    invasive change for what this needs). A failure here must never
+    break the real LLM call it's just trying to record -- swallowed,
+    not raised, same posture as this codebase's own log_activity calls
+    that are allowed to fail without taking down the thing they're
+    logging."""
+    try:
+        from ...database import SessionLocal
+        from ...models import LlmUsageLog
+
+        prices = _PRICE_PER_MILLION_TOKENS.get(model)
+        cost = None
+        if prices:
+            cost = (input_tokens / 1_000_000 * prices["input"]) + (output_tokens / 1_000_000 * prices["output"])
+
+        db = SessionLocal()
+        try:
+            db.add(LlmUsageLog(
+                provider="anthropic", model=model,
+                input_tokens=input_tokens, output_tokens=output_tokens,
+                estimated_cost_usd=cost,
+            ))
+            db.commit()
+        finally:
+            db.close()
+    except Exception:
+        pass
+
 
 class AnthropicProvider(LLMProvider):
     """Your instance's default provider. Requires ANTHROPIC_API_KEY."""
@@ -33,6 +77,8 @@ class AnthropicProvider(LLMProvider):
             messages=[{"role": "user", "content": prompt}],
         ) as stream:
             response = stream.get_final_message()
+        if response.usage:
+            _log_usage(self.model, response.usage.input_tokens, response.usage.output_tokens)
         return "".join(block.text for block in response.content if block.type == "text").strip()
 
     def complete_json(self, system: str, prompt: str, temperature: float = 0.3, max_tokens: int = None) -> str:
