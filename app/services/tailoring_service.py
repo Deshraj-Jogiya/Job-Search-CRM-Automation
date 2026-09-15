@@ -801,6 +801,9 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
     self_deprecating_hits = sorted(
         {hit for bullet in raw_bullets for hit in resume_rules.check_self_deprecating_content(bullet)}
     )
+    weak_opener_hits = sorted(
+        {hit for bullet in raw_bullets if (hit := resume_rules.check_weak_bullet_opener(bullet))}
+    )
 
     # C3/C4/C9: filter skills to only what's backed by a real bullet/summary,
     # hedge any not-yet-verified %/multiplier claim, and swap out generic
@@ -886,14 +889,15 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
     # years_claim_violations/bullet_fabrications are genuine honesty
     # problems (the resume claims something untrue) and, for the two
     # that survive the correction loop above, a human should still see
-    # them. unverified_percentage_violations and self_deprecating_hits
-    # are NOT the same category of risk: C4 (hedge_unverified_metrics,
-    # below) already mechanically hedges every unverified percentage in
-    # the actual saved/rendered document regardless of this flag, and
-    # volunteered self-deprecating phrasing is a tone nit, not a
-    # fabrication -- blocking automation on either was real,
-    # unnecessary manual burden with no matching safety benefit. Both
-    # still get logged, just never as a hard stop.
+    # them. unverified_percentage_violations, self_deprecating_hits, and
+    # weak_opener_hits are NOT the same category of risk: C4
+    # (hedge_unverified_metrics, below) already mechanically hedges every
+    # unverified percentage in the actual saved/rendered document
+    # regardless of this flag, volunteered self-deprecating phrasing is a
+    # tone nit, and a weak bullet opener (C10) is a style nit with no
+    # mechanically safe auto-rewrite -- blocking automation on any of
+    # these was real, unnecessary manual burden with no matching safety
+    # benefit. All three still get logged, just never as a hard stop.
     hard_stop_violations = all_unsupported or structural_violations or years_claim_violations or bullet_fabrications
     if hard_stop_violations:
         reason_parts = []
@@ -949,12 +953,13 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
     else:
         application.attention_reason = None
 
-    if unverified_percentage_violations or self_deprecating_hits:
+    if unverified_percentage_violations or self_deprecating_hits or weak_opener_hits:
         log_activity(
             db,
             f"Soft note (not blocking) on '{posting.job_title}' at {posting.company_name_raw}: "
             f"unverified%={unverified_percentage_violations} (already hedged in the saved document), "
-            f"self-deprecating={self_deprecating_hits}.",
+            f"self-deprecating={self_deprecating_hits}, "
+            f"weak bullet openers={weak_opener_hits} (C10 -- not auto-rewritten, see resume_rules.py).",
             "INFO",
         )
 

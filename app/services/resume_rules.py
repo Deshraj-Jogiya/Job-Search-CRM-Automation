@@ -22,6 +22,11 @@ C6: picks the right project set per profile variant from config.
 C9: mechanically rewrites generic AI-sounding filler words ("leveraged",
 "spearheaded", "utilized", "seamless", "synergy", ...) to the plainest
 accurate synonym -- a style fix, never flagged for manual review.
+C10: flags a bullet opening with a weak, passive phrase ("Responsible
+for", "Worked on", "Helped with", "Duties included", ...) instead of a
+real action verb -- a soft note, not auto-rewritten (unlike C9, there's
+no mechanically safe rewrite: doing so would mean inventing what the
+real action verb should have been).
 C8: work-authorization text is never generated or inferred -- config
 says whether to include a line at all, and supplies the exact text
 verbatim if so.
@@ -461,6 +466,42 @@ def rewrite_ai_cliche_language(bullet_text: str) -> str:
         return replacement
 
     return _AI_CLICHE_RE.sub(_replace, bullet_text or "")
+
+
+# ---------------------------------------------------------------------------
+# C10 -- weak/passive bullet openers
+# ---------------------------------------------------------------------------
+# Real, well-established resume-writing rule (same external resource that
+# led to C9): a bullet should open with what the candidate actually DID,
+# not a phrase describing the job/task in the passive voice. Unlike C9,
+# there's no mechanically safe rewrite here -- "Responsible for owning X"
+# could honestly become "Owned X" or a dozen other things depending on
+# what the candidate actually did, and guessing would mean inventing
+# content. So this is detect-only, surfaced as a soft, non-blocking note
+# (same posture as D's self-deprecating-content check below) -- never
+# auto-rewritten, never a hard stop.
+_WEAK_OPENER_PATTERNS = (
+    r"^responsible for\b",
+    r"^was responsible for\b",
+    r"^worked on\b",
+    r"^helped with\b",
+    r"^helped to\b",
+    r"^assisted (in|with)\b",
+    r"^duties included\b",
+    r"^tasked with\b",
+    r"^in charge of\b",
+)
+_WEAK_OPENER_RE = re.compile("|".join(_WEAK_OPENER_PATTERNS), re.IGNORECASE)
+
+
+def check_weak_bullet_opener(bullet_text: str) -> str | None:
+    """Returns the matched weak-opener phrase (lowercased) if bullet_text
+    opens with one, else None. Only checks the opening of the bullet --
+    "I was responsible for growth, which I drove by..." starting with a
+    real action isn't what this flags; a bullet that LEADS with the weak
+    phrase is."""
+    match = _WEAK_OPENER_RE.match((bullet_text or "").strip())
+    return match.group(0).lower() if match else None
 
 
 # ---------------------------------------------------------------------------

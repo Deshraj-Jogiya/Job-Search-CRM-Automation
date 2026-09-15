@@ -158,6 +158,27 @@ class TestAiClicheLanguageWired:
         assert doc.content == "I used my background to deliver results."
 
 
+class TestWeakBulletOpenerWired:
+    def test_weak_opener_is_logged_as_a_soft_note_not_a_hard_stop(self, db):
+        profile = {
+            "name": "Test", "summary": "d", "skills": {}, "projects": [],
+            "experience": [{"role": "DE", "company": "X", "date": "Jan 2024 - Present", "bullets": []}],
+            "education": [], "certifications": [],
+        }
+        application = _application(db, profile)
+        experience = [{
+            "role": "DE", "company": "X", "date": "Jan 2024 - Present",
+            "bullets": ["Responsible for managing the data pipeline migration."],
+        }]
+        saved = _run_tailor_application(db, application, experience, [])
+
+        # C10 never rewrites -- the bullet is saved exactly as tailored.
+        assert saved["experience"][0]["bullets"][0] == "Responsible for managing the data pipeline migration."
+
+        application_row = db.query(JobApplication).filter(JobApplication.id == application.id).first()
+        assert application_row.attention_reason is None
+
+
 def _config_with_test_project_slugs():
     """The real config, deep-copied, with ONLY projects_by_variant's
     data_engineering slugs swapped for this test's short fixture names
