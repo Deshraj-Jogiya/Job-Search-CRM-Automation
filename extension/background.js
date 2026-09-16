@@ -54,7 +54,7 @@ async function callApi(path, body) {
   return { data: await response.json() };
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "checkMatch") {
     callApi("/api/extension/match", { url: message.url }).then(sendResponse);
     return true; // keep the message channel open for the async response
@@ -62,6 +62,22 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "getAnswers") {
     callApi("/api/extension/answers", { application_id: message.applicationId, fields: message.fields }).then(sendResponse);
     return true;
+  }
+  if (message.type === "broadcastFill") {
+    // A content script can only ever message the background, never a
+    // sibling frame directly -- this relays a confirmed match to every
+    // frame of the tab (chrome.tabs.sendMessage reaches all frames when
+    // no frameId is given), so a real embedded ATS iframe fills its own
+    // DOM too, not just the top-level page. sender.tab is set when this
+    // comes from a content script (it already knows its own tab); the
+    // popup has no "tab" of its own, so it passes tabId explicitly
+    // instead (its "Fill Again" button re-triggers the same broadcast).
+    const tabId = sender.tab ? sender.tab.id : message.tabId;
+    if (tabId != null) {
+      chrome.tabs.sendMessage(tabId, { type: "fillPage", applicationId: message.applicationId });
+    }
+    sendResponse({ ok: true });
+    return false;
   }
   return false;
 });
