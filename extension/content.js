@@ -176,10 +176,40 @@
     return el.files.length === 0;
   }
 
+  // Real bug found live 2026-09-16, root cause of "still no file upload
+  // is being done": findLabelText's normal label[for=...] lookup finds a
+  // REAL label on the real Samsara/Greenhouse file inputs -- but its text
+  // is just "Attach" (the upload button's own caption), not "Resume/CV" /
+  // "Cover Letter". The field's actual identifying text sits a few DOM
+  // levels up, in a heading div that has no for=/aria-labelledby
+  // connection to the input at all (confirmed live -- Greenhouse's own
+  // accessibility gap on this widget, not something fixable from here,
+  // only worked around). Never guesses: only walks up as far as the
+  // FIRST ancestor whose own text unambiguously names one document type
+  // and not the other; confirmed live that the real containers ARE that
+  // clean (resume and cover-letter widgets are separate sibling
+  // containers) well before any shared ancestor's text would start
+  // matching both and force this to stop.
+  function findFileInputLabelText(el) {
+    const direct = findLabelText(el);
+    if (direct && (RESUME_LABEL_RE.test(direct) || COVER_LETTER_LABEL_RE.test(direct))) return direct;
+
+    let node = el.parentElement;
+    for (let depth = 0; node && depth < 8; depth++, node = node.parentElement) {
+      const text = node.textContent;
+      const isResume = RESUME_LABEL_RE.test(text);
+      const isCoverLetter = COVER_LETTER_LABEL_RE.test(text);
+      if (isResume && !isCoverLetter) return text;
+      if (isCoverLetter && !isResume) return text;
+      if (isResume && isCoverLetter) return null; // walked too far -- now spans more than one real field, never guess
+    }
+    return null;
+  }
+
   // Cover-letter check first -- more specific than the resume check, so a
   // label that somehow matched both would resolve to the more precise one.
   function documentTypeForFileInput(el) {
-    const label = findLabelText(el) || "";
+    const label = findFileInputLabelText(el) || "";
     if (COVER_LETTER_LABEL_RE.test(label)) return "cover_letter";
     if (RESUME_LABEL_RE.test(label)) return "resume";
     return null; // a file field this can't confidently identify -- never guess which document goes here
