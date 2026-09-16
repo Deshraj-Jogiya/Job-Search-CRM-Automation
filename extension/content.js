@@ -475,6 +475,20 @@
         lastResult = { matched: true, application: lastResult && lastResult.application, ...fillResult };
         renderBadge();
       }
+      // The actual root cause of the Samsara case this whole extension
+      // exists for: "Apply Now" doesn't reveal anything in THIS frame's
+      // own DOM at all -- it creates a brand-new cross-origin iframe
+      // (job-boards.greenhouse.io) that didn't exist when notifyFrames
+      // was first called from mainFrameCheckAndFill, so that one-time
+      // broadcast never reached it. Chrome does inject this content
+      // script into that new iframe automatically (all_frames: true
+      // applies to frames created after initial load too), but a
+      // sub-frame only ever fills itself in response to a "fillPage"
+      // message -- it never decides to on its own. Re-broadcasting on
+      // every click-triggered check (not just the very first one) is
+      // what actually reaches a sub-frame created after the page
+      // originally loaded.
+      notifyFrames(applicationId);
     }
 
     function burstCheck() {
