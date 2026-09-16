@@ -221,6 +221,40 @@ def _recent_employer_answer(label: str, profile: dict) -> str | None:
     return company or None
 
 
+_EDUCATION_LEVEL_RE = re.compile(r"highest level of education|education level|level of education", re.I)
+_DEGREE_LEVEL_KEYWORDS = (
+    (re.compile(r"ph\.?d|doctorate", re.I), "Doctorate"),
+    (re.compile(r"master", re.I), "Master's Degree"),
+    (re.compile(r"bachelor", re.I), "Bachelor's Degree"),
+    (re.compile(r"associate", re.I), "Associate's Degree"),
+    (re.compile(r"high school", re.I), "High School Diploma"),
+)
+
+
+def _education_level_answer(label: str, profile: dict) -> str | None:
+    """education[0] is the real highest/most-recent degree -- same
+    reverse-chronological convention already confirmed for experience,
+    and true here too (checked the real stored dates before relying on
+    it). Returns a canonical phrase ("Master's Degree") matched against
+    the field's real options via the same two-directional phrase
+    cascade _best_option_match already uses for every other select --
+    covers the common real phrasings ("Master's Degree", "Master's",
+    "Graduate Degree") without inventing a match for one this app has
+    never actually seen."""
+    if not _EDUCATION_LEVEL_RE.search(label):
+        return None
+    education = profile.get("education")
+    if not isinstance(education, list) or not education:
+        return None
+    degree_text = education[0].get("degree") if isinstance(education[0], dict) else None
+    if not degree_text:
+        return None
+    for pattern, canonical in _DEGREE_LEVEL_KEYWORDS:
+        if pattern.search(degree_text):
+            return canonical
+    return None
+
+
 def _previously_worked_here_answer(label: str, profile: dict, current_company_name: str) -> str | None:
     """A real Yes/No inferable straight from the candidate's own work
     history: does any past employer's name match the company this
@@ -281,6 +315,8 @@ def resolve_field_answers(db: Session, application_id: int, fields: list[dict]) 
             answer = _recent_employer_answer(label, profile)
         if answer is None:
             answer = _previously_worked_here_answer(label, profile, application.posting.company_name_raw)
+        if answer is None:
+            answer = _education_level_answer(label, profile)
         if answer is None:
             answer = mechanical_common_answer(label, profile)
         if answer is None and is_referral_source_question(label):
