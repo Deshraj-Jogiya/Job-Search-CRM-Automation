@@ -155,6 +155,18 @@
       color: #b45309;
     }
     .warnings-list li { margin-bottom: 2px; }
+    .add-job-panel {
+      text-align: center;
+      margin-bottom: 4px;
+    }
+    .add-job-subtext {
+      margin: 8px 0 0;
+    }
+    button.secondary-action {
+      background: #ffffff;
+      color: #0f172a;
+      border: 1px solid #cbd5e1;
+    }
     [hidden] { display: none; }
   </style>
 </head>
@@ -178,6 +190,13 @@
       <div id="match-score-badge" class="match-score" hidden></div>
     </div>
 
+    <div id="add-job-panel" class="add-job-panel" hidden>
+      <button id="add-job-btn" class="primary-cta">+ Add This Job in One Click</button>
+      <p id="add-job-subtext" class="muted add-job-subtext">
+        See your match score and get a tailored resume + cover letter, right from this page.
+      </p>
+    </div>
+
     <button id="fill-btn" class="primary-cta" hidden>Autofill</button>
 
     <div id="info-panel" class="info-panel" hidden>
@@ -189,6 +208,7 @@
       <div id="info-cover-letter" class="info-row"></div>
       <ul id="info-warnings" class="warnings-list" hidden></ul>
       <a id="info-profile-link" href="#" target="_blank" class="muted" hidden>Fix on the Profile page &#8599;</a>
+      <button id="generate-docs-btn" class="secondary-action" hidden>Generate Tailored Resume + Cover Letter</button>
     </div>
 
     <button id="show-badge-btn" class="secondary" hidden>Show On-Page Indicator</button>
