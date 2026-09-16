@@ -127,6 +127,7 @@ def test_profile_template_renders_the_lightweight_versions_real_end_to_end(db):
             "active_version": display["active_version"],
             "pending_versions": display["pending_versions"],
             "versions": display["versions"],
+            "contact": {},
             "eeo": {},
             "application_preferences": {},
             "education": [],

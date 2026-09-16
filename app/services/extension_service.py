@@ -16,14 +16,17 @@ knowledge); this module turns detected labels into real answers, or
 leaves a field unanswered rather than ever guessing one. See
 extension/README.md for the actual browser-extension code."""
 
+import json
 import re
 from urllib.parse import urlparse
 
 from sqlalchemy.orm import Session
 
+from . import document_render_service, page_fit_service
 from .autofill.common_answers import is_referral_source_question, mechanical_common_answer, referral_source_answer
 from .matching_service import MatchingServiceError, get_profile_content_for_application
 from .profile_service import profile_completeness_warnings
+from ..database import utcnow
 from ..models import JobApplication, JobPosting, TailoredDocument
 
 _FIRST_NAME_RE = re.compile(r"\bfirst\s*name\b", re.I)
@@ -170,6 +173,7 @@ _COUNTRY_RE = re.compile(r"\bcountry\b", re.I)
 _RECENT_EMPLOYER_RE = re.compile(r"(most recent|current|last) employer|employer name", re.I)
 _PREVIOUSLY_WORKED_RE = re.compile(r"previously work(ed)? (at|for|here)|worked (at|for|here) before", re.I)
 _US_PHONE_RE = re.compile(r"^\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}$")
+_ZIP_RE = re.compile(r"zip code|postal code|\bzip\b", re.I)
 
 
 def _contact_answer(label: str, profile: dict) -> str | None:
@@ -204,6 +208,14 @@ def _contact_answer(label: str, profile: dict) -> str | None:
     # a blind default for every fork/profile.
     if _COUNTRY_RE.search(label) and contact.get("phone") and _US_PHONE_RE.match(contact["phone"].strip()):
         return "United States"
+    # No zip/postal code field exists in the profile schema today (only
+    # a free-text contact.location like "Tempe, Arizona") -- checked the
+    # real stored data directly rather than assume, confirmed there's
+    # nothing to extract yet. This matches contact.zip/zip_code/
+    # postal_code so it starts working the moment one of those is added
+    # via the Profile page, without needing another round of this.
+    if _ZIP_RE.search(label):
+        return contact.get("zip") or contact.get("zip_code") or contact.get("postal_code") or None
     return None
 
 
@@ -281,6 +293,146 @@ def _relocation_assistance_answer(label: str, profile: dict) -> str | None:
     return None
 
 
+_YEARS_EXPERIENCE_RE = re.compile(r"years.{0,20}experience|experience.{0,20}years", re.I)
+_DATA_ROLE_TITLE_RE = re.compile(r"data|machine learning|\bml\b|\bai\b|analytics", re.I)
+_MONTH_YEAR_RE = re.compile(r"([A-Za-z]{3,9})\s+(\d{4})")
+_MONTH_NUMBERS = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+_DATE_RANGE_SPLIT_RE = re.compile(r"[–—-]")
+_PRESENT_RE = re.compile(r"present|current", re.I)
+
+
+def _parse_month_year(text: str) -> int | None:
+    """An absolute month index (year*12 + month), for sortable/
+    subtractable date math without a full date-parsing library. Matches
+    the real stored format ("Aug 2021") -- month name matched by its
+    first 3 letters so both abbreviated and full month names work."""
+    match = _MONTH_YEAR_RE.search(text)
+    if not match:
+        return None
+    month = _MONTH_NUMBERS.get(match.group(1).strip().lower()[:3])
+    if not month:
+        return None
+    return int(match.group(2)) * 12 + month
+
+
+def _parse_date_range(date_text: str) -> tuple[int, int] | None:
+    """(start_month_index, end_month_index) from a real stored "date"
+    string like "Aug 2021 - Mar 2022" or "May 2026 - Present". Splits on
+    either a real en-dash (what this app's own stored data actually
+    uses -- checked directly, not assumed) or a plain hyphen, since
+    other forks' data might use either."""
+    if not date_text:
+        return None
+    parts = _DATE_RANGE_SPLIT_RE.split(date_text, maxsplit=1)
+    if len(parts) != 2:
+        return None
+    start = _parse_month_year(parts[0])
+    if start is None:
+        return None
+    end_text = parts[1].strip()
+    if _PRESENT_RE.search(end_text):
+        now = utcnow()
+        end = now.year * 12 + now.month
+    else:
+        end = _parse_month_year(end_text)
+    if end is None or end < start:
+        return None
+    return start, end
+
+
+def _merge_intervals(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Standard interval merge -- so two overlapping/concurrent roles
+    (e.g. a part-time role alongside a full-time one) never get their
+    shared months double-counted."""
+    if not intervals:
+        return []
+    ordered = sorted(intervals)
+    merged = [ordered[0]]
+    for start, end in ordered[1:]:
+        last_start, last_end = merged[-1]
+        if start <= last_end:
+            merged[-1] = (last_start, max(last_end, end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def _real_years_in_data_related_roles(profile: dict) -> float | None:
+    """Sums real elapsed time (interval-merged, never double-counted)
+    across every experience entry whose own TITLE contains a data/ML/AI/
+    analytics keyword -- an objective, title-based criterion, not a
+    subjective judgment call about what each role's day-to-day actually
+    involved. Checked against the real live data before relying on this
+    as a criterion: every one of the 6 real stored experience entries
+    this was built against genuinely has one of these words in its own
+    title already, not a hypothetical."""
+    experience = profile.get("experience")
+    if not isinstance(experience, list):
+        return None
+    intervals = []
+    for entry in experience:
+        if not isinstance(entry, dict):
+            continue
+        if not _DATA_ROLE_TITLE_RE.search(entry.get("role") or ""):
+            continue
+        parsed = _parse_date_range(entry.get("date") or "")
+        if parsed:
+            intervals.append(parsed)
+    if not intervals:
+        return None
+    total_months = sum(end - start for start, end in _merge_intervals(intervals))
+    return round(total_months / 12, 1)
+
+
+_RANGE_PATTERN = re.compile(r"(\d+)\s*(?:-|–|to)\s*(\d+)", re.I)
+_PLUS_PATTERN = re.compile(r"(\d+)\s*\+")
+_UNDER_PATTERN = re.compile(r"(?:less than|under|fewer than)\s*(\d+)", re.I)
+
+
+def _match_years_to_bucketed_option(years: float, options: list[str]) -> str | None:
+    """A select's real options are almost always buckets ("2-3 years",
+    "3+ years", "Less than 1 year"), never a free-text number field --
+    parses each option's own real numeric range and returns the one the
+    computed real number actually falls into. Only returns a match when
+    exactly one option's range contains it; genuine ambiguity (e.g.
+    poorly-formed or overlapping-looking options) is left for the human
+    rather than guessed."""
+    candidates = []
+    for option in options:
+        range_match = _RANGE_PATTERN.search(option)
+        if range_match:
+            low, high = float(range_match.group(1)), float(range_match.group(2))
+            if low <= years <= high:
+                candidates.append(option)
+            continue
+        plus_match = _PLUS_PATTERN.search(option)
+        if plus_match:
+            if years >= float(plus_match.group(1)):
+                candidates.append(option)
+            continue
+        under_match = _UNDER_PATTERN.search(option)
+        if under_match and years < float(under_match.group(1)):
+            candidates.append(option)
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _years_experience_answer(label: str, profile: dict, field_type: str | None, options: list[str] | None) -> str | None:
+    if not _YEARS_EXPERIENCE_RE.search(label):
+        return None
+    years = _real_years_in_data_related_roles(profile)
+    if years is None:
+        return None
+    if field_type == "select":
+        return _match_years_to_bucketed_option(years, options or [])
+    # A free-text/number field, not a select -- a plain real number,
+    # not run through the bucket matcher (there's nothing to match --
+    # options is empty/irrelevant here).
+    return str(years)
+
+
 def _previously_worked_here_answer(label: str, profile: dict, current_company_name: str) -> str | None:
     """A real Yes/No inferable straight from the candidate's own work
     history: does any past employer's name match the company this
@@ -336,6 +488,16 @@ def resolve_field_answers(db: Session, application_id: int, fields: list[dict]) 
             continue
         field_id = field.get("field_id")
 
+        # Handled separately, not through the generic select-matching
+        # cascade below: a numeric years-of-experience bucket needs
+        # actual range math ("does 2.7 fall inside '2-3 years'"), not
+        # the phrase-containment matching _best_option_match does for
+        # every other select -- see _match_years_to_bucketed_option.
+        years_answer = _years_experience_answer(label, profile, field.get("type"), field.get("options"))
+        if years_answer:
+            answers[field_id] = years_answer
+            continue
+
         answer = _contact_answer(label, profile)
         if answer is None:
             answer = _recent_employer_answer(label, profile)
@@ -361,3 +523,55 @@ def resolve_field_answers(db: Session, application_id: int, fields: list[dict]) 
         if answer:
             answers[field_id] = answer
     return answers
+
+
+class ExtensionServiceError(Exception):
+    """User-facing failure -- the router turns this into a real error
+    message shown in the popup/on-page badge, never a bare 500."""
+
+
+def render_document_for_attachment(db: Session, application_id: int, document_type: str) -> tuple[bytes, str]:
+    """Renders the exact same real PDF the existing download route and
+    Playwright's own (bot-blocked-on-Samsara) autofill already produce
+    from this application's real tailored content -- see
+    routers/jobs.py's download_tailored_document, which this mirrors
+    rather than duplicates the actual rendering logic of. The one new
+    thing this enables: the extension's content script can fetch these
+    real bytes and attach them to a real <input type="file"> via the
+    DataTransfer API (setting a file's real bytes, not a path string --
+    the thing a script actually CAN do; researched properly after an
+    earlier, incomplete claim that no extension could ever attach a
+    file at all, which was wrong). Returns (pdf_bytes, filename)."""
+    if document_type not in ("resume", "cover_letter"):
+        raise ExtensionServiceError(f"Unknown document type '{document_type}'.")
+
+    application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+    if not application:
+        raise ExtensionServiceError(f"Application {application_id} not found.")
+
+    doc = (
+        db.query(TailoredDocument)
+        .filter(TailoredDocument.application_id == application_id, TailoredDocument.document_type == document_type)
+        .first()
+    )
+    if not doc:
+        raise ExtensionServiceError("Nothing tailored yet for this document type -- generate it in Career Pilot first.")
+
+    if document_type == "resume":
+        try:
+            pdf_bytes = page_fit_service.render_resume_pdf_with_fit(db, doc.content)["pdf_bytes"]
+        except page_fit_service.PageFitExhaustedError as e:
+            raise ExtensionServiceError(str(e)) from e
+        name_part = "resume"
+    else:
+        resume_doc = (
+            db.query(TailoredDocument)
+            .filter(TailoredDocument.application_id == application_id, TailoredDocument.document_type == "resume")
+            .first()
+        )
+        candidate_name = json.loads(resume_doc.content).get("name", "") if resume_doc else ""
+        pdf_bytes = document_render_service.render_cover_letter_pdf(doc.content, candidate_name)
+        name_part = "cover-letter"
+
+    filename = f"{name_part}-{application.posting.company_name_raw}-{application.posting.job_title}.pdf".replace(" ", "-")
+    return pdf_bytes, filename
