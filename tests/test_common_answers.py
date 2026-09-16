@@ -43,6 +43,18 @@ def test_salary_unset_returns_none():
     assert mechanical_common_answer("What are your salary expectations?", profile) is None
 
 
+def test_sponsorship_matched_on_real_samsara_form_wording():
+    # Real gap found live 2026-09-16: the original alternatives all
+    # assumed the word "sponsorship" or "visa" appeared near "now or in
+    # the future" -- Samsara's real Greenhouse form asks it as "Will you
+    # now or in the future require Samsara to commence ('sponsor') an
+    # immigration case in order to employ you?", which matched none of
+    # them, so this exact real question silently went unanswered.
+    profile = {"application_preferences": {"visa_sponsorship": "Yes, in the future"}}
+    label = 'Will you now or in the future require Samsara to commence ("sponsor") an immigration case in order to employ you?'
+    assert mechanical_common_answer(label, profile) == "Yes, in the future"
+
+
 def test_referral_source_detection():
     assert is_referral_source_question("How did you hear about this position?")
     assert not is_referral_source_question("What is your gender?")

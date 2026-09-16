@@ -64,6 +64,57 @@ def find_fillable_application(db: Session, current_url: str) -> JobApplication |
     return None
 
 
+_PHRASE_RE_CACHE: dict[str, re.Pattern] = {}
+
+
+def _contains_as_phrase(haystack: str, needle: str) -> bool:
+    """True if `needle` appears in `haystack` as real, whole words --
+    never a bare substring check. That distinction is the whole point:
+    a naive `"no" in "none of the above"` is True, which would wrongly
+    match the option "No" inside an unrelated answer containing "None".
+    Word-boundary-anchoring both ends of the (possibly multi-word)
+    needle avoids that without losing the case that matters, e.g.
+    needle "yes" correctly matching inside answer "Yes, in the future"."""
+    if not needle:
+        return False
+    pattern = _PHRASE_RE_CACHE.get(needle)
+    if pattern is None:
+        pattern = re.compile(r"\b" + r"\s+".join(re.escape(w) for w in needle.split()) + r"\b")
+        _PHRASE_RE_CACHE[needle] = pattern
+    return pattern.search(haystack) is not None
+
+
+def _best_option_match(answer: str, options: list[str]) -> str | None:
+    """A select can't be set to arbitrary text -- it can only become one
+    of its own real options. Never returns anything that isn't literally
+    one of `options`; when nothing matches safely and unambiguously, the
+    field is left for the human rather than guessed. Deliberately
+    conservative given real stakes on questions like visa sponsorship --
+    a confidently wrong Yes/No pick on a real application is worse than
+    leaving it blank.
+
+    Cascade, most to least confident:
+    1. Exact match (case-insensitive) -- e.g. answer "Job Board" against
+       an option literally "Job Board".
+    2. Either string contains the other AS WHOLE WORDS (never a bare
+       substring check -- see _contains_as_phrase), AND exactly one
+       option qualifies. More than one candidate means real ambiguity,
+       treated the same as no match at all."""
+    if not answer or not options:
+        return None
+    answer_norm = answer.strip().lower()
+
+    for option in options:
+        if option.strip().lower() == answer_norm:
+            return option
+
+    candidates = [
+        o for o in options
+        if _contains_as_phrase(answer_norm, o.strip().lower()) or _contains_as_phrase(o.strip().lower(), answer_norm)
+    ]
+    return candidates[0] if len(candidates) == 1 else None
+
+
 def _contact_answer(label: str, profile: dict) -> str | None:
     if _FIRST_NAME_RE.search(label):
         name_parts = (profile.get("name") or "").split()
@@ -121,6 +172,12 @@ def resolve_field_answers(db: Session, application_id: int, fields: list[dict]) 
             answer = referral_source_answer(application.posting.source)
         if answer is None and _COVER_LETTER_RE.search(label) and cover_letter:
             answer = cover_letter.content
+
+        if answer and field.get("type") == "select":
+            # The free-text answer above is never itself a valid value
+            # for a <select> -- it has to become one of the real options
+            # the content script actually found on the page.
+            answer = _best_option_match(answer, field.get("options") or [])
 
         if answer:
             answers[field_id] = answer
