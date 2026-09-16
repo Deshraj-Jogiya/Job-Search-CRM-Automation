@@ -361,3 +361,40 @@ def sweep_rejected_retention(db: Session) -> int:
         db.commit()
         log_activity(db, f"Swept {count} rejected application(s) past the {settings.rejected_retention_days}-day retention window.", "INFO")
     return count
+
+
+# Single source of truth for every status a human can set BY HAND (as
+# opposed to "Ingested"/"Tailored", which the pipeline sets on its own
+# with no corresponding guarded function -- there is no valid manual
+# action for a Kanban drag to call for those, so they must never appear
+# here). The Kanban board (routers/jobs.py's kanban_move route) dispatches
+# through this exact map rather than ever writing application.status
+# directly, so a drag gets the SAME timestamps/side-effects/guards as the
+# existing detail-page buttons that already call these functions --
+# skipping that would silently break analytics_service/metrics_service,
+# which key off applied_at/interviewing_at/offer_at/not_selected_at, not
+# the status string.
+KANBAN_TRANSITIONS = {
+    "Approved": approve_application,
+    "Rejected": reject_application,
+    "Applied": mark_applied,
+    "Interviewing": mark_interviewing,
+    "Offer": mark_offer,
+    "Not Selected": mark_not_selected,
+}
+
+# Mirrors the exact precondition checks inside the functions above --
+# used only to let the Kanban board's JS grey out an invalid drop target
+# before the user even drags there, so a rejected drag is rare rather
+# than the normal case. The server-side dispatch above is the real
+# authority (this is a UX nicety, not a security boundary): even if this
+# map drifts out of sync, KANBAN_TRANSITIONS's own guarded functions
+# still reject anything invalid.
+KANBAN_VALID_SOURCE_STATUSES = {
+    "Approved": ("Needs Review", "Pending Confirmation"),
+    "Rejected": ("Needs Review", "Pending Confirmation"),
+    "Applied": ("Approved",),
+    "Interviewing": ("Applied",),
+    "Offer": ("Applied", "Interviewing"),
+    "Not Selected": ("Applied", "Interviewing"),
+}
