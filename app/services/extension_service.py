@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from . import document_render_service, page_fit_service
 from .autofill.common_answers import is_referral_source_question, mechanical_common_answer, referral_source_answer
+from .intake_service import get_or_create_company
 from .matching_service import MatchingServiceError, get_profile_content_for_application
 from .profile_service import profile_completeness_warnings
 from ..database import utcnow
@@ -617,3 +618,92 @@ def render_document_for_attachment(db: Session, application_id: int, document_ty
 
     filename = f"{name_part}-{application.posting.company_name_raw}-{application.posting.job_title}.pdf".replace(" ", "-")
     return pdf_bytes, filename
+
+
+def add_job_from_page(db: Session, url: str, job_title: str, company_name: str, job_description: str) -> JobApplication:
+    """Real fix for the biggest, most-repeated gap this popup had:
+    JobRight's own popup lets a user add an unrecognized posting and
+    generate tailored documents right there, without ever leaving the
+    page -- researched directly against real competitor popups before
+    building this (JobRight, Simplify Copilot), not guessed at. Same
+    one-click "+ Add This Job" capability, reusing the exact same
+    Company get-or-create/dedupe logic intake_service.py already uses
+    for every other source (source="manual" here, a value the
+    JobPosting model already documented but nothing had ever actually
+    created until now) rather than a second copy.
+
+    Only creates the real DB rows and returns fast -- scoring/tailoring/
+    approval run afterward in a background thread the router kicks off
+    (see score_and_tailor_new_application), since a real multi-pass LLM
+    tailoring run takes 30-90s and this call needs to stay fast enough
+    for the popup to feel responsive, not hang open waiting."""
+    job_title = (job_title or "").strip()
+    job_description = (job_description or "").strip()
+    company_name = (company_name or "").strip() or "Unknown Company"
+    if not job_title:
+        raise ExtensionServiceError("Couldn't find a real job title on this page -- add it from the Jobs page instead.")
+    if len(job_description) < 50:
+        raise ExtensionServiceError(
+            "Couldn't find enough real job description text on this page -- add it from the Jobs page instead."
+        )
+
+    if url:
+        existing_posting = db.query(JobPosting).filter(JobPosting.job_url == url).first()
+        if existing_posting:
+            existing_application = (
+                db.query(JobApplication).filter(JobApplication.posting_id == existing_posting.id).first()
+            )
+            if existing_application:
+                return existing_application  # already added from this exact URL -- never create a duplicate
+
+    company = get_or_create_company(db, company_name)
+    posting = JobPosting(
+        company_id=company.id,
+        company_name_raw=company_name,
+        job_title=job_title,
+        job_url=url or None,
+        job_description=job_description,
+        source="manual",
+        first_seen_at=utcnow(),
+        last_seen_at=utcnow(),
+    )
+    db.add(posting)
+    db.commit()
+    db.refresh(posting)
+
+    application = JobApplication(posting_id=posting.id, status="Ingested")
+    db.add(application)
+    db.commit()
+    db.refresh(application)
+    return application
+
+
+def score_and_tailor_new_application(db: Session, application_id: int) -> None:
+    """Real-time counterpart to confirmation_service.evaluate_and_enqueue's
+    asynchronous-discovery path. That function's "Pending Confirmation"
+    timed window exists to give a human time to notice and object before
+    an UNATTENDED Playwright auto-launch runs on a posting nobody has
+    looked at yet -- it was built for automated background discovery.
+    None of that applies here: this is only ever called right after
+    add_job_from_page, whose entire point is that a human is already
+    looking at this exact posting, right now, and chose to add it
+    themselves. A clean tailoring result (no real hard-stop fabrication
+    flag) is approved immediately so the extension's own
+    match_current_page (Approved-only) picks it up without the user
+    ever leaving this page -- the same real human-review-before-submit
+    safety net still applies to whatever gets filled, this only skips
+    an asynchronous waiting period that was never meaningful here.
+
+    A genuine hard-stop flag still goes to Needs Review exactly like
+    every other source -- this never bypasses that safety net, only the
+    asynchronous-specific confirmation window a manually-added,
+    already-attended posting was never really subject to."""
+    from . import matching_service, tailoring_service
+    from .confirmation_service import approve_application
+
+    matching_service.score_application(db, application_id)
+    tailoring_service.tailor_application(db, application_id)
+
+    application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+    if application and application.status == "Pending Confirmation":
+        approve_application(db, application_id)

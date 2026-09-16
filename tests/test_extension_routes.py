@@ -216,3 +216,72 @@ class TestDocumentForAttachment:
             extension_router.document_for_attachment(application.id, "something-else", db=db, _account_id=1)
 
         assert exc_info.value.status_code == 400
+
+
+class _SyncThread:
+    """Runs the "background" target synchronously and immediately,
+    instead of on a real thread -- makes these tests deterministic
+    rather than racing a real spawned thread."""
+
+    def __init__(self, target=None, args=(), kwargs=None, daemon=None):
+        self._target = target
+        self._args = args
+        self._kwargs = kwargs or {}
+
+    def start(self):
+        self._target(*self._args, **self._kwargs)
+
+
+class TestAddJobRoute:
+    """The popup's "+ Add This Job in One Click" action."""
+
+    def test_creates_the_application_and_returns_its_id(self, db, settings):
+        from unittest.mock import patch
+
+        with patch("app.routers.extension.threading.Thread", _SyncThread), \
+             patch("app.routers.extension._score_and_tailor_in_background") as mock_bg:
+            result = extension_router.add_job(
+                extension_router.AddJobRequest(
+                    url="https://example.com/careers/123", job_title="Data Engineer",
+                    company_name="Acme Analytics", job_description="A" * 60,
+                ),
+                db=db, _account_id=1,
+            )
+
+        assert "application_id" in result
+        mock_bg.assert_called_once_with(result["application_id"])
+
+    def test_400_shaped_error_when_the_page_has_no_real_job_title(self, db, settings):
+        with pytest.raises(HTTPException) as exc_info:
+            extension_router.add_job(
+                extension_router.AddJobRequest(
+                    url="https://example.com", job_title="", company_name="Acme", job_description="A" * 60
+                ),
+                db=db, _account_id=1,
+            )
+
+        assert exc_info.value.status_code == 400
+
+
+class TestTailorExistingApplicationRoute:
+    """The popup's "Generate Tailored Resume + Cover Letter" action for
+    an application the extension already matched."""
+
+    def test_kicks_off_background_tailoring_for_a_real_application(self, db, settings):
+        from unittest.mock import patch
+
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        with patch("app.routers.extension.threading.Thread", _SyncThread), \
+             patch("app.routers.extension._tailor_existing_in_background") as mock_bg:
+            result = extension_router.tailor_existing_application(application.id, db=db, _account_id=1)
+
+        assert result == {"ok": True}
+        mock_bg.assert_called_once_with(application.id)
+
+    def test_404_for_an_application_that_does_not_exist(self, db, settings):
+        with pytest.raises(HTTPException) as exc_info:
+            extension_router.tailor_existing_application(999999, db=db, _account_id=1)
+
+        assert exc_info.value.status_code == 404

@@ -481,6 +481,58 @@
     });
   }
 
+  // Best-effort extraction for the popup's "+ Add This Job in One Click"
+  // action -- there's no structured DOM contract to rely on here (unlike
+  // ATS form fields, which is why the rest of this file only ever does
+  // generic label/type detection), since this runs on an arbitrary
+  // employer careers page the extension has never seen before. Real,
+  // honest fallbacks at each step, never a fabricated guess: Open Graph
+  // meta tags first (most real career pages set these for link
+  // previews), then a plausible on-page heading, then the page's own
+  // real URL/title as a last resort -- every fallback is still real text
+  // that exists on/derived from the actual page, never invented.
+  function extractJobTitle() {
+    const ogTitle = document.querySelector('meta[property="og:title"]');
+    if (ogTitle && ogTitle.content && ogTitle.content.trim()) return ogTitle.content.trim();
+    const h1 = document.querySelector("h1");
+    if (h1 && h1.textContent.trim()) return h1.textContent.trim();
+    return document.title.trim();
+  }
+
+  // Real bug caught live before shipping: the real Samsara posting page
+  // has no og:site_name at all, and its title is "Data Engineer - Remote
+  // - Canada" -- a title-dash-split heuristic (originally tried first,
+  // before the hostname) confidently picked "Canada" as the company.
+  // That title shape (Title - Location - Location) is at least as
+  // common as "Title - Company" in practice, so guessing from it is
+  // unreliable. The page's own real hostname is always available and
+  // never wrong in this particular way -- tried before the guess-prone
+  // title split, which is now only a last-ditch fallback for the rare
+  // case a hostname produces nothing usable at all (e.g. a bare IP).
+  function extractCompanyName() {
+    const ogSiteName = document.querySelector('meta[property="og:site_name"]');
+    if (ogSiteName && ogSiteName.content && ogSiteName.content.trim()) return ogSiteName.content.trim();
+    const host = (location.hostname || "").replace(/^www\./, "").split(".")[0];
+    if (host && !/^\d+$/.test(host)) return host.charAt(0).toUpperCase() + host.slice(1);
+    const titleParts = document.title.split(/[-|–—]/).map((p) => p.trim()).filter(Boolean);
+    return titleParts.length > 1 ? titleParts[titleParts.length - 1] : "";
+  }
+
+  // The whole page's own visible text -- crude (includes nav/footer
+  // noise a structured ATS-API scrape wouldn't have), but real, and
+  // matches what a human would get copy-pasting the page themselves.
+  // The downstream scoring/tailoring pipeline is LLM-driven and already
+  // tolerant of real-world JD text quality from other sources; this is
+  // the honest, generic-detection-only equivalent for a page with no
+  // known structure at all.
+  function extractJobPostingInfo() {
+    return {
+      title: extractJobTitle(),
+      company: extractCompanyName(),
+      description: document.body ? document.body.innerText.trim() : "",
+    };
+  }
+
   // ---- Main-frame-only: decide match, own the on-page UI ----
 
   // Position/collapsed state are real user preferences, not just visual
@@ -852,6 +904,19 @@
     if (message.type === "setBadgeCollapsed" && isMainFrame) {
       setCollapsed(message.collapsed);
       if (!message.collapsed) renderBadge(); // "bring it back" -- show it again right away, not just on the next status change
+      sendResponse({ ok: true });
+      return false;
+    }
+    if (message.type === "getPageInfo" && isMainFrame) {
+      sendResponse(extractJobPostingInfo());
+      return false;
+    }
+    if (message.type === "recheckMatch" && isMainFrame) {
+      // The popup's "+ Add This Job" flow just created a real application
+      // for this exact page -- re-running the normal check-and-fill pass
+      // is what lets the on-page badge notice it too, instead of staying
+      // stuck on a stale "no match" until the next full page reload.
+      mainFrameCheckAndFill();
       sendResponse({ ok: true });
       return false;
     }
