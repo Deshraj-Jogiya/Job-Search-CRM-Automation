@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Career Pilot Autofill</title>
+  <style>
+    body {
+      width: 300px;
+      margin: 0;
+      padding: 14px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px;
+      color: #0f172a;
+      background: #ffffff;
+    }
+    h1 {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 0 0 10px;
+    }
+    p {
+      margin: 0 0 10px;
+      line-height: 1.4;
+      color: #334155;
+    }
+    .muted {
+      color: #64748b;
+      font-size: 12px;
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      color: #334155;
+      margin-bottom: 4px;
+    }
+    input[type="text"] {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 6px 8px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+    button {
+      width: 100%;
+      padding: 8px 10px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      background: #6366f1;
+      color: #ffffff;
+    }
+    button:disabled {
+      background: #cbd5e1;
+      cursor: default;
+    }
+    button.secondary {
+      background: transparent;
+      color: #6366f1;
+      border: 1px solid #cbd5e1;
+      margin-top: 6px;
+    }
+    .status-ok {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      color: #047857;
+      border-radius: 6px;
+      padding: 8px 10px;
+      margin-bottom: 10px;
+    }
+    .status-error {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #b91c1c;
+      border-radius: 6px;
+      padding: 8px 10px;
+      margin-bottom: 10px;
+    }
+    [hidden] { display: none; }
+  </style>
+</head>
+<body>
+  <h1>Career Pilot Autofill</h1>
+
+  <div id="setup">
+    <label for="base-url">Career Pilot URL</label>
+    <input type="text" id="base-url" placeholder="https://129-146-36-193.sslip.io">
+    <button id="save-url">Save</button>
+  </div>
+
+  <div id="main" hidden>
+    <div id="status"></div>
+    <button id="fill-btn" hidden>Fill This Page</button>
+    <button id="change-url" class="secondary">Change Career Pilot URL</button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
