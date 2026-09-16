@@ -24,7 +24,9 @@ async function getSessionToken(baseUrl) {
   return cookie ? cookie.value : null;
 }
 
-async function callApi(path, body) {
+// Shared by callApi (JSON POST) and fetchDocument (binary GET) -- both need
+// the exact same "is the URL configured, is the user logged in" checks.
+async function resolveAuth() {
   const baseUrl = await getBaseUrl();
   if (!baseUrl) {
     return { error: "Career Pilot URL isn't set yet -- open the extension popup and set it first." };
@@ -33,16 +35,22 @@ async function callApi(path, body) {
   if (!token) {
     return { error: "Not logged in -- log into Career Pilot in this browser (at " + baseUrl + "), then try again." };
   }
+  return { baseUrl, token };
+}
+
+async function callApi(path, body) {
+  const auth = await resolveAuth();
+  if (auth.error) return auth;
 
   let response;
   try {
-    response = await fetch(baseUrl.replace(/\/$/, "") + path, {
+    response = await fetch(auth.baseUrl.replace(/\/$/, "") + path, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-Career-Pilot-Session": token },
+      headers: { "Content-Type": "application/json", "X-Career-Pilot-Session": auth.token },
       body: JSON.stringify(body),
     });
   } catch (e) {
-    return { error: "Couldn't reach " + baseUrl + " -- is it running and is the URL correct?" };
+    return { error: "Couldn't reach " + auth.baseUrl + " -- is it running and is the URL correct?" };
   }
 
   if (response.status === 401) {
@@ -54,6 +62,35 @@ async function callApi(path, body) {
   return { data: await response.json() };
 }
 
+// Real PDF bytes for content.js's attachDocument to attach to a real
+// <input type="file"> via the DataTransfer API. A plain GET (not JSON), so
+// kept separate from callApi rather than forcing a binary response through
+// the same POST-JSON-body shape.
+async function fetchDocument(applicationId, documentType) {
+  const auth = await resolveAuth();
+  if (auth.error) return auth;
+
+  let response;
+  try {
+    response = await fetch(
+      auth.baseUrl.replace(/\/$/, "") + "/api/extension/documents/" + applicationId + "/" + documentType,
+      { headers: { "X-Career-Pilot-Session": auth.token } }
+    );
+  } catch (e) {
+    return { error: "Couldn't reach " + auth.baseUrl + " -- is it running and is the URL correct?" };
+  }
+
+  if (response.status === 401) {
+    return { error: "Session expired -- log into Career Pilot again, then retry." };
+  }
+  if (!response.ok) {
+    return { error: "No " + documentType.replace("_", " ") + " available to attach for this application yet." };
+  }
+  const buffer = await response.arrayBuffer();
+  const filename = response.headers.get("X-Filename") || documentType + ".pdf";
+  return { data: { buffer, filename } };
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "checkMatch") {
     callApi("/api/extension/match", { url: message.url }).then(sendResponse);
@@ -61,6 +98,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   if (message.type === "getAnswers") {
     callApi("/api/extension/answers", { application_id: message.applicationId, fields: message.fields }).then(sendResponse);
+    return true;
+  }
+  if (message.type === "fetchDocument") {
+    fetchDocument(message.applicationId, message.documentType).then(sendResponse);
     return true;
   }
   if (message.type === "broadcastFill") {

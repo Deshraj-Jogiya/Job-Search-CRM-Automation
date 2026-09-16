@@ -28,7 +28,7 @@ own script could not read this endpoint's response even if it guessed
 right. See csrf.py's EXEMPT_PATH_PREFIXES, which this path is added to.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -73,3 +73,29 @@ def field_answers(
     body: FieldsRequest, db: Session = Depends(get_db), _account_id: int = Depends(require_extension_session)
 ):
     return extension_service.resolve_field_answers(db, body.application_id, body.fields)
+
+
+@router.get("/documents/{application_id}/{document_type}")
+def document_for_attachment(
+    application_id: int, document_type: str,
+    db: Session = Depends(get_db), _account_id: int = Depends(require_extension_session),
+):
+    """Real PDF bytes for the content script to attach to a real
+    <input type="file"> via the DataTransfer API -- see extension/
+    content.js's attachDocument. Researched properly (not assumed
+    impossible) after an earlier, incomplete claim that no extension
+    could ever attach a file at all: setting a file input's .value to a
+    path string is blocked everywhere, but assigning a real in-memory
+    File (constructed from bytes the extension already legitimately
+    fetched, exactly like this) via .files = dataTransfer.files is a
+    real, sanctioned browser API, not a workaround for something
+    forbidden."""
+    try:
+        pdf_bytes, filename = extension_service.render_document_for_attachment(db, application_id, document_type)
+    except extension_service.ExtensionServiceError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"X-Filename": filename},
+    )
