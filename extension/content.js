@@ -157,6 +157,66 @@
     el.style.outlineOffset = "1px";
   }
 
+  // File attachment: real, sanctioned browser API -- constructing a real
+  // in-memory File from bytes this extension already legitimately fetched
+  // (via the authenticated /api/extension/documents route) and assigning
+  // it through DataTransfer. Different from, and not blocked like, setting
+  // a file input's .value to a path string (blocked everywhere, for real
+  // security reasons -- a page/script should never be able to point a file
+  // input at an arbitrary path on disk it didn't pick itself). This is the
+  // same technique real extensions like JobRight's use.
+  const RESUME_LABEL_RE = /(resume|\bcv\b)/i;
+  const COVER_LETTER_LABEL_RE = /cover\s*letter/i;
+
+  function isFillableFileInput(el) {
+    if (attemptedUnanswerable.has(el)) return false;
+    if (el.disabled || el.readOnly) return false;
+    if (el.offsetParent === null) return false; // hidden
+    if (el.tagName !== "INPUT" || (el.getAttribute("type") || "").toLowerCase() !== "file") return false;
+    return el.files.length === 0;
+  }
+
+  // Cover-letter check first -- more specific than the resume check, so a
+  // label that somehow matched both would resolve to the more precise one.
+  function documentTypeForFileInput(el) {
+    const label = findLabelText(el) || "";
+    if (COVER_LETTER_LABEL_RE.test(label)) return "cover_letter";
+    if (RESUME_LABEL_RE.test(label)) return "resume";
+    return null; // a file field this can't confidently identify -- never guess which document goes here
+  }
+
+  async function attachDocument(fileInput, applicationId, documentType) {
+    const response = await chrome.runtime.sendMessage({ type: "fetchDocument", applicationId, documentType });
+    if (!response || response.error) return false;
+    const file = new File([response.data.buffer], response.data.filename, { type: "application/pdf" });
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(file);
+    fileInput.files = dataTransfer.files;
+    fileInput.dispatchEvent(new Event("input", { bubbles: true }));
+    fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  }
+
+  async function fillFileInputs(applicationId) {
+    const fileInputs = Array.from(document.querySelectorAll('input[type="file"]')).filter(isFillableFileInput);
+    let filled = 0;
+    let total = 0;
+    for (const el of fileInputs) {
+      const documentType = documentTypeForFileInput(el);
+      if (!documentType) continue;
+      total++;
+      const ok = await attachDocument(el, applicationId, documentType);
+      if (ok) {
+        highlight(el, true);
+        filled++;
+      } else {
+        highlight(el, false); // no tailored document available yet, or a network/auth error -- left blank on purpose, never a guess
+        attemptedUnanswerable.add(el);
+      }
+    }
+    return { filled, total };
+  }
+
   function fillThisFrame(applicationId) {
     const elements = Array.from(document.querySelectorAll("input, textarea, select"));
     const fields = [];
@@ -179,40 +239,48 @@
       elementById[fieldId] = el;
     }
 
-    if (fields.length === 0) {
-      return Promise.resolve({ filled: 0, total: 0 });
-    }
+    const textFill =
+      fields.length === 0
+        ? Promise.resolve({ filled: 0, total: 0 })
+        : chrome.runtime.sendMessage({ type: "getAnswers", applicationId, fields }).then((response) => {
+            if (response.error) return { error: response.error };
+            const answers = response.data;
+            let filled = 0;
+            for (const [fieldId, el] of Object.entries(elementById)) {
+              const answer = answers[fieldId];
+              if (!answer) {
+                highlight(el, false);
+                attemptedUnanswerable.add(el);
+                continue;
+              }
+              if (el.tagName === "SELECT") {
+                // The backend only ever returns text that exactly matches
+                // one of the real options this sent it -- find that
+                // option's actual .value (not necessarily the same as its
+                // display text) to set on the element.
+                const match = realOptions(el).find((o) => o.textContent.trim() === answer);
+                if (!match) {
+                  highlight(el, false); // shouldn't happen; never silently pick the wrong option
+                  attemptedUnanswerable.add(el);
+                  continue;
+                }
+                setNativeValue(el, match.value);
+              } else {
+                setNativeValue(el, answer);
+              }
+              highlight(el, true);
+              filled++;
+            }
+            return { filled, total: fields.length };
+          });
 
-    return chrome.runtime.sendMessage({ type: "getAnswers", applicationId, fields }).then((response) => {
-      if (response.error) return { error: response.error };
-      const answers = response.data;
-      let filled = 0;
-      for (const [fieldId, el] of Object.entries(elementById)) {
-        const answer = answers[fieldId];
-        if (!answer) {
-          highlight(el, false);
-          attemptedUnanswerable.add(el);
-          continue;
-        }
-        if (el.tagName === "SELECT") {
-          // The backend only ever returns text that exactly matches one
-          // of the real options this sent it -- find that option's
-          // actual .value (not necessarily the same as its display
-          // text) to set on the element.
-          const match = realOptions(el).find((o) => o.textContent.trim() === answer);
-          if (!match) {
-            highlight(el, false); // shouldn't happen; never silently pick the wrong option
-            attemptedUnanswerable.add(el);
-            continue;
-          }
-          setNativeValue(el, match.value);
-        } else {
-          setNativeValue(el, answer);
-        }
-        highlight(el, true);
-        filled++;
-      }
-      return { filled, total: fields.length };
+    // File inputs run alongside the text/select batch, not through it --
+    // which document goes where is decided client-side from the label
+    // (see documentTypeForFileInput), never sent to the backend as a text
+    // field to be "answered".
+    return Promise.all([textFill, fillFileInputs(applicationId)]).then(([textResult, fileResult]) => {
+      if (textResult.error) return textResult;
+      return { filled: textResult.filled + fileResult.filled, total: textResult.total + fileResult.total };
     });
   }
 

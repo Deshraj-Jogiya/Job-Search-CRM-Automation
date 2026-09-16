@@ -147,3 +147,72 @@ def test_answers_endpoint_dispatches_to_the_real_resolver(db, settings):
     )
 
     assert result == {"f1": "Deshraj"}
+
+
+class TestDocumentForAttachment:
+    """Real PDF bytes for the content script to attach via the
+    DataTransfer API -- see extension/content.js's attachDocument.
+    Uses the exact same rendering path (page_fit_service/
+    document_render_service) the existing download route and
+    Playwright's own autofill already use, not a second copy."""
+
+    def _resume_content(self):
+        return {
+            "name": "Test Candidate", "title": "Data Engineer",
+            "contact": {"email": "t@example.com", "phone": "555-1234", "location": "Austin, TX"},
+            "summary": "A concise summary.",
+            "skills": {"Languages": ["Python", "SQL"]},
+            "experience": [{"role": "Engineer", "company": "Acme", "location": "Remote", "date": "2023 - Present", "bullets": ["Did a real thing."]}],
+            "projects": [],
+            "education": [{"degree": "B.S. Computer Science", "school": "State University", "date": "2020"}],
+            "certifications": [],
+        }
+
+    def test_returns_a_real_pdf_for_the_real_tailored_resume(self, db, settings):
+        import json
+        from app.models import TailoredDocument
+
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company, company_name_raw="Acme", job_title="Data Engineer"), status="Approved")
+        db.add(TailoredDocument(application_id=application.id, document_type="resume", content=json.dumps(self._resume_content())))
+        db.commit()
+
+        response = extension_router.document_for_attachment(application.id, "resume", db=db, _account_id=1)
+
+        assert response.status_code == 200
+        assert response.media_type == "application/pdf"
+        assert response.body[:4] == b"%PDF"  # a real PDF, not an error page or empty response
+        assert "X-Filename" in response.headers
+
+    def test_returns_a_real_pdf_for_the_real_tailored_cover_letter(self, db, settings):
+        import json
+        from app.models import TailoredDocument
+
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company, company_name_raw="Acme", job_title="Data Engineer"), status="Approved")
+        db.add(TailoredDocument(application_id=application.id, document_type="resume", content=json.dumps(self._resume_content())))
+        db.add(TailoredDocument(application_id=application.id, document_type="cover_letter", content="Dear Hiring Manager, I am excited to apply."))
+        db.commit()
+
+        response = extension_router.document_for_attachment(application.id, "cover_letter", db=db, _account_id=1)
+
+        assert response.status_code == 200
+        assert response.body[:4] == b"%PDF"
+
+    def test_404_shaped_error_when_nothing_tailored_yet(self, db, settings):
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        with pytest.raises(HTTPException) as exc_info:
+            extension_router.document_for_attachment(application.id, "resume", db=db, _account_id=1)
+
+        assert exc_info.value.status_code == 400
+
+    def test_unknown_document_type_rejected(self, db, settings):
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        with pytest.raises(HTTPException) as exc_info:
+            extension_router.document_for_attachment(application.id, "something-else", db=db, _account_id=1)
+
+        assert exc_info.value.status_code == 400
