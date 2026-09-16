@@ -163,7 +163,17 @@ def application_match_summary(db: Session, application: JobApplication) -> dict:
     }
 
 
+_LINKEDIN_RE = re.compile(r"linkedin", re.I)
+_GITHUB_RE = re.compile(r"\bgithub\b", re.I)
+_PORTFOLIO_RE = re.compile(r"portfolio|personal website|website\b", re.I)
+_COUNTRY_RE = re.compile(r"\bcountry\b", re.I)
+_RECENT_EMPLOYER_RE = re.compile(r"(most recent|current|last) employer|employer name", re.I)
+_PREVIOUSLY_WORKED_RE = re.compile(r"previously work(ed)? (at|for|here)|worked (at|for|here) before", re.I)
+_US_PHONE_RE = re.compile(r"^\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}$")
+
+
 def _contact_answer(label: str, profile: dict) -> str | None:
+    contact = profile.get("contact") or {}
     if _FIRST_NAME_RE.search(label):
         name_parts = (profile.get("name") or "").split()
         return name_parts[0] if name_parts else None
@@ -171,10 +181,63 @@ def _contact_answer(label: str, profile: dict) -> str | None:
         name_parts = (profile.get("name") or "").split()
         return " ".join(name_parts[1:]) if len(name_parts) > 1 else None
     if _EMAIL_RE.search(label):
-        return (profile.get("contact") or {}).get("email") or None
+        return contact.get("email") or None
     if _PHONE_RE.search(label):
-        return (profile.get("contact") or {}).get("phone") or None
+        return contact.get("phone") or None
+    # linkedin/github/portfolio checked before the generic company/name
+    # patterns below since a label like "LinkedIn Profile" could
+    # otherwise partially match something broader -- these are real
+    # stored URLs (contact.linkedin/github/portfolio), same fields
+    # lever_autofill.py already extracts for Lever's own URL fields, not
+    # a new concept invented for the extension.
+    if _LINKEDIN_RE.search(label):
+        return contact.get("linkedin") or None
+    if _GITHUB_RE.search(label):
+        return contact.get("github") or None
+    if _PORTFOLIO_RE.search(label):
+        return contact.get("portfolio") or None
+    # A phone "country" (or country-code) field -- inferred from the
+    # stored phone number's own format, not a separate stored fact,
+    # since the profile has no dedicated country field. Deliberately
+    # narrow: only answers when the stored phone genuinely looks like a
+    # real US number (matches this candidate's actual real data), never
+    # a blind default for every fork/profile.
+    if _COUNTRY_RE.search(label) and contact.get("phone") and _US_PHONE_RE.match(contact["phone"].strip()):
+        return "United States"
     return None
+
+
+def _recent_employer_answer(label: str, profile: dict) -> str | None:
+    """experience[0] is the real most-recent entry -- this profile
+    schema stores experience reverse-chronologically (confirmed against
+    the real stored `date` strings, not assumed), same order every
+    resume/tailoring code path in this app already relies on."""
+    if not _RECENT_EMPLOYER_RE.search(label):
+        return None
+    experience = profile.get("experience")
+    if not isinstance(experience, list) or not experience:
+        return None
+    company = experience[0].get("company") if isinstance(experience[0], dict) else None
+    return company or None
+
+
+def _previously_worked_here_answer(label: str, profile: dict, current_company_name: str) -> str | None:
+    """A real Yes/No inferable straight from the candidate's own work
+    history: does any past employer's name match the company this
+    application is actually for? Case-insensitive, and only answers
+    when there's a real company name to compare against -- never
+    guesses "No" for a candidate with no experience list at all, since
+    that's a missing-data case, not a genuine "never worked there"."""
+    if not _PREVIOUSLY_WORKED_RE.search(label):
+        return None
+    experience = profile.get("experience")
+    if not isinstance(experience, list) or not current_company_name:
+        return None
+    target = current_company_name.strip().lower()
+    for entry in experience:
+        if isinstance(entry, dict) and (entry.get("company") or "").strip().lower() == target:
+            return "Yes"
+    return "No"
 
 
 def resolve_field_answers(db: Session, application_id: int, fields: list[dict]) -> dict[str, str]:
@@ -214,6 +277,10 @@ def resolve_field_answers(db: Session, application_id: int, fields: list[dict]) 
         field_id = field.get("field_id")
 
         answer = _contact_answer(label, profile)
+        if answer is None:
+            answer = _recent_employer_answer(label, profile)
+        if answer is None:
+            answer = _previously_worked_here_answer(label, profile, application.posting.company_name_raw)
         if answer is None:
             answer = mechanical_common_answer(label, profile)
         if answer is None and is_referral_source_question(label):
