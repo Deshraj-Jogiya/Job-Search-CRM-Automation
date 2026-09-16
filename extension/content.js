@@ -57,6 +57,26 @@
   const isMainFrame = window === window.top;
   let lastResult = null;
 
+  // The main frame's badge has to reflect the WHOLE tab's real progress,
+  // not just this one frame's own DOM -- the real Samsara case is a
+  // form that lives entirely in a different (Greenhouse) frame, where
+  // this frame's own fillThisFrame legitimately always finds 0. Tracked
+  // as two separate running totals (this frame's own work, and whatever
+  // sub-frames have reported in) so a later report from either source
+  // adds to the real picture instead of overwriting it.
+  let ownFillResult = { filled: 0, total: 0 };
+  let subFrameFillResult = { filled: 0, total: 0 };
+
+  function updateBadgeResult(application) {
+    lastResult = {
+      matched: true,
+      application: application || (lastResult && lastResult.application),
+      filled: ownFillResult.filled + subFrameFillResult.filled,
+      total: ownFillResult.total + subFrameFillResult.total,
+    };
+    renderBadge();
+  }
+
   // A field that comes back with no answer stays "fillable" forever
   // (still empty) -- without tracking this, a manual re-fill (the badge
   // click, or the popup's "Autofill Again") would re-ask the backend
@@ -338,10 +358,16 @@
   async function triggerFill() {
     if (!lastResult || !lastResult.matched) return;
     showBadge("Filling...", "#0f172a");
-    const fillResult = await fillThisFrame(lastResult.application.application_id);
-    await notifyFrames(lastResult.application.application_id);
-    lastResult = { ...lastResult, ...fillResult };
-    renderBadge();
+    const applicationId = lastResult.application.application_id;
+    const fillResult = await fillThisFrame(applicationId);
+    lastFillAt = Date.now();
+    // Accumulate into this frame's own running total (fillThisFrame only
+    // ever returns the delta for fields it just processed) and recompute
+    // through the shared helper, so a sub-frame's already-reported
+    // result is preserved rather than discarded by a direct click here.
+    ownFillResult = { filled: ownFillResult.filled + fillResult.filled, total: ownFillResult.total + fillResult.total };
+    updateBadgeResult();
+    notifyFrames(applicationId);
   }
 
   // "URL isn't set yet" is a real, but one-time and non-urgent, setup
@@ -419,10 +445,9 @@
       renderBadge();
       return;
     }
-    const fillResult = await fillThisFrame(match.data.application_id);
+    ownFillResult = await fillThisFrame(match.data.application_id);
     lastFillAt = Date.now();
-    lastResult = { matched: true, application: match.data, ...fillResult };
-    renderBadge();
+    updateBadgeResult(match.data);
     // Sub-frames (a real embedded ATS iframe, e.g. Greenhouse on an
     // employer's own page) never call mainFrameCheckAndFill themselves
     // (isMainFrame is false there) -- this is the only way they learn
@@ -469,11 +494,16 @@
       // fields but can't answer any of them is still real, new
       // information worth showing (a stale "no fillable fields found"
       // left up once the form has actually appeared is the wrong
-      // thing), not just a silent no-op.
+      // thing), not just a silent no-op. fillThisFrame only ever returns
+      // the DELTA for fields it just processed (already-filled/marked-
+      // unanswerable ones are excluded from its own scan) -- accumulate
+      // into this frame's running total, never overwrite it, or a later
+      // poll with a smaller delta would erase the count from an earlier
+      // one.
       if (fillResult.total > 0) {
         lastFillAt = Date.now();
-        lastResult = { matched: true, application: lastResult && lastResult.application, ...fillResult };
-        renderBadge();
+        ownFillResult = { filled: ownFillResult.filled + fillResult.filled, total: ownFillResult.total + fillResult.total };
+        updateBadgeResult();
       }
       // The actual root cause of the Samsara case this whole extension
       // exists for: "Apply Now" doesn't reveal anything in THIS frame's
@@ -518,12 +548,33 @@
       fillThisFrame(message.applicationId).then((fillResult) => {
         lastFillAt = Date.now();
         if (isMainFrame) {
-          lastResult = { matched: true, application: lastResult && lastResult.application, ...fillResult };
-          renderBadge();
+          // Accumulate (fillThisFrame only ever returns the delta for
+          // fields it just processed), never overwrite.
+          ownFillResult = { filled: ownFillResult.filled + fillResult.filled, total: ownFillResult.total + fillResult.total };
+          updateBadgeResult();
+        } else if (fillResult.total > 0) {
+          // This frame IS a sub-frame (the real Samsara case: the whole
+          // form lives in a different, Greenhouse, frame) -- the main
+          // frame owns the one visible badge and has no way to see this
+          // frame's own DOM, so report a real result back through the
+          // background relay instead of it just vanishing here.
+          chrome.runtime.sendMessage({ type: "reportSubFrameResult", filled: fillResult.filled, total: fillResult.total });
         }
         sendResponse(fillResult);
       });
       return true;
+    }
+    if (message.type === "subFrameFilled" && isMainFrame) {
+      // A real sub-frame's real result (see background.js's
+      // reportSubFrameResult relay) -- added to this frame's own
+      // running total, never replacing it, since a page can genuinely
+      // have both real fields itself AND a real embedded ATS iframe.
+      subFrameFillResult = {
+        filled: subFrameFillResult.filled + message.filled,
+        total: subFrameFillResult.total + message.total,
+      };
+      updateBadgeResult();
+      return false;
     }
     if (message.type === "getStatus" && isMainFrame) {
       sendResponse(lastResult);
