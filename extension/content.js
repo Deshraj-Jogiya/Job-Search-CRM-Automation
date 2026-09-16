@@ -1,13 +1,23 @@
-// Career Pilot Autofill -- content script. Injected on demand (via
-// chrome.scripting.executeScript, allFrames: true, triggered only by
-// the user clicking "Fill this page" in the popup) into every frame of
-// the tab, including cross-origin embedded ones -- this is the actual
-// fix for the employer-wrapped ATS case (e.g. Samsara: the real form
-// lives in an iframe on a different origin than the employer's own
-// careers page, which the server-side Playwright automation couldn't
-// reliably reach and got bot-blocked on from the VM's datacenter IP
-// besides). Running here, in the user's own real browser, sidesteps
-// both problems at once.
+// Career Pilot Autofill -- content script. Declared statically in
+// manifest.json (all_urls, all_frames: true) so it runs automatically
+// on every page load, in every frame including cross-origin embedded
+// ones -- this is the actual fix for the employer-wrapped ATS case
+// (e.g. Samsara: the real form lives in an iframe on a different origin
+// than the employer's own careers page, which the server-side
+// Playwright automation couldn't reliably reach and got bot-blocked on
+// from the VM's datacenter IP besides). Running here, in the user's own
+// real browser, sidesteps both problems at once.
+//
+// Runs the check-and-fill automatically on load, with zero click
+// required -- matching the existing server-side autofill's own
+// precedent (evaluate_and_enqueue auto-launches a real browser and
+// fills it immediately for a clean, autofill-supported, well-matched
+// application, no manual trigger needed there either). A real, earlier
+// version of this required opening the popup to check, then a separate
+// click to fill -- real feedback from using it live: that's an extra
+// step this app's whole point is to remove, not add. The popup is still
+// available for a manual re-run (see the fillPage listener at the
+// bottom), not as the primary path.
 //
 // Deliberately does ONLY generic field detection (label text + input
 // type) -- no per-ATS knowledge. The actual answer for each label comes
@@ -17,14 +27,14 @@
 // purpose -- never a guess.
 
 (function () {
-  // Clicking "Fill This Page" twice re-injects this file -- without this
-  // guard, each injection would stack another onMessage listener in the
-  // same frame (executeScript doesn't dedupe), so a single click would
-  // eventually trigger N redundant fill passes. Harmless in effect
-  // (isFillable skips anything already non-empty) but wasteful; skip
-  // re-registering entirely instead.
+  // A static content script only ever loads once per real page
+  // navigation, but this guard stays cheap insurance against a stray
+  // double-injection (e.g. a same-document history navigation) stacking
+  // a second onMessage listener in the same frame.
   if (window.__careerPilotFillLoaded) return;
   window.__careerPilotFillLoaded = true;
+
+  let lastResult = null;
 
   function findLabelText(el) {
     if (el.id) {
@@ -45,6 +55,18 @@
     return null;
   }
 
+  // A select's own "nothing chosen yet" option -- almost always value=""
+  // and/or a literal "Select..."-shaped label. Excluded from the real
+  // option list sent to the backend so it's never mistaken for a real
+  // choice, and used to detect whether the field is still unanswered.
+  function isPlaceholderOption(opt) {
+    return opt.value === "" || /^(select|choose|please select)/i.test(opt.textContent.trim());
+  }
+
+  function realOptions(selectEl) {
+    return Array.from(selectEl.options).filter((o) => !isPlaceholderOption(o));
+  }
+
   function isFillable(el) {
     if (el.disabled || el.readOnly) return false;
     if (el.offsetParent === null) return false; // hidden
@@ -53,6 +75,10 @@
       return ["text", "email", "tel", "url"].includes(type) && !el.value;
     }
     if (el.tagName === "TEXTAREA") return !el.value;
+    if (el.tagName === "SELECT") {
+      const selected = el.options[el.selectedIndex];
+      return (!selected || isPlaceholderOption(selected)) && realOptions(el).length > 0;
+    }
     return false;
   }
 
@@ -65,8 +91,12 @@
   // exactly the kind of "looks right, actually broken" bug this app has
   // hunted down all session.
   function setNativeValue(el, value) {
-    const proto = el.tagName === "TEXTAREA" ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
-    const descriptor = Object.getOwnPropertyDescriptor(proto, "value");
+    const protoByTag = {
+      TEXTAREA: window.HTMLTextAreaElement.prototype,
+      INPUT: window.HTMLInputElement.prototype,
+      SELECT: window.HTMLSelectElement.prototype,
+    };
+    const descriptor = Object.getOwnPropertyDescriptor(protoByTag[el.tagName], "value");
     descriptor.set.call(el, value);
     el.dispatchEvent(new Event("input", { bubbles: true }));
     el.dispatchEvent(new Event("change", { bubbles: true }));
@@ -78,7 +108,7 @@
   }
 
   async function run(applicationId) {
-    const elements = Array.from(document.querySelectorAll("input, textarea"));
+    const elements = Array.from(document.querySelectorAll("input, textarea, select"));
     const fields = [];
     const elementById = {};
     let nextId = 0;
@@ -88,7 +118,14 @@
       const label = findLabelText(el);
       if (!label) continue;
       const fieldId = "f" + nextId++;
-      fields.push({ field_id: fieldId, label });
+      if (el.tagName === "SELECT") {
+        // Real option TEXT, not the option's internal value attribute --
+        // the backend matches against what a human actually reads, and
+        // never invents a choice that isn't one of these real options.
+        fields.push({ field_id: fieldId, label, type: "select", options: realOptions(el).map((o) => o.textContent.trim()) });
+      } else {
+        fields.push({ field_id: fieldId, label });
+      }
       elementById[fieldId] = el;
     }
 
@@ -104,22 +141,58 @@
     const answers = response.data;
     let filled = 0;
     for (const [fieldId, el] of Object.entries(elementById)) {
-      if (answers[fieldId]) {
-        setNativeValue(el, answers[fieldId]);
-        highlight(el, true);
-        filled++;
-      } else {
+      const answer = answers[fieldId];
+      if (!answer) {
         highlight(el, false);
+        continue;
       }
+      if (el.tagName === "SELECT") {
+        // The backend only ever returns text that exactly matches one of
+        // the real options this sent it -- find that option's actual
+        // .value (not necessarily the same string as its display text)
+        // to set on the element.
+        const match = realOptions(el).find((o) => o.textContent.trim() === answer);
+        if (!match) {
+          highlight(el, false); // shouldn't happen; never silently pick the wrong option
+          continue;
+        }
+        setNativeValue(el, match.value);
+      } else {
+        setNativeValue(el, answer);
+      }
+      highlight(el, true);
+      filled++;
     }
     return { filled, total: fields.length };
   }
 
+  // The one thing that actually runs on every page load, zero clicks.
+  // Re-checks match fresh each time (never trusts a stale applicationId
+  // from a previous call) -- cheap (one small POST to the user's own
+  // server), and the real safety gate is still server-side anyway
+  // (find_fillable_application only ever matches a real "Approved"
+  // application).
+  async function autoCheckAndFill() {
+    const match = await chrome.runtime.sendMessage({ type: "checkMatch", url: location.href });
+    if (match.error || !match.data.matched) {
+      lastResult = match.error ? { error: match.error } : { matched: false };
+      return;
+    }
+    const fillResult = await run(match.data.application_id);
+    lastResult = { matched: true, application: match.data, ...fillResult };
+  }
+
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.type === "fillPage") {
-      run(message.applicationId).then(sendResponse);
+      autoCheckAndFill().then(() => sendResponse(lastResult));
       return true;
+    }
+    if (message.type === "getStatus") {
+      sendResponse(lastResult);
+      return false;
     }
     return false;
   });
+
+  autoCheckAndFill();
 })();

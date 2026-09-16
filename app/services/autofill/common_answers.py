@@ -34,7 +34,19 @@ _COMMON_QUESTION_PATTERNS = [
     (re.compile(r"\brace\b|racial identity", re.I), "eeo", "race"),
     (re.compile(r"veteran", re.I), "eeo", "veteran_status"),
     (re.compile(r"disab", re.I), "eeo", "disability_status"),
-    (re.compile(r"visa sponsorship|require sponsorship|sponsor.{0,15}visa|sponsorship.{0,15}now or in the future", re.I), "application_preferences", "visa_sponsorship"),
+    # Real gap found live 2026-09-16 on Samsara's actual Greenhouse form:
+    # "Will you now or in the future require Samsara to commence
+    # ("sponsor") an immigration case in order to employ you?" -- none of
+    # the original alternatives matched this real, live phrasing (no
+    # "sponsorship" noun, "visa" word, or "now or in the future" adjacent
+    # to "sponsor"), so this exact real question silently went unanswered.
+    # The two new alternatives below catch "require...sponsor" and
+    # "sponsor...immigration" regardless of what sits between them.
+    (re.compile(
+        r"visa sponsorship|require sponsorship|sponsor.{0,15}visa|sponsorship.{0,15}now or in the future"
+        r"|require.{0,60}sponsor|sponsor.{0,60}immigration",
+        re.I,
+    ), "application_preferences", "visa_sponsorship"),
     (re.compile(r"authorized to work|legally authorized|work authorization", re.I), "application_preferences", "work_authorization"),
     (re.compile(r"willing(ness)? to relocate|open to relocat", re.I), "application_preferences", "willing_to_relocate"),
     (re.compile(r"notice period|earliest (start|available) date|when.{0,10}(can you|are you able to) start", re.I), "application_preferences", "notice_period"),

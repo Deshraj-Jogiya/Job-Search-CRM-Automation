@@ -161,3 +161,88 @@ def test_resolve_field_answers_skips_a_field_with_no_label(db, settings):
     answers = extension_service.resolve_field_answers(db, application.id, [{"field_id": "f1", "label": ""}])
 
     assert answers == {}
+
+
+class TestSelectFieldSupport:
+    """Real bug found live 2026-09-16 on the real Samsara Greenhouse
+    form: the content script only ever scanned input/textarea, so every
+    <select> question (sponsorship, years of experience, education
+    level, previously worked here, relocation, ...) -- the majority of
+    real questions on that form -- silently never even reached this
+    resolver. A select can't be set to arbitrary text, so this also
+    covers the real safety requirement: only ever return one of the
+    field's own real options, and leave it blank rather than guess when
+    that mapping is ambiguous."""
+
+    def test_selects_the_matching_real_option_for_a_common_answer(self, db, settings):
+        _set_profile(db, _profile(application_preferences={"visa_sponsorship": "Yes, in the future"}))
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        answers = extension_service.resolve_field_answers(db, application.id, [
+            {
+                "field_id": "f1",
+                "label": 'Will you now or in the future require Samsara to commence ("sponsor") '
+                         "an immigration case in order to employ you?",
+                "type": "select",
+                "options": ["Yes", "No"],
+            },
+        ])
+
+        assert answers == {"f1": "Yes"}
+
+    def test_never_invents_an_option_that_does_not_exist_on_the_page(self, db, settings):
+        # A three-way, semantically nuanced option set where a wrong pick
+        # would be a real, serious misstatement on a real application --
+        # must come back empty, not a confident-looking wrong guess.
+        _set_profile(db, _profile(application_preferences={"work_authorization": "Will require sponsorship now or in the future"}))
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        answers = extension_service.resolve_field_answers(db, application.id, [
+            {
+                "field_id": "f1",
+                "label": "Are you legally authorized to work in this country?",
+                "type": "select",
+                "options": ["I am a U.S. Citizen", "I require sponsorship", "I do not require sponsorship"],
+            },
+        ])
+
+        assert answers == {}
+
+    def test_a_non_select_field_is_unaffected_by_the_options_logic(self, db, settings):
+        _set_profile(db, _profile())
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        answers = extension_service.resolve_field_answers(db, application.id, [
+            {"field_id": "f1", "label": "First Name"},
+        ])
+
+        assert answers == {"f1": "Deshraj"}
+
+
+class TestBestOptionMatch:
+    def test_exact_match_wins(self):
+        assert extension_service._best_option_match("No", ["Yes", "No"]) == "No"
+
+    def test_whole_word_match_on_a_short_option(self):
+        assert extension_service._best_option_match("Yes, in the future", ["Yes", "No"]) == "Yes"
+
+    def test_unambiguous_containment_match(self):
+        assert extension_service._best_option_match("Job Board", ["LinkedIn", "Job Board", "Other"]) == "Job Board"
+
+    def test_ambiguous_or_no_match_returns_none(self):
+        assert extension_service._best_option_match("Prefer not to say", ["Male", "Female", "Non-binary"]) is None
+
+    def test_no_options_returns_none(self):
+        assert extension_service._best_option_match("Yes", []) is None
+
+    def test_no_answer_returns_none(self):
+        assert extension_service._best_option_match("", ["Yes", "No"]) is None
+
+    def test_short_option_does_not_false_positive_on_a_longer_lookalike_word(self):
+        # "No" must not match inside an unrelated word like "None" --
+        # this is exactly why the short-option branch uses a real
+        # word-boundary regex instead of a bare substring check.
+        assert extension_service._best_option_match("None of the above apply", ["Yes", "No"]) is None
