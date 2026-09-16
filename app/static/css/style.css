@@ -1059,6 +1059,130 @@ html.light-theme .flag-warning {
 }
 
 /* ==========================================================================
+   Kanban board
+   ========================================================================== */
+
+/* Horizontal scroll here is the RIGHT kind of scroll (unlike the old
+   flat Jobs list's vertical "endless scroll" this board replaces) --
+   Trello/Huntr/every real Kanban tool scrolls sideways through a bounded
+   set of columns, one column per real pipeline status, so the whole
+   board's shape is visible/scannable even when one column runs long. */
+.kanban-board {
+    display: flex;
+    gap: 14px;
+    overflow-x: auto;
+    padding-bottom: 12px;
+    align-items: flex-start;
+}
+
+.kanban-column {
+    flex: 0 0 260px;
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+    border-radius: var(--radius-lg);
+    padding: 12px;
+    min-height: 80px;
+}
+
+/* Ingested/Tailored: the pipeline sets these on its own (see
+   confirmation_service.KANBAN_TRANSITIONS's docstring) -- dimmed and
+   marked "auto" so it reads as "the system is working on this," not
+   "you forgot to move this card." */
+.kanban-column.kanban-auto {
+    opacity: 0.72;
+}
+
+.kanban-column-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--input-border);
+}
+
+.kanban-column-title {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.kanban-column-count {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.kanban-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 40px;
+}
+
+.kanban-card {
+    background: var(--bg-dark);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-md);
+    padding: 10px;
+    cursor: grab;
+}
+
+.kanban-column.kanban-auto .kanban-card {
+    cursor: default;
+}
+
+.kanban-card:active {
+    cursor: grabbing;
+}
+
+.kanban-card-title {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    display: block;
+    margin-bottom: 2px;
+}
+
+.kanban-card-title:hover {
+    color: var(--accent-blue);
+}
+
+.kanban-card-company {
+    font-size: 0.76rem;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.kanban-card .badge,
+.kanban-card .flag-warning {
+    margin-left: 0;
+    margin-right: 4px;
+    margin-bottom: 4px;
+}
+
+.kanban-empty-note {
+    font-size: 0.76rem;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* SortableJS's own state classes, themed to match instead of its
+   unstyled defaults. */
+.kanban-cards .sortable-ghost {
+    opacity: 0.35;
+}
+
+.kanban-cards .sortable-chosen {
+    box-shadow: 0 0 0 2px var(--accent-indigo);
+}
+
+.kanban-cards .sortable-drag {
+    box-shadow: var(--shadow-md, 0 8px 20px rgba(0, 0, 0, 0.3));
+}
+
+/* ==========================================================================
    Responsive
    ========================================================================== */
 

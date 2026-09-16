@@ -25,7 +25,7 @@ import threading
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -187,9 +187,8 @@ def _group_applications_by_stage(applications: list) -> dict:
 _TARGET_COMPANIES_PREVIEW_LIMIT = 50
 
 
-@router.get("", response_class=HTMLResponse)
-def jobs_page(request: Request, db: Session = Depends(get_db)):
-    applications = (
+def _load_active_applications(db: Session) -> list:
+    return (
         db.query(JobApplication)
         .join(JobPosting)
         .options(joinedload(JobApplication.interview_preps))
@@ -197,6 +196,37 @@ def jobs_page(request: Request, db: Session = Depends(get_db)):
         .limit(100)
         .all()
     )
+
+
+# Real, pipeline-order column set for the Kanban board (routers/jobs.py's
+# kanban_page/kanban_move) -- deliberately NOT the same 4 coarse groups as
+# _STAGE_GROUPS above. Those 4 groups are right for the list view (a quick
+# "what needs me right now" scan), but a Kanban column IS a status, and
+# collapsing e.g. Applied/Interviewing/Offer into one column would make a
+# drag ambiguous (drop into "Applied" meaning... which of the three?).
+# "interactive": False marks a column the pipeline sets on its own
+# (tailoring_service.py, not any human action) -- there is no
+# confirmation_service function that moves an application INTO Ingested
+# or Tailored by hand, so the board must not offer them as drop targets;
+# see confirmation_service.KANBAN_TRANSITIONS, which this must stay a
+# superset of (every interactive status here has an entry there).
+KANBAN_COLUMNS = (
+    ("Ingested", False),
+    ("Tailored", False),
+    ("Needs Review", True),
+    ("Pending Confirmation", True),
+    ("Approved", True),
+    ("Applied", True),
+    ("Interviewing", True),
+    ("Offer", True),
+    ("Not Selected", True),
+    ("Rejected", True),
+)
+
+
+@router.get("", response_class=HTMLResponse)
+def jobs_page(request: Request, db: Session = Depends(get_db)):
+    applications = _load_active_applications(db)
     sources = db.query(JobSource).order_by(JobSource.name).all()
     keywords = db.query(SearchKeyword).order_by(SearchKeyword.keyword).all()
     seniority_exclusions = db.query(SeniorityExclusion).order_by(SeniorityExclusion.term).all()
@@ -817,28 +847,33 @@ def autofill_application_now(application_id: int, db: Session = Depends(get_db))
     )
 
 
-@router.post("/{application_id}/approve")
-def approve_application_now(application_id: int, db: Session = Depends(get_db)):
-    """A single, individual approval (unlike the bulk review-queue
-    action below) is a deliberate enough decision to also launch
-    autofill immediately -- no separate 'Open Application' click
-    needed. Approving a flagged (Needs Review) application still
-    required the human to see the flag and choose to approve first;
-    this only removes the redundant second click after that decision,
-    it doesn't skip the decision itself."""
-    try:
-        application = confirmation_service.approve_application(db, application_id)
-    except ConfirmationServiceError as e:
-        return _redirect_detail(application_id, error=str(e))
-
+def _approve_and_maybe_launch_autofill(db: Session, application_id: int) -> tuple:
+    """Shared by the detail-page 'Approve' button and the Kanban board's
+    drag-to-Approved -- a single, individual approval is a deliberate
+    enough decision to also launch autofill immediately, no separate
+    'Open Application' click needed. Approving a flagged (Needs Review)
+    application still required the human to see the flag and choose to
+    approve first; this only removes the redundant second click after
+    that decision, it doesn't skip the decision itself. Returns
+    (application, message) so each caller can shape its own response
+    (redirect vs JSON) without duplicating the autofill-launch check."""
+    application = confirmation_service.approve_application(db, application_id)
     if autofill_service.is_supported(application.posting.source):
         autofill_service.launch_autofill_in_background(application_id)
-        return _redirect_detail(
-            application_id,
-            message="Approved -- opening a real browser window to pre-fill the application. "
-            "Review everything there before clicking submit yourself.",
+        return application, (
+            "Approved -- opening a real browser window to pre-fill the application. "
+            "Review everything there before clicking submit yourself."
         )
-    return _redirect_detail(application_id, message="Approved.")
+    return application, "Approved."
+
+
+@router.post("/{application_id}/approve")
+def approve_application_now(application_id: int, db: Session = Depends(get_db)):
+    try:
+        _application, message = _approve_and_maybe_launch_autofill(db, application_id)
+    except ConfirmationServiceError as e:
+        return _redirect_detail(application_id, error=str(e))
+    return _redirect_detail(application_id, message=message)
 
 
 @router.post("/{application_id}/reject")
@@ -893,3 +928,64 @@ def mark_not_selected_now(application_id: int, db: Session = Depends(get_db)):
         return _redirect_detail(application_id, message="Marked as Not Selected.")
     except ConfirmationServiceError as e:
         return _redirect_detail(application_id, error=str(e))
+
+
+def _group_applications_by_status(applications: list) -> dict:
+    """Unlike _group_applications_by_stage above, an unrecognized status
+    has nowhere safe to fall -- KANBAN_COLUMNS is meant to be the exact
+    real set of JobApplication.status values (see confirmation_service.py
+    /tailoring_service.py for every place status is assigned), so
+    silently dropping a card here would be a real bug to catch loudly
+    rather than paper over."""
+    columns = {status: [] for status, _ in KANBAN_COLUMNS}
+    for application in applications:
+        if application.status not in columns:
+            raise HTTPException(500, f"Application {application.id} has an unrecognized status '{application.status}' -- KANBAN_COLUMNS needs updating.")
+        columns[application.status].append(application)
+    return columns
+
+
+@router.get("/kanban", response_class=HTMLResponse)
+def kanban_page(request: Request, db: Session = Depends(get_db)):
+    applications = _load_active_applications(db)
+    columns = _group_applications_by_status(applications)
+    return render(
+        request,
+        "kanban.html",
+        {
+            "columns": columns,
+            "column_order": KANBAN_COLUMNS,
+            "valid_source_statuses_json": json.dumps(confirmation_service.KANBAN_VALID_SOURCE_STATUSES),
+            "message": request.query_params.get("message"),
+            "error": request.query_params.get("error"),
+        },
+    )
+
+
+@router.post("/{application_id}/kanban-move")
+def kanban_move(application_id: int, target_status: str = Form(...), db: Session = Depends(get_db)):
+    """The Kanban board's ONLY write path -- deliberately never sets
+    application.status directly. Dispatches through the exact same
+    guarded confirmation_service functions the detail-page buttons call,
+    so a drag gets the same timestamps/preconditions/side-effects
+    (autofill launch on Approve, Company.ghosted_count on Not Selected,
+    activity log entries) that analytics_service/metrics_service and the
+    dashboard progress cards already depend on. Returns JSON, not a
+    redirect -- the board is a single page the card animates within, not
+    a full-page form flow like every other action route in this file."""
+    if target_status == "Approved":
+        action = _approve_and_maybe_launch_autofill
+    else:
+        transition = confirmation_service.KANBAN_TRANSITIONS.get(target_status)
+        if not transition:
+            return JSONResponse(
+                {"ok": False, "error": f"'{target_status}' is set automatically by the pipeline, not by hand."},
+                status_code=400,
+            )
+        action = lambda db, aid: (transition(db, aid), f"Moved to {target_status}.")
+
+    try:
+        _application, message = action(db, application_id)
+    except ConfirmationServiceError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+    return JSONResponse({"ok": True, "message": message})
