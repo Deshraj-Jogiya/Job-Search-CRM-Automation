@@ -4,7 +4,10 @@ const setupEl = document.getElementById("setup");
 const mainEl = document.getElementById("main");
 const statusEl = document.getElementById("status");
 const fillBtn = document.getElementById("fill-btn");
+const showBadgeBtn = document.getElementById("show-badge-btn");
 const baseUrlInput = document.getElementById("base-url");
+
+let currentApplication = null; // {application_id, job_title, company_name} from the last matched result
 
 function showStatus(kind, text) {
   statusEl.innerHTML = "";
@@ -19,25 +22,40 @@ async function getActiveTab() {
   return tab;
 }
 
+async function refreshBadgeToggle(tab) {
+  let collapsed = false;
+  try {
+    collapsed = await chrome.tabs.sendMessage(tab.id, { type: "getBadgeCollapsed" }, { frameId: 0 });
+  } catch (e) {
+    // no content script in this frame -- leave the toggle hidden
+  }
+  showBadgeBtn.hidden = !collapsed;
+}
+
 function renderResult(result) {
   if (!result) {
     showStatus("ok", "Still checking this page...");
     fillBtn.hidden = true;
+    showBadgeBtn.hidden = true;
     return;
   }
   if (result.error) {
     showStatus("error", result.error);
     fillBtn.hidden = true;
+    showBadgeBtn.hidden = true;
     return;
   }
   if (!result.matched) {
+    currentApplication = null;
     showStatus(
       "ok",
       "No matching Approved application for this page. This only works for applications you've already Approved in Career Pilot."
     );
     fillBtn.hidden = true;
+    showBadgeBtn.hidden = true;
     return;
   }
+  currentApplication = result.application;
   const label = result.application.job_title + " at " + result.application.company_name;
   if (result.total === 0) {
     showStatus("ok", "Found: " + label + ". No fillable fields found on this page.");
@@ -49,6 +67,7 @@ function renderResult(result) {
     );
   }
   fillBtn.hidden = false;
+  getActiveTab().then(refreshBadgeToggle);
 }
 
 // The content script runs automatically on page load (see content.js) --
@@ -75,11 +94,20 @@ async function loadStatus(tab, isRetry) {
 }
 
 async function fillCurrentPage() {
+  if (!currentApplication) return; // fillBtn is hidden whenever this is null; extra guard against a stray click
   const tab = await getActiveTab();
   fillBtn.disabled = true;
   fillBtn.textContent = "Filling...";
-  const result = await chrome.tabs.sendMessage(tab.id, { type: "fillPage" });
-  renderResult(result);
+  // Broadcasts to every frame (so a real embedded ATS sub-frame gets
+  // re-filled too, exactly like content.js's own automatic run does via
+  // notifyFrames) -- fire-and-forget, since this popup only displays the
+  // main frame's own result below. Matching itself is never re-decided
+  // here, only in content.js's mainFrameCheckAndFill.
+  chrome.runtime.sendMessage({ type: "broadcastFill", tabId: tab.id, applicationId: currentApplication.application_id });
+  const fillResult = await chrome.tabs.sendMessage(
+    tab.id, { type: "fillPage", applicationId: currentApplication.application_id }, { frameId: 0 }
+  );
+  renderResult({ matched: true, application: currentApplication, ...fillResult });
   fillBtn.disabled = false;
   fillBtn.textContent = "Fill Again";
 }
@@ -119,5 +147,11 @@ document.getElementById("change-url").addEventListener("click", () => {
 });
 
 fillBtn.addEventListener("click", fillCurrentPage);
+
+showBadgeBtn.addEventListener("click", async () => {
+  const tab = await getActiveTab();
+  await chrome.tabs.sendMessage(tab.id, { type: "setBadgeCollapsed", collapsed: false }, { frameId: 0 });
+  showBadgeBtn.hidden = true;
+});
 
 init();

@@ -8,16 +8,36 @@
 // from the VM's datacenter IP besides). Running here, in the user's own
 // real browser, sidesteps both problems at once.
 //
-// Runs the check-and-fill automatically on load, with zero click
-// required -- matching the existing server-side autofill's own
-// precedent (evaluate_and_enqueue auto-launches a real browser and
-// fills it immediately for a clean, autofill-supported, well-matched
-// application, no manual trigger needed there either). A real, earlier
-// version of this required opening the popup to check, then a separate
-// click to fill -- real feedback from using it live: that's an extra
-// step this app's whole point is to remove, not add. The popup is still
-// available for a manual re-run (see the fillPage listener at the
-// bottom), not as the primary path.
+// Real bug found live 2026-09-16 on this exact Samsara page: it has a
+// hidden, unrelated third-party iframe (an Intellimize A/B-testing
+// script). With all_frames:true, this script ran there too, correctly
+// found no match for ITS OWN location.href (a tracking script's URL,
+// obviously not a real job posting), and chrome.tabs.sendMessage's
+// documented behavior -- "if several frames respond, the promise
+// resolves to one of the answers" -- meant that irrelevant frame's
+// negative result could just as easily win the race as the real page's
+// positive one, showing a false "no match" for a page that really did
+// have one. Fix: ONLY the main frame (window === window.top) ever
+// decides match/no-match at all -- a posting's stored job_url is always
+// the top-level page's URL, never some unrelated iframe's own URL, so a
+// sub-frame trying to match itself was never meaningful in the first
+// place. Once the main frame confirms a match, it tells every frame
+// (itself and any real embedded ATS iframe, via the background relay)
+// to fill whatever it finds in its own DOM -- that part still needs
+// all_frames, since the real form can genuinely live in a sub-frame.
+//
+// Runs automatically on load, zero clicks -- matching the existing
+// server-side autofill's own precedent (evaluate_and_enqueue
+// auto-launches and fills immediately for a clean, Approved
+// application, no manual trigger there either). A real, earlier version
+// of this needed a popup click to check plus a separate click to fill;
+// real use flagged that as an extra step this app exists to remove.
+//
+// Also adds an on-page floating button (main frame only) -- real
+// feedback comparing this to JobRight's own extension, which shows one
+// directly on the page instead of requiring a toolbar-icon hunt.
+// Positioned bottom-LEFT specifically so it doesn't stack on top of
+// JobRight's own bottom-right one if both are installed.
 //
 // Deliberately does ONLY generic field detection (label text + input
 // type) -- no per-ATS knowledge. The actual answer for each label comes
@@ -34,6 +54,7 @@
   if (window.__careerPilotFillLoaded) return;
   window.__careerPilotFillLoaded = true;
 
+  const isMainFrame = window === window.top;
   let lastResult = null;
 
   function findLabelText(el) {
@@ -107,7 +128,7 @@
     el.style.outlineOffset = "1px";
   }
 
-  async function run(applicationId) {
+  function fillThisFrame(applicationId) {
     const elements = Array.from(document.querySelectorAll("input, textarea, select"));
     const fields = [];
     const elementById = {};
@@ -130,69 +151,273 @@
     }
 
     if (fields.length === 0) {
-      return { filled: 0, total: 0 };
+      return Promise.resolve({ filled: 0, total: 0 });
     }
 
-    const response = await chrome.runtime.sendMessage({ type: "getAnswers", applicationId, fields });
-    if (response.error) {
-      return { error: response.error };
-    }
-
-    const answers = response.data;
-    let filled = 0;
-    for (const [fieldId, el] of Object.entries(elementById)) {
-      const answer = answers[fieldId];
-      if (!answer) {
-        highlight(el, false);
-        continue;
-      }
-      if (el.tagName === "SELECT") {
-        // The backend only ever returns text that exactly matches one of
-        // the real options this sent it -- find that option's actual
-        // .value (not necessarily the same string as its display text)
-        // to set on the element.
-        const match = realOptions(el).find((o) => o.textContent.trim() === answer);
-        if (!match) {
-          highlight(el, false); // shouldn't happen; never silently pick the wrong option
+    return chrome.runtime.sendMessage({ type: "getAnswers", applicationId, fields }).then((response) => {
+      if (response.error) return { error: response.error };
+      const answers = response.data;
+      let filled = 0;
+      for (const [fieldId, el] of Object.entries(elementById)) {
+        const answer = answers[fieldId];
+        if (!answer) {
+          highlight(el, false);
           continue;
         }
-        setNativeValue(el, match.value);
-      } else {
-        setNativeValue(el, answer);
+        if (el.tagName === "SELECT") {
+          // The backend only ever returns text that exactly matches one
+          // of the real options this sent it -- find that option's
+          // actual .value (not necessarily the same as its display
+          // text) to set on the element.
+          const match = realOptions(el).find((o) => o.textContent.trim() === answer);
+          if (!match) {
+            highlight(el, false); // shouldn't happen; never silently pick the wrong option
+            continue;
+          }
+          setNativeValue(el, match.value);
+        } else {
+          setNativeValue(el, answer);
+        }
+        highlight(el, true);
+        filled++;
       }
-      highlight(el, true);
-      filled++;
-    }
-    return { filled, total: fields.length };
+      return { filled, total: fields.length };
+    });
   }
 
-  // The one thing that actually runs on every page load, zero clicks.
-  // Re-checks match fresh each time (never trusts a stale applicationId
-  // from a previous call) -- cheap (one small POST to the user's own
-  // server), and the real safety gate is still server-side anyway
-  // (find_fillable_application only ever matches a real "Approved"
-  // application).
-  async function autoCheckAndFill() {
-    const match = await chrome.runtime.sendMessage({ type: "checkMatch", url: location.href });
-    if (match.error || !match.data.matched) {
-      lastResult = match.error ? { error: match.error } : { matched: false };
+  // ---- Main-frame-only: decide match, own the on-page UI ----
+
+  // Position/collapsed state are real user preferences, not just visual
+  // detail -- a badge fixed in one corner blocks whatever real content
+  // happens to sit there on a given page, and a badge with no way to
+  // put away is nagging on a page the user just wants to read. Both are
+  // remembered per-site (localStorage is already origin-scoped) so a
+  // position/collapse choice on this employer's page sticks across
+  // reloads of it, without needing a synced-across-sites concept that
+  // would be more machinery than this warrants.
+  const POSITION_KEY = "careerPilotBadgePosition";
+  const COLLAPSED_KEY = "careerPilotBadgeCollapsed";
+  let badgeEl = null;
+  let dragged = false; // distinguishes a real drag from a plain click, so dragging never also triggers a re-fill
+
+  function loadJSON(key, fallback) {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch (e) {
+      return fallback;
+    }
+  }
+
+  function saveJSON(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (e) {
+      /* private-browsing or storage-disabled -- position just won't persist, not worth erroring over */
+    }
+  }
+
+  function makeDraggable(el) {
+    let startX, startY, startLeft, startTop;
+
+    function onMouseMove(e) {
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) dragged = true;
+      el.style.left = Math.max(0, startLeft + dx) + "px";
+      el.style.top = Math.max(0, startTop + dy) + "px";
+      el.style.bottom = "auto";
+    }
+    function onMouseUp() {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      const rect = el.getBoundingClientRect();
+      saveJSON(POSITION_KEY, { left: rect.left, top: rect.top });
+      setTimeout(() => { dragged = false; }, 0); // let the click handler see it first
+    }
+    el.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      dragged = false;
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = el.getBoundingClientRect();
+      startLeft = rect.left;
+      startTop = rect.top;
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+      e.preventDefault();
+    });
+  }
+
+  function ensureBadge() {
+    if (badgeEl) return badgeEl;
+    badgeEl = document.createElement("div");
+    badgeEl.id = "career-pilot-autofill-badge";
+    Object.assign(badgeEl.style, {
+      position: "fixed",
+      zIndex: "2147483647",
+      background: "#ffffff",
+      color: "#0f172a",
+      border: "1px solid #cbd5e1",
+      borderRadius: "999px",
+      padding: "8px 10px 8px 14px",
+      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      fontSize: "13px",
+      fontWeight: "600",
+      boxShadow: "0 4px 14px rgba(0,0,0,0.15)",
+      cursor: "grab",
+      display: "none",
+      alignItems: "center",
+      gap: "8px",
+      userSelect: "none",
+    });
+
+    const position = loadJSON(POSITION_KEY, null);
+    if (position) {
+      badgeEl.style.left = position.left + "px";
+      badgeEl.style.top = position.top + "px";
+    } else {
+      badgeEl.style.left = "20px";
+      badgeEl.style.bottom = "20px";
+    }
+
+    const label = document.createElement("span");
+    label.id = "career-pilot-autofill-badge-label";
+    badgeEl.appendChild(label);
+
+    const closeBtn = document.createElement("span");
+    closeBtn.textContent = "✕";
+    Object.assign(closeBtn.style, { color: "#94a3b8", fontSize: "11px", cursor: "pointer", padding: "2px" });
+    closeBtn.title = "Hide (click the extension icon to bring it back)";
+    closeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setCollapsed(true);
+    });
+    badgeEl.appendChild(closeBtn);
+
+    badgeEl.addEventListener("click", () => {
+      if (!dragged) triggerFill();
+    });
+    makeDraggable(badgeEl);
+    document.body.appendChild(badgeEl);
+    return badgeEl;
+  }
+
+  function setCollapsed(collapsed) {
+    saveJSON(COLLAPSED_KEY, collapsed);
+    if (badgeEl) badgeEl.style.display = collapsed ? "none" : "flex";
+  }
+
+  function isUserCollapsed() {
+    return loadJSON(COLLAPSED_KEY, false);
+  }
+
+  function showBadge(text, color) {
+    if (isUserCollapsed()) return; // the user explicitly put this away -- respect it, don't pop back up on its own
+    const el = ensureBadge();
+    el.querySelector("#career-pilot-autofill-badge-label").textContent = text;
+    el.style.color = color || "#0f172a";
+    el.style.display = "flex";
+  }
+
+  function hideBadge() {
+    if (badgeEl) badgeEl.style.display = "none";
+  }
+
+  async function triggerFill() {
+    if (!lastResult || !lastResult.matched) return;
+    showBadge("Filling...", "#0f172a");
+    const fillResult = await fillThisFrame(lastResult.application.application_id);
+    await notifyFrames(lastResult.application.application_id);
+    lastResult = { ...lastResult, ...fillResult };
+    renderBadge();
+  }
+
+  // "URL isn't set yet" is a real, but one-time and non-urgent, setup
+  // step -- showing a red on-page badge for it on literally every site
+  // visited before that's done would be intrusive, not helpful. Still
+  // fully visible in the popup for whenever the user does open it.
+  function isSetupPendingError(message) {
+    return typeof message === "string" && message.includes("URL isn't set yet");
+  }
+
+  function renderBadge() {
+    if (!lastResult) return;
+    if (lastResult.error) {
+      if (isSetupPendingError(lastResult.error)) {
+        hideBadge();
+        return;
+      }
+      showBadge("Career Pilot: " + lastResult.error, "#b91c1c");
       return;
     }
-    const fillResult = await run(match.data.application_id);
+    if (!lastResult.matched) {
+      hideBadge();
+      return;
+    }
+    if (lastResult.total === 0) {
+      showBadge("Career Pilot: no fillable fields found", "#64748b");
+      return;
+    }
+    showBadge(
+      "Career Pilot: filled " + lastResult.filled + "/" + lastResult.total + " -- click to re-run",
+      lastResult.filled === lastResult.total ? "#047857" : "#b45309"
+    );
+  }
+
+  // Tells every frame of this tab (this one included, plus any real
+  // embedded ATS iframe) to fill whatever it finds in its own DOM.
+  // Relayed through the background service worker because a content
+  // script can only message the background, never a sibling frame
+  // directly -- background.js then broadcasts via chrome.tabs.sendMessage
+  // (which reaches every frame when no frameId is given).
+  function notifyFrames(applicationId) {
+    return chrome.runtime.sendMessage({ type: "broadcastFill", applicationId });
+  }
+
+  async function mainFrameCheckAndFill() {
+    const match = await chrome.runtime.sendMessage({ type: "checkMatch", url: location.href });
+    if (match.error) {
+      lastResult = { error: match.error };
+      renderBadge();
+      return;
+    }
+    if (!match.data.matched) {
+      lastResult = { matched: false };
+      renderBadge();
+      return;
+    }
+    const fillResult = await fillThisFrame(match.data.application_id);
+    await notifyFrames(match.data.application_id);
     lastResult = { matched: true, application: match.data, ...fillResult };
+    renderBadge();
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.type === "fillPage") {
-      autoCheckAndFill().then(() => sendResponse(lastResult));
+      // Every frame (main + any real embedded ATS sub-frame) fills its
+      // own DOM in response to the main frame's broadcast above.
+      fillThisFrame(message.applicationId).then(sendResponse);
       return true;
     }
-    if (message.type === "getStatus") {
+    if (message.type === "getStatus" && isMainFrame) {
       sendResponse(lastResult);
+      return false;
+    }
+    if (message.type === "getBadgeCollapsed" && isMainFrame) {
+      sendResponse(isUserCollapsed());
+      return false;
+    }
+    if (message.type === "setBadgeCollapsed" && isMainFrame) {
+      setCollapsed(message.collapsed);
+      if (!message.collapsed) renderBadge(); // "bring it back" -- show it again right away, not just on the next status change
+      sendResponse({ ok: true });
       return false;
     }
     return false;
   });
 
-  autoCheckAndFill();
+  if (isMainFrame) {
+    mainFrameCheckAndFill();
+  }
 })();
