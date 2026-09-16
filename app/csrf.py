@@ -50,7 +50,17 @@ EXEMPT_PATHS = {"/api/health"}
 # session cookie -- one-click email approve/reject links are opened on
 # whatever device the user has in hand, which won't carry this
 # dashboard's CSRF cookie. See app/services/confirmation_tokens.py.
-EXEMPT_PATH_PREFIXES = ("/confirm/",)
+#
+# /api/extension/ is the companion browser extension's API (see
+# routers/extension.py's docstring) -- called from the extension's
+# background service worker (a chrome-extension:// origin), which never
+# receives this app's CSRF cookie via a real page load, and forwards its
+# own session proof as an explicit X-Career-Pilot-Session header instead
+# of relying on ambient cookies at all. That header can't be forged by a
+# third-party page (no access to the httponly admin_session cookie it's
+# read from), so the CSRF double-submit check isn't the thing protecting
+# this path -- the header requirement is.
+EXEMPT_PATH_PREFIXES = ("/confirm/", "/api/extension/")
 
 
 def _is_exempt(path: str) -> bool:
