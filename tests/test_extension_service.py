@@ -163,6 +163,104 @@ def test_resolve_field_answers_skips_a_field_with_no_label(db, settings):
     assert answers == {}
 
 
+class TestRealFieldsFoundLiveOnSamsara:
+    """Real fields flagged live 2026-09-16 as sitting unfilled that
+    shouldn't have -- each backed by a real, already-stored profile
+    field (contact.linkedin/github/portfolio, experience[0], a real
+    US-format stored phone), never a new fabricated fact."""
+
+    def test_linkedin_github_portfolio_urls(self, db, settings):
+        _set_profile(db, _profile(contact={
+            "email": "d@example.com", "phone": "(480) 876-2863",
+            "linkedin": "https://www.linkedin.com/in/deshrajjogiya",
+            "github": "https://github.com/Deshraj-Jogiya",
+            "portfolio": "https://deshraj-jogiya.github.io",
+        }))
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        answers = extension_service.resolve_field_answers(db, application.id, [
+            {"field_id": "f1", "label": "LinkedIn Profile"},
+            {"field_id": "f2", "label": "GitHub"},
+            {"field_id": "f3", "label": "Portfolio / Personal Website"},
+        ])
+
+        assert answers == {
+            "f1": "https://www.linkedin.com/in/deshrajjogiya",
+            "f2": "https://github.com/Deshraj-Jogiya",
+            "f3": "https://deshraj-jogiya.github.io",
+        }
+
+    def test_phone_country_inferred_from_a_real_us_format_phone_number(self, db, settings):
+        _set_profile(db, _profile(contact={"email": "d@example.com", "phone": "(480) 876-2863"}))
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        answers = extension_service.resolve_field_answers(db, application.id, [{"field_id": "f1", "label": "Country"}])
+
+        assert answers == {"f1": "United States"}
+
+    def test_phone_country_not_guessed_for_a_non_us_looking_number(self, db, settings):
+        # Never a blind default -- only answers when the stored phone
+        # itself really looks like a US number.
+        _set_profile(db, _profile(contact={"email": "d@example.com", "phone": "+44 20 7946 0958"}))
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        answers = extension_service.resolve_field_answers(db, application.id, [{"field_id": "f1", "label": "Country"}])
+
+        assert answers == {}
+
+    def test_most_recent_employer_is_the_real_first_experience_entry(self, db, settings):
+        _set_profile(db, _profile(experience=[
+            {"company": "Objectways Technologies LLC", "role": "Teleoperation Data Collection Associate", "date": "May 2026 - Present"},
+            {"company": "Technoid LLC", "role": "Applied Machine Learning Engineer", "date": "Dec 2025 - May 2026"},
+        ]))
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        answers = extension_service.resolve_field_answers(db, application.id, [
+            {"field_id": "f1", "label": "Most Recent Employer"},
+        ])
+
+        assert answers == {"f1": "Objectways Technologies LLC"}
+
+    def test_previously_worked_here_yes_when_a_real_past_employer_matches(self, db, settings):
+        _set_profile(db, _profile(experience=[{"company": "Samsara", "role": "Intern", "date": "2023"}]))
+        company = make_company(db, name="Samsara")
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        answers = extension_service.resolve_field_answers(db, application.id, [
+            {"field_id": "f1", "label": "Have you previously worked at Samsara?"},
+        ])
+
+        assert answers == {"f1": "Yes"}
+
+    def test_previously_worked_here_no_when_no_past_employer_matches(self, db, settings):
+        _set_profile(db, _profile(experience=[{"company": "Objectways Technologies LLC", "role": "X", "date": "2026"}]))
+        company = make_company(db, name="Samsara")
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        answers = extension_service.resolve_field_answers(db, application.id, [
+            {"field_id": "f1", "label": "Have you previously worked at Samsara?"},
+        ])
+
+        assert answers == {"f1": "No"}
+
+    def test_previously_worked_here_left_blank_with_no_experience_data_at_all(self, db, settings):
+        # Missing data, not a genuine "never worked there" -- must not
+        # guess "No" when there's nothing real to check against.
+        _set_profile(db, _profile())
+        company = make_company(db, name="Samsara")
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        answers = extension_service.resolve_field_answers(db, application.id, [
+            {"field_id": "f1", "label": "Have you previously worked at Samsara?"},
+        ])
+
+        assert answers == {}
+
+
 class TestSelectFieldSupport:
     """Real bug found live 2026-09-16 on the real Samsara Greenhouse
     form: the content script only ever scanned input/textarea, so every

@@ -58,12 +58,11 @@
   let lastResult = null;
 
   // A field that comes back with no answer stays "fillable" forever
-  // (still empty) -- without tracking this, the MutationObserver-driven
-  // rescan (see watchForNewFields below, added for Samsara's real
-  // client-side "Apply Now" reveal) would re-ask the backend about the
-  // exact same unanswerable field on every DOM mutation, including this
-  // script's own highlight() outline changes. Tracked once per element
-  // for this page's lifetime.
+  // (still empty) -- without tracking this, a manual re-fill (the badge
+  // click, or the popup's "Autofill Again") would re-ask the backend
+  // about the exact same already-attempted-and-unanswerable field every
+  // time, instead of only asking about genuinely new fields. Tracked
+  // once per element for this page's lifetime.
   const attemptedUnanswerable = new WeakSet();
 
   function findLabelText(el) {
@@ -391,27 +390,22 @@
     return chrome.runtime.sendMessage({ type: "broadcastFill", applicationId });
   }
 
-  // Real behavior confirmed live 2026-09-16: Samsara's "Apply Now" reveals
-  // the actual form via client-side JS, not a real page navigation --
-  // this content script only runs once per genuine navigation, so
-  // without this, a field that appears after that reveal would sit
-  // unfilled until the user manually clicked "Fill Again". Watches for
-  // new DOM content and re-scans automatically instead -- matches the
-  // "zero extra steps" goal the manual-click version fell short of.
-  function watchForNewFields(applicationId) {
-    let debounceTimer = null;
-    const observer = new MutationObserver(() => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(async () => {
-        const fillResult = await fillThisFrame(applicationId);
-        if (fillResult.filled > 0 || fillResult.total > 0) {
-          lastResult = { matched: true, application: lastResult && lastResult.application, ...fillResult };
-          renderBadge();
-        }
-      }, 600);
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-  }
+  // Real bug found live 2026-09-16, root-caused by actually re-reading
+  // this code rather than guessing again: mainFrameCheckAndFill filled
+  // this frame directly, THEN called notifyFrames -- which broadcasts to
+  // EVERY frame of the tab, including this exact one, so its own
+  // "fillPage" listener below fired again immediately afterward. By
+  // then every field was either already filled (excluded by isFillable's
+  // !el.value check) or already marked unanswerable (excluded via
+  // attemptedUnanswerable), so that second pass always found 0 fields
+  // and overwrote the correct "filled 4/9" badge with a wrong "no
+  // fillable fields found" -- deterministically, every single time, not
+  // an intermittent race. This timestamp guard treats a "fillPage"
+  // arriving right after this frame's own direct fill as that same
+  // self-echo and skips redoing it, while still letting a real later
+  // click (the badge, or the popup's "Autofill Again") through.
+  let lastFillAt = 0;
+  const SELF_ECHO_WINDOW_MS = 1500;
 
   async function mainFrameCheckAndFill() {
     const match = await chrome.runtime.sendMessage({ type: "checkMatch", url: location.href });
@@ -426,23 +420,30 @@
       return;
     }
     const fillResult = await fillThisFrame(match.data.application_id);
-    await notifyFrames(match.data.application_id);
+    lastFillAt = Date.now();
     lastResult = { matched: true, application: match.data, ...fillResult };
     renderBadge();
-    watchForNewFields(match.data.application_id);
+    // Sub-frames (a real embedded ATS iframe, e.g. Greenhouse on an
+    // employer's own page) never call mainFrameCheckAndFill themselves
+    // (isMainFrame is false there) -- this is the only way they learn
+    // the applicationId and fill their own DOM. This frame receives its
+    // own broadcast too; the guard above is what stops that from
+    // clobbering the result just set above.
+    notifyFrames(match.data.application_id);
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.type === "fillPage") {
+      if (isMainFrame && Date.now() - lastFillAt < SELF_ECHO_WINDOW_MS) {
+        sendResponse(lastResult ? { filled: lastResult.filled, total: lastResult.total } : { filled: 0, total: 0 });
+        return false;
+      }
       // Every frame (main + any real embedded ATS sub-frame) fills its
-      // own DOM in response to a broadcast (this main frame's own, or
-      // the popup's "Fill Again"). Real bug found live: this path never
-      // touched lastResult/renderBadge, so a fill triggered from the
-      // popup left the on-page badge showing whatever it said before --
-      // e.g. a stale "no fillable fields found" even after fields had
-      // genuinely just been filled by this exact call. Only the main
-      // frame owns a badge to update.
+      // own DOM in response to a broadcast (a real embedded sub-frame's
+      // first-ever fill, or a genuine later re-run -- the badge click,
+      // or the popup's "Autofill Again").
       fillThisFrame(message.applicationId).then((fillResult) => {
+        lastFillAt = Date.now();
         if (isMainFrame) {
           lastResult = { matched: true, application: lastResult && lastResult.application, ...fillResult };
           renderBadge();
