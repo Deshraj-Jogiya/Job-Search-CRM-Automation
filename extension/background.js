@@ -79,5 +79,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ ok: true });
     return false;
   }
+  if (message.type === "reportSubFrameResult") {
+    // Real gap found live: a sub-frame (the actual Greenhouse iframe on
+    // Samsara's page) fills its own DOM correctly, but that success was
+    // never reported anywhere -- the main frame's badge only ever
+    // reflected its OWN fillThisFrame result, which is genuinely 0 on a
+    // page where the real form lives entirely in a different frame.
+    // Relayed specifically to frame 0 (the main frame, which owns the
+    // one visible badge) so it can fold a sub-frame's real result into
+    // what it shows, instead of only ever knowing about itself.
+    if (sender.tab) {
+      chrome.tabs.sendMessage(
+        sender.tab.id,
+        { type: "subFrameFilled", filled: message.filled, total: message.total },
+        { frameId: 0 }
+      );
+    }
+    return false;
+  }
   return false;
 });
