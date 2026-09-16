@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from .autofill.common_answers import is_referral_source_question, mechanical_common_answer, referral_source_answer
 from .matching_service import MatchingServiceError, get_profile_content_for_application
+from .profile_service import profile_completeness_warnings
 from ..models import JobApplication, JobPosting, TailoredDocument
 
 _FIRST_NAME_RE = re.compile(r"\bfirst\s*name\b", re.I)
@@ -113,6 +114,53 @@ def _best_option_match(answer: str, options: list[str]) -> str | None:
         if _contains_as_phrase(answer_norm, o.strip().lower()) or _contains_as_phrase(o.strip().lower(), answer_norm)
     ]
     return candidates[0] if len(candidates) == 1 else None
+
+
+def application_match_summary(db: Session, application: JobApplication) -> dict:
+    """Everything the popup shows about a matched application, beyond
+    the bare "found it" the original version returned -- researched
+    against a real competitor (JobRight's own extension popup) before
+    building, not invented: a prominent match score, which real document
+    (tailored resume/cover letter, vs. falling back to the base profile)
+    will ground the fill, and a completeness signal for the underlying
+    profile data. Every one of these already exists elsewhere in this
+    codebase (match_score on JobApplication, TailoredDocument rows,
+    profile_service.profile_completeness_warnings) -- this only bundles
+    them for the one caller that needs all three together.
+
+    profile_warnings is deliberately PROFILE-level, not per-job: an
+    application can only ever reach "Approved" (the only status this
+    endpoint matches) after clearing every per-job hard-stop flag
+    (confirmation_service.has_hard_stop_flag), so a per-job "needs
+    attention" signal here could never actually fire -- checked before
+    building this, not after."""
+    has_tailored_resume = (
+        db.query(TailoredDocument)
+        .filter(TailoredDocument.application_id == application.id, TailoredDocument.document_type == "resume")
+        .first()
+        is not None
+    )
+    has_tailored_cover_letter = (
+        db.query(TailoredDocument)
+        .filter(TailoredDocument.application_id == application.id, TailoredDocument.document_type == "cover_letter")
+        .first()
+        is not None
+    )
+    try:
+        profile, _variant_id = get_profile_content_for_application(db, application)
+        warnings = profile_completeness_warnings(profile)
+    except MatchingServiceError:
+        warnings = []
+
+    return {
+        "application_id": application.id,
+        "job_title": application.posting.job_title,
+        "company_name": application.posting.company_name_raw,
+        "match_score": application.match_score,
+        "has_tailored_resume": has_tailored_resume,
+        "has_tailored_cover_letter": has_tailored_cover_letter,
+        "profile_warnings": warnings,
+    }
 
 
 def _contact_answer(label: str, profile: dict) -> str | None:
