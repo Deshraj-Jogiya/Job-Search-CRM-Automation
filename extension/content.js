@@ -122,6 +122,20 @@
     if (el.offsetParent === null) return false; // hidden
     if (el.tagName === "INPUT") {
       const type = (el.getAttribute("type") || "text").toLowerCase();
+      // Real bug found live 2026-09-16: a react-select combobox's own
+      // .value is EMPTY even right after a real, successful selection --
+      // confirmed directly (selecting "Master's" for education level left
+      // el.value === "" while the widget's own select__single-value
+      // display correctly showed "Master's"). The plain !el.value check
+      // below therefore NEVER recognizes one of these fields as already
+      // answered, so every later click-triggered poll re-detected it as
+      // still-blank, re-selected the same already-correct option, and
+      // re-counted it as newly filled every time -- exactly the "keeps
+      // changing the answer and inflating the filled count" behavior
+      // reported live. hasReactSelectValue reads the widget's own real
+      // selected-value display instead of the input's own (unreliable,
+      // for this widget shape) value attribute.
+      if (isReactSelectCombobox(el)) return !hasReactSelectValue(el);
       return ["text", "email", "tel", "url"].includes(type) && !el.value;
     }
     if (el.tagName === "TEXTAREA") return !el.value;
@@ -269,6 +283,21 @@
     return el.tagName === "INPUT" && el.getAttribute("role") === "combobox" && el.getAttribute("aria-haspopup") === "true";
   }
 
+  // react-select's own real "a value is selected" signal -- confirmed
+  // live: once selected (by this extension OR by the human clicking it
+  // themselves), a select__single-value / select__multi-value sibling
+  // appears next to the search input inside the shared "value container"
+  // wrapper (react-select's own default class-naming convention, not
+  // Greenhouse-specific). Used instead of the input's own .value, which
+  // stays empty either way -- see isFillable's comment above.
+  function hasReactSelectValue(el) {
+    const valueContainer = el.closest('[class*="value-container"], [class*="valueContainer"]');
+    return !!(
+      valueContainer &&
+      valueContainer.querySelector('[class*="single-value"], [class*="singleValue"], [class*="multi-value"], [class*="multiValue"]')
+    );
+  }
+
   function fireMouseSequence(target) {
     ["mousedown", "mouseup", "click"].forEach((type) =>
       target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window, button: 0 }))
@@ -288,24 +317,19 @@
     });
   }
 
-  // Exact match only, same convention as the existing native-<select>
-  // matching just below -- never silently pick the closest-sounding
-  // option instead of the real one the backend actually resolved.
-  //
-  // Real bug caught live before shipping this: a plain, page-wide
-  // document.querySelectorAll('[role="option"]') is not safely scoped to
-  // THIS field -- if a previous field's menu failed to close cleanly (the
-  // real Samsara form has a phone-country-code combobox, labeled just
-  // "Country", whose menu stayed open after a failed match in testing),
-  // its stale options stay in the DOM and get mixed in with whatever
-  // field is being filled next, risking a click on the wrong field's
-  // option entirely. React-select reliably sets the input's aria-controls
-  // to its own listbox's real id once open (confirmed live) -- scoping
-  // the option search to that exact listbox is what actually makes this
-  // safe.
-  async function selectReactSelectOption(el, answer) {
+  // Real bug caught live before shipping the click-selection fix this
+  // supports: a plain, page-wide document.querySelectorAll('[role=
+  // "option"]') is not safely scoped to THIS field -- if a previous
+  // field's menu failed to close cleanly (the real Samsara form has a
+  // phone-country-code combobox, labeled just "Country", whose menu
+  // stayed open after a failed match in testing), its stale options stay
+  // in the DOM and get mixed in with whatever field is being processed
+  // next. React-select reliably sets the input's aria-controls to its own
+  // listbox's real id once open (confirmed live) -- scoping the option
+  // search to that exact listbox is what actually makes this safe.
+  async function openReactSelectMenu(el) {
     fireMouseSequence(el.closest('[class*="control"]') || el);
-    const options = await waitFor(
+    return waitFor(
       () => {
         const listboxId = el.getAttribute("aria-controls");
         const listbox = listboxId && document.getElementById(listboxId);
@@ -316,19 +340,58 @@
       10,
       50
     );
+  }
+
+  // Real bug caught live before shipping this: a dispatched Escape
+  // keydown (and blur(), and a synthetic mousedown on document.body --
+  // all tried live against the real widget) does NOT actually close this
+  // menu; aria-expanded stayed "true" every time. The one thing confirmed
+  // live to actually work is a second click on the control, the same
+  // toggle a real user's second click would do -- only ever called right
+  // after openReactSelectMenu has confirmed the menu is actually open, so
+  // this can't accidentally toggle a closed menu back open instead.
+  function closeReactSelectMenu(el) {
+    fireMouseSequence(el.closest('[class*="control"]') || el);
+  }
+
+  // Exact match only, same convention as the existing native-<select>
+  // matching just below -- never silently pick the closest-sounding
+  // option instead of the real one the backend actually resolved.
+  async function selectReactSelectOption(el, answer) {
+    const options = await openReactSelectMenu(el);
     if (!options) return false;
     const match = options.find((o) => o.textContent.trim() === answer);
     if (!match) {
-      // Close the menu rather than leave it stuck open with unmatched
-      // search text sitting in the box.
-      el.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      closeReactSelectMenu(el); // leave it closed rather than stuck open with unmatched search text
       return false;
     }
     fireMouseSequence(match);
     return true;
   }
 
-  function fillThisFrame(applicationId) {
+  // Real root cause of education level / years-of-experience staying
+  // permanently blank, found live 2026-09-16: both ARE react-select
+  // comboboxes (confirmed against the real Samsara form), so the field
+  // scan below never gave them a real "options" list the way it already
+  // does for a native <select> -- react-select's real option text is
+  // only ever knowable once its menu is actually open, unlike a native
+  // <select>'s .options. Without that, the backend's exact-match/phrase-
+  // cascade matching (_best_option_match) had nothing real to compare
+  // against, so a correct canonical answer like "Master's Degree" could
+  // never line up with this employer's own shorter real wording
+  // ("Master's"). Opens the menu just to read the real rendered text,
+  // then closes it again without selecting anything -- the actual
+  // selection still only happens later, through the normal answer-
+  // resolution path, once the backend has matched the real answer
+  // against these real options exactly the way it already does for a
+  // native <select>.
+  async function harvestReactSelectOptions(el) {
+    const options = await openReactSelectMenu(el);
+    if (options) closeReactSelectMenu(el); // only when it's actually open -- see closeReactSelectMenu's own note
+    return options ? options.map((o) => o.textContent.trim()) : [];
+  }
+
+  async function fillThisFrame(applicationId) {
     const elements = Array.from(document.querySelectorAll("input, textarea, select"));
     const fields = [];
     const elementById = {};
@@ -344,6 +407,16 @@
         // the backend matches against what a human actually reads, and
         // never invents a choice that isn't one of these real options.
         fields.push({ field_id: fieldId, label, type: "select", options: realOptions(el).map((o) => o.textContent.trim()) });
+      } else if (isReactSelectCombobox(el)) {
+        // See harvestReactSelectOptions's docstring -- gives the backend
+        // the same real option text a native <select> already provides,
+        // instead of leaving these fields permanently unmatchable.
+        const options = await harvestReactSelectOptions(el);
+        if (options.length > 0) {
+          fields.push({ field_id: fieldId, label, type: "select", options });
+        } else {
+          fields.push({ field_id: fieldId, label }); // couldn't open/read the menu this pass -- still safe, just falls back to an exact-text attempt
+        }
       } else {
         fields.push({ field_id: fieldId, label });
       }

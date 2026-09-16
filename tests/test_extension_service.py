@@ -466,6 +466,30 @@ class TestEducationLevelAnswer:
 
         assert answers == {"f1": "Doctorate"}
 
+    def test_matches_the_real_samsara_option_text_with_a_curly_apostrophe(self, db, settings):
+        # Real bug found live 2026-09-16: the actual Samsara/Greenhouse
+        # form's real rendered options use a curly apostrophe
+        # ("Master’s", not "Master's" -- confirmed directly in the
+        # live DOM), shorter than this app's own canonical "Master's
+        # Degree" phrase besides. Both the apostrophe-normalization fix
+        # and the existing phrase-containment cascade need to hold here.
+        _set_profile(db, _profile(education=[
+            {"degree": "Master of Science, Information Technology", "school": "Arizona State University", "date": "Aug 2022 - Jul 2024"},
+        ]))
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        answers = extension_service.resolve_field_answers(db, application.id, [
+            {
+                "field_id": "f1",
+                "label": "What is your highest level of education in Computer Science, Statistics, or a related field?",
+                "type": "select",
+                "options": ["High School Diploma/GED", "Associate", "Bachelor’s", "Master’s", "PhD", "JD"],
+            },
+        ])
+
+        assert answers == {"f1": "Master’s"}
+
     def test_no_education_data_leaves_it_blank(self, db, settings):
         _set_profile(db, _profile())
         company = make_company(db)
@@ -596,6 +620,58 @@ class TestYearsOfExperienceAnswer:
 
         assert answers == {"f1": "2-3 years"}
 
+    def test_matches_the_real_samsara_options_with_the_gap_between_1_2_and_3plus(self, db, settings):
+        # Real bug found live 2026-09-16: the actual Samsara form's real
+        # options are "0-1 years" / "1-2 years" / "3+ years" -- note the
+        # gap, no "2-3 years" bucket exists at all. Deshraj's real 2.9
+        # computed years (post inclusive-month fix) falls in that gap on
+        # the raw figure alone; only the rounded-to-3 check makes this
+        # correctly land on "3+ years", which is what he expects and what
+        # a human reading his resume would call it too.
+        from unittest.mock import patch
+        from datetime import datetime
+
+        _set_profile(db, _profile(experience=self.REAL_EXPERIENCE))
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        with patch("app.services.extension_service.utcnow") as mock_now:
+            mock_now.return_value = datetime(2026, 9, 16)
+            answers = extension_service.resolve_field_answers(db, application.id, [
+                {
+                    "field_id": "f1",
+                    "label": "How many years of experience do you have in a data engineering-focused role?",
+                    "type": "select",
+                    "options": ["0-1 years", "1-2 years", "3+ years"],
+                },
+            ])
+
+        assert answers == {"f1": "3+ years"}
+
+    def test_rounding_never_widens_a_genuinely_low_figure(self, db, settings):
+        # The rounding fix above must never push a real 1.4-year figure
+        # into a "3+" bucket -- only genuine boundary cases (2.9 -> 3)
+        # get the benefit, never an arbitrary low number.
+        from unittest.mock import patch
+        from datetime import datetime
+
+        _set_profile(db, _profile(experience=[
+            {"role": "Data Analyst", "company": "A", "date": "Jan 2025 – May 2026"},  # ~16-17 real months -> ~1.4 years
+        ]))
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        with patch("app.services.extension_service.utcnow") as mock_now:
+            mock_now.return_value = datetime(2026, 9, 16)
+            answers = extension_service.resolve_field_answers(db, application.id, [
+                {
+                    "field_id": "f1", "label": "Years of experience in data engineering?",
+                    "type": "select", "options": ["0-1 years", "1-2 years", "3+ years"],
+                },
+            ])
+
+        assert answers == {"f1": "1-2 years"}
+
     def test_excludes_a_role_with_no_data_related_keyword_in_its_title(self, db, settings):
         from unittest.mock import patch
         from datetime import datetime
@@ -671,7 +747,13 @@ class TestYearsOfExperienceAnswer:
                 {"field_id": "f1", "label": "Years of experience?"},
             ])
 
-        assert answers == {"f1": "1.0"}
+        # "Jan 2023 - Jan 2024" is 13 real months (Jan through Jan
+        # inclusive), not 12 -- both endpoint months are ones actually
+        # worked. Real bug found live 2026-09-16: the old end-minus-start
+        # math undercounted every interval by exactly one month, which on
+        # Deshraj's real profile was the difference between landing in no
+        # bucket at all and correctly landing in "3+ years".
+        assert answers == {"f1": "1.1"}
 
 
 class TestZipCodeAnswer:
