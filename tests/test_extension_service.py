@@ -555,3 +555,149 @@ class TestRelocationAssistanceAnswer:
         ])
 
         assert answers == {"f1": "Yes"}
+
+
+class TestYearsOfExperienceAnswer:
+    """Real, required, blocking field flagged live 2026-09-16 -- computed
+    from real interval-merged date math over experience entries whose
+    own title contains a data/ML/AI/analytics keyword (an objective,
+    title-based criterion, not a subjective per-role judgment call).
+    Checked against Deshraj's real 6 stored experience entries before
+    building this: every one of them genuinely has one of those words
+    in its own title already, not a hypothetical test fixture."""
+
+    REAL_EXPERIENCE = [
+        {"role": "Teleoperation Data Collection Associate", "company": "Objectways", "date": "May 2026 \u2013 Present"},
+        {"role": "Applied Machine Learning Engineer", "company": "Technoid", "date": "Dec 2025 \u2013 May 2026"},
+        {"role": "Data Analyst / Data Engineer", "company": "Zifatech", "date": "Jun 2025 \u2013 Dec 2025"},
+        {"role": "Data Engineer & Machine Learning Research Assistant", "company": "ASU", "date": "Sep 2024 \u2013 Jun 2025"},
+        {"role": "AI/ML Engineering Apprentice", "company": "Jetson", "date": "Jul 2024 \u2013 Aug 2024"},
+        {"role": "Data Analyst", "company": "Kronic Keys", "date": "Aug 2021 \u2013 Mar 2022"},
+    ]
+
+    def test_matches_a_real_bucketed_select_option(self, db, settings):
+        from unittest.mock import patch
+        from datetime import datetime
+
+        _set_profile(db, _profile(experience=self.REAL_EXPERIENCE))
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        with patch("app.services.extension_service.utcnow") as mock_now:
+            mock_now.return_value = datetime(2026, 9, 16)
+            answers = extension_service.resolve_field_answers(db, application.id, [
+                {
+                    "field_id": "f1",
+                    "label": "How many years of experience do you have in a data engineering-focused role?",
+                    "type": "select",
+                    "options": ["Select...", "0-1 years", "2-3 years", "4-6 years", "7+ years"],
+                },
+            ])
+
+        assert answers == {"f1": "2-3 years"}
+
+    def test_excludes_a_role_with_no_data_related_keyword_in_its_title(self, db, settings):
+        from unittest.mock import patch
+        from datetime import datetime
+
+        _set_profile(db, _profile(experience=[
+            {"role": "Retail Sales Associate", "company": "Store", "date": "Jan 2020 \u2013 Jan 2024"},  # NOT data-related
+            {"role": "Data Analyst", "company": "Kronic Keys", "date": "Aug 2021 \u2013 Mar 2022"},  # 7 months, real
+        ]))
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        with patch("app.services.extension_service.utcnow") as mock_now:
+            mock_now.return_value = datetime(2026, 9, 16)
+            answers = extension_service.resolve_field_answers(db, application.id, [
+                {
+                    "field_id": "f1", "label": "Years of experience in data engineering?",
+                    "type": "select", "options": ["0-1 years", "2-3 years"],
+                },
+            ])
+
+        # Only the 7-month Data Analyst role counts -> 0.6 years -> "0-1 years"
+        assert answers == {"f1": "0-1 years"}
+
+    def test_overlapping_roles_are_not_double_counted(self, db, settings):
+        _set_profile(db, _profile(experience=[
+            {"role": "Data Engineer", "company": "A", "date": "Jan 2023 \u2013 Jan 2024"},
+            {"role": "Data Analyst (part-time)", "company": "B", "date": "Jun 2023 \u2013 Sep 2023"},  # fully overlaps with the above
+        ]))
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        answers = extension_service.resolve_field_answers(db, application.id, [
+            {"field_id": "f1", "label": "Years of experience in data engineering?", "type": "select", "options": ["0-1 years", "2-3 years"]},
+        ])
+
+        # Real merged span is still just Jan 2023 - Jan 2024 = 1.0 year,
+        # not 1.0 + 0.25 = 1.25 if the overlap were wrongly double-counted.
+        assert answers == {"f1": "0-1 years"}
+
+    def test_no_experience_data_leaves_it_blank(self, db, settings):
+        _set_profile(db, _profile())
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        answers = extension_service.resolve_field_answers(db, application.id, [
+            {"field_id": "f1", "label": "Years of experience?", "type": "select", "options": ["0-1 years", "2-3 years"]},
+        ])
+
+        assert answers == {}
+
+    def test_unparseable_dates_leave_it_blank_rather_than_guess(self, db, settings):
+        _set_profile(db, _profile(experience=[{"role": "Data Engineer", "company": "A", "date": "some time ago"}]))
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        answers = extension_service.resolve_field_answers(db, application.id, [
+            {"field_id": "f1", "label": "Years of experience?", "type": "select", "options": ["0-1 years", "2-3 years"]},
+        ])
+
+        assert answers == {}
+
+    def test_plain_number_for_a_non_select_field(self, db, settings):
+        from unittest.mock import patch
+        from datetime import datetime
+
+        _set_profile(db, _profile(experience=[{"role": "Data Engineer", "company": "A", "date": "Jan 2023 \u2013 Jan 2024"}]))
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        with patch("app.services.extension_service.utcnow") as mock_now:
+            mock_now.return_value = datetime(2026, 9, 16)
+            answers = extension_service.resolve_field_answers(db, application.id, [
+                {"field_id": "f1", "label": "Years of experience?"},
+            ])
+
+        assert answers == {"f1": "1.0"}
+
+
+class TestZipCodeAnswer:
+    """No zip/postal field exists in the profile schema today (checked
+    the real stored data directly -- only free-text contact.location).
+    This matches contact.zip/zip_code/postal_code so it starts working
+    the moment one of those is added via the Profile page."""
+
+    def test_answers_from_a_real_stored_zip_once_the_profile_has_one(self, db, settings):
+        _set_profile(db, _profile(contact={"email": "d@example.com", "zip": "85281"}))
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        answers = extension_service.resolve_field_answers(db, application.id, [
+            {"field_id": "f1", "label": "What is the zip code of your primary residence?"},
+        ])
+
+        assert answers == {"f1": "85281"}
+
+    def test_left_blank_when_no_zip_is_stored_rather_than_guessed_from_the_city(self, db, settings):
+        _set_profile(db, _profile(contact={"email": "d@example.com", "location": "Tempe, Arizona (open to relocation)"}))
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        answers = extension_service.resolve_field_answers(db, application.id, [
+            {"field_id": "f1", "label": "What is the zip code of your primary residence?"},
+        ])
+
+        assert answers == {}

@@ -127,6 +127,35 @@
         </select>
     </label>
     {% endmacro %}
+    {% macro text_field(name, label, current, placeholder="") %}
+    <label>{{ label }}
+        <input type="text" name="{{ name }}" value="{{ current or '' }}" placeholder="{{ placeholder }}">
+    </label>
+    {% endmacro %}
+    <details class="sub-panel">
+        <summary>Contact details</summary>
+        <p class="muted-note">
+            Real gap found live 2026-09-15: LinkedIn/GitHub/portfolio and zip code were already fields
+            autofill/the browser extension look for (see contact.linkedin/github/portfolio/zip), but the only
+            way to ever set them was pasting raw profile JSON below. Fixed with a real form for them, same as
+            every other section here -- submits every field together, so saving never silently drops one you
+            didn't re-type.
+        </p>
+        <form method="post" action="/profile/variants/{{ variant.id }}/contact" class="preferences-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            {{ text_field('email', 'Email', entry.contact.email, 'you@example.com') }}
+            {{ text_field('phone', 'Phone', entry.contact.phone, '(555) 123-4567') }}
+            {{ text_field('city', 'City', entry.contact.city, 'Tempe') }}
+            {{ text_field('state', 'State', entry.contact.state, 'Arizona') }}
+            {{ text_field('zip_code', 'Zip / postal code', entry.contact.zip, '85281') }}
+            {{ text_field('location', 'Location summary (shown as-is on some forms)', entry.contact.location, 'e.g. Tempe, Arizona (open to relocation)') }}
+            {{ text_field('linkedin', 'LinkedIn URL', entry.contact.linkedin, 'https://www.linkedin.com/in/you') }}
+            {{ text_field('github', 'GitHub URL', entry.contact.github, 'https://github.com/you') }}
+            {{ text_field('portfolio', 'Portfolio / website URL', entry.contact.portfolio, 'https://you.dev') }}
+            <button type="submit">Save Contact Details</button>
+        </form>
+    </details>
+
     <details class="sub-panel">
         <summary>Application preferences (EEO, work authorization, salary, etc.)</summary>
         <p class="muted-note">
