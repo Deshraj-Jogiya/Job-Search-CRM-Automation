@@ -5,7 +5,7 @@
   <title>Career Pilot Autofill</title>
   <style>
     body {
-      width: 300px;
+      width: 320px;
       margin: 0;
       padding: 14px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -63,6 +63,16 @@
       border: 1px solid #cbd5e1;
       margin-top: 6px;
     }
+    /* The single most important action in this popup -- researched
+       against a real competitor (JobRight's own extension) before
+       building: one big, unmissable primary CTA, not a small link
+       buried in status text. */
+    button.primary-cta {
+      font-size: 15px;
+      padding: 12px 10px;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
+    }
     .status-ok {
       background: rgba(16, 185, 129, 0.1);
       border: 1px solid rgba(16, 185, 129, 0.4);
@@ -79,6 +89,72 @@
       padding: 8px 10px;
       margin-bottom: 10px;
     }
+    .match-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .match-card-title {
+      font-weight: 600;
+      font-size: 13px;
+      color: #0f172a;
+    }
+    .match-card-company {
+      color: #64748b;
+      font-size: 12px;
+    }
+    .match-score {
+      flex-shrink: 0;
+      background: rgba(99, 102, 241, 0.1);
+      color: #6366f1;
+      border: 1px solid rgba(99, 102, 241, 0.4);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .info-panel {
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin: 12px 0;
+    }
+    .info-panel-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 600;
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+    .alert-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #ef4444;
+      flex-shrink: 0;
+    }
+    .info-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #334155;
+      margin-bottom: 4px;
+    }
+    .info-row:last-child { margin-bottom: 0; }
+    .info-row .ok-mark { color: #10b981; }
+    .info-row .pending-mark { color: #b45309; }
+    .warnings-list {
+      margin: 6px 0 0;
+      padding-left: 16px;
+      font-size: 11px;
+      color: #b45309;
+    }
+    .warnings-list li { margin-bottom: 2px; }
     [hidden] { display: none; }
   </style>
 </head>
@@ -93,7 +169,28 @@
 
   <div id="main" hidden>
     <div id="status"></div>
-    <button id="fill-btn" hidden>Fill Again</button>
+
+    <div id="match-card" class="match-card" hidden>
+      <div>
+        <div id="match-title" class="match-card-title"></div>
+        <div id="match-company" class="match-card-company"></div>
+      </div>
+      <div id="match-score-badge" class="match-score" hidden></div>
+    </div>
+
+    <button id="fill-btn" class="primary-cta" hidden>Autofill</button>
+
+    <div id="info-panel" class="info-panel" hidden>
+      <div class="info-panel-header">
+        <span id="info-alert-dot" class="alert-dot" hidden></span>
+        <span>Your Autofill Information</span>
+      </div>
+      <div id="info-resume" class="info-row"></div>
+      <div id="info-cover-letter" class="info-row"></div>
+      <ul id="info-warnings" class="warnings-list" hidden></ul>
+      <a id="info-profile-link" href="#" target="_blank" class="muted" hidden>Fix on the Profile page &#8599;</a>
+    </div>
+
     <button id="show-badge-btn" class="secondary" hidden>Show On-Page Indicator</button>
     <button id="change-url" class="secondary">Change Career Pilot URL</button>
   </div>

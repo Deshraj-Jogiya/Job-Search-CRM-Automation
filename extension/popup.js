@@ -6,8 +6,19 @@ const statusEl = document.getElementById("status");
 const fillBtn = document.getElementById("fill-btn");
 const showBadgeBtn = document.getElementById("show-badge-btn");
 const baseUrlInput = document.getElementById("base-url");
+const matchCardEl = document.getElementById("match-card");
+const matchTitleEl = document.getElementById("match-title");
+const matchCompanyEl = document.getElementById("match-company");
+const matchScoreBadgeEl = document.getElementById("match-score-badge");
+const infoPanelEl = document.getElementById("info-panel");
+const infoAlertDotEl = document.getElementById("info-alert-dot");
+const infoResumeEl = document.getElementById("info-resume");
+const infoCoverLetterEl = document.getElementById("info-cover-letter");
+const infoWarningsEl = document.getElementById("info-warnings");
+const infoProfileLinkEl = document.getElementById("info-profile-link");
 
-let currentApplication = null; // {application_id, job_title, company_name} from the last matched result
+let currentApplication = null; // the full match response (application_id, job_title, company_name, match_score, has_tailored_resume, has_tailored_cover_letter, profile_warnings)
+let currentBaseUrl = null;
 
 function showStatus(kind, text) {
   statusEl.innerHTML = "";
@@ -32,17 +43,58 @@ async function refreshBadgeToggle(tab) {
   showBadgeBtn.hidden = !collapsed;
 }
 
+// "Your Autofill Information" -- researched against JobRight's own
+// popup before building (which document is in play, a red-dot
+// completeness alert) rather than invented. Every value here already
+// existed elsewhere in the app (match_score, TailoredDocument rows,
+// profile_service.profile_completeness_warnings) -- this only displays
+// it. profile_warnings is deliberately about the PROFILE, not this one
+// job -- see application_match_summary's own docstring for why a
+// per-job version could never fire here.
+function renderInfoPanel(application) {
+  infoPanelEl.hidden = false;
+  infoResumeEl.innerHTML = application.has_tailored_resume
+    ? '<span class="ok-mark">&#10003;</span> Tailored resume ready for this application'
+    : '<span class="pending-mark">&#9679;</span> Using your base profile -- no tailored resume for this one yet';
+  infoCoverLetterEl.innerHTML = application.has_tailored_cover_letter
+    ? '<span class="ok-mark">&#10003;</span> Tailored cover letter ready'
+    : '<span class="pending-mark">&#9679;</span> No cover letter generated for this application yet';
+
+  const warnings = application.profile_warnings || [];
+  infoAlertDotEl.hidden = warnings.length === 0;
+  if (warnings.length > 0) {
+    infoWarningsEl.hidden = false;
+    infoWarningsEl.innerHTML = "";
+    warnings.forEach((w) => {
+      const li = document.createElement("li");
+      li.textContent = w;
+      infoWarningsEl.appendChild(li);
+    });
+    if (currentBaseUrl) {
+      infoProfileLinkEl.hidden = false;
+      infoProfileLinkEl.href = currentBaseUrl.replace(/\/$/, "") + "/profile";
+    }
+  } else {
+    infoWarningsEl.hidden = true;
+    infoProfileLinkEl.hidden = true;
+  }
+}
+
 function renderResult(result) {
   if (!result) {
     showStatus("ok", "Still checking this page...");
     fillBtn.hidden = true;
     showBadgeBtn.hidden = true;
+    matchCardEl.hidden = true;
+    infoPanelEl.hidden = true;
     return;
   }
   if (result.error) {
     showStatus("error", result.error);
     fillBtn.hidden = true;
     showBadgeBtn.hidden = true;
+    matchCardEl.hidden = true;
+    infoPanelEl.hidden = true;
     return;
   }
   if (!result.matched) {
@@ -53,20 +105,34 @@ function renderResult(result) {
     );
     fillBtn.hidden = true;
     showBadgeBtn.hidden = true;
+    matchCardEl.hidden = true;
+    infoPanelEl.hidden = true;
     return;
   }
+
   currentApplication = result.application;
-  const label = result.application.job_title + " at " + result.application.company_name;
+  matchCardEl.hidden = false;
+  matchTitleEl.textContent = result.application.job_title;
+  matchCompanyEl.textContent = result.application.company_name;
+  if (typeof result.application.match_score === "number") {
+    matchScoreBadgeEl.hidden = false;
+    matchScoreBadgeEl.textContent = result.application.match_score + "% match";
+  } else {
+    matchScoreBadgeEl.hidden = true;
+  }
+  renderInfoPanel(result.application);
+
   if (result.total === 0) {
-    showStatus("ok", "Found: " + label + ". No fillable fields found on this page.");
+    showStatus("ok", "No fillable fields found on this page.");
   } else {
     showStatus(
       "ok",
-      "Found: " + label + ". Filled " + result.filled + " of " + result.total + " fields automatically -- " +
+      "Filled " + result.filled + " of " + result.total + " fields automatically -- " +
         "orange-dashed fields need your input. Review everything before submitting."
     );
   }
   fillBtn.hidden = false;
+  fillBtn.textContent = "Autofill Again";
   getActiveTab().then(refreshBadgeToggle);
 }
 
@@ -109,7 +175,6 @@ async function fillCurrentPage() {
   );
   renderResult({ matched: true, application: currentApplication, ...fillResult });
   fillBtn.disabled = false;
-  fillBtn.textContent = "Fill Again";
 }
 
 async function loadBaseUrl() {
@@ -118,9 +183,9 @@ async function loadBaseUrl() {
 }
 
 async function init() {
-  const baseUrl = await loadBaseUrl();
-  if (baseUrl) {
-    baseUrlInput.value = baseUrl;
+  currentBaseUrl = await loadBaseUrl();
+  if (currentBaseUrl) {
+    baseUrlInput.value = currentBaseUrl;
     setupEl.hidden = true;
     mainEl.hidden = false;
     const tab = await getActiveTab();
@@ -134,6 +199,7 @@ async function init() {
 document.getElementById("save-url").addEventListener("click", async () => {
   const url = baseUrlInput.value.trim().replace(/\/$/, "");
   if (!url) return;
+  currentBaseUrl = url;
   await chrome.storage.local.set({ [STORAGE_KEY]: url });
   setupEl.hidden = true;
   mainEl.hidden = false;
