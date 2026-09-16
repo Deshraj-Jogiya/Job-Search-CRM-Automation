@@ -442,31 +442,53 @@
   // comment) and because reacting to every mutation, including ones
   // this script's own fill triggers indirectly (a React re-render after
   // a dispatched input/change event), is inherently harder to reason
-  // about correctly than something bounded and time-based. This instead
-  // just checks a few times on a plain timer -- can't spiral, doesn't
-  // react to its own side effects, stops on its own after a fixed
-  // window regardless of what happens.
+  // about correctly than something bounded and event-driven.
+  //
+  // A first version of THIS replacement used a single fixed 15s timer
+  // from page load -- real bug found live immediately: that window is
+  // anchored to page load, not to when the user actually gets around to
+  // clicking "Apply Now". A real human reading the job description for
+  // longer than 15s before clicking it means the form appears AFTER
+  // polling already gave up, so it silently never gets filled at all.
+  // Fixed by tying re-checks to actual clicks instead of a blind clock:
+  // any click anywhere on the page is exactly the kind of real action
+  // most likely to reveal new content client-side, and re-arming on
+  // every click (not just the first) means this never "expires" for the
+  // rest of the page's lifetime, however long the user takes.
   function pollForNewFields(applicationId) {
-    let attempts = 0;
-    const maxAttempts = 10; // 10 * 1500ms = 15s, generous for a slow client-side reveal
-    const interval = setInterval(async () => {
-      attempts++;
-      if (attempts > maxAttempts) {
-        clearInterval(interval);
-        return;
-      }
+    let scheduled = [];
+
+    function clearScheduled() {
+      scheduled.forEach(clearTimeout);
+      scheduled = [];
+    }
+
+    async function checkOnce() {
       const fillResult = await fillThisFrame(applicationId);
-      // total > 0, not just filled > 0 -- a poll that finds real fields
-      // but can't answer any of them is still real, new information
-      // worth showing (the "no fillable fields found" text is the
-      // stale/wrong thing to leave up once the form has actually
-      // appeared), not just a silent no-op.
+      // total > 0, not just filled > 0 -- a check that finds real
+      // fields but can't answer any of them is still real, new
+      // information worth showing (a stale "no fillable fields found"
+      // left up once the form has actually appeared is the wrong
+      // thing), not just a silent no-op.
       if (fillResult.total > 0) {
         lastFillAt = Date.now();
         lastResult = { matched: true, application: lastResult && lastResult.application, ...fillResult };
         renderBadge();
       }
-    }, 1500);
+    }
+
+    function burstCheck() {
+      clearScheduled();
+      // A few checks spread over the next few seconds after a click --
+      // covers typical client-side render/animation time without
+      // hammering the backend on every single click (fillThisFrame
+      // itself is a cheap no-op, no network call, whenever nothing new
+      // is actually found).
+      [400, 1000, 2000, 3500].forEach((delay) => scheduled.push(setTimeout(checkOnce, delay)));
+    }
+
+    burstCheck(); // covers a form that's already present at load, no click needed
+    document.addEventListener("click", burstCheck, { capture: true, passive: true });
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
