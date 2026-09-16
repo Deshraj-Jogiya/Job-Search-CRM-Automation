@@ -588,6 +588,30 @@ def _build_detail_context(application_id: int, request: Request, db: Session, di
     }
 
 
+# Real, live-caught routing bug: FastAPI/Starlette matches routes in
+# REGISTRATION ORDER, not by specificity -- a GET "/kanban" registered
+# AFTER the generic "/{application_id}" below it gets shadowed, since
+# "/jobs/kanban" matches "/{application_id}" first (with application_id
+# ="kanban", which then 422s trying to parse it as an int). This route
+# must stay declared before application_detail below for that reason;
+# don't move it back down.
+@router.get("/kanban", response_class=HTMLResponse)
+def kanban_page(request: Request, db: Session = Depends(get_db)):
+    applications = _load_active_applications(db)
+    columns = _group_applications_by_status(applications)
+    return render(
+        request,
+        "kanban.html",
+        {
+            "columns": columns,
+            "column_order": KANBAN_COLUMNS,
+            "valid_source_statuses_json": json.dumps(confirmation_service.KANBAN_VALID_SOURCE_STATUSES),
+            "message": request.query_params.get("message"),
+            "error": request.query_params.get("error"),
+        },
+    )
+
+
 @router.get("/{application_id}", response_class=HTMLResponse)
 def application_detail(application_id: int, request: Request, db: Session = Depends(get_db)):
     context = _build_detail_context(application_id, request, db)
@@ -943,23 +967,6 @@ def _group_applications_by_status(applications: list) -> dict:
             raise HTTPException(500, f"Application {application.id} has an unrecognized status '{application.status}' -- KANBAN_COLUMNS needs updating.")
         columns[application.status].append(application)
     return columns
-
-
-@router.get("/kanban", response_class=HTMLResponse)
-def kanban_page(request: Request, db: Session = Depends(get_db)):
-    applications = _load_active_applications(db)
-    columns = _group_applications_by_status(applications)
-    return render(
-        request,
-        "kanban.html",
-        {
-            "columns": columns,
-            "column_order": KANBAN_COLUMNS,
-            "valid_source_statuses_json": json.dumps(confirmation_service.KANBAN_VALID_SOURCE_STATUSES),
-            "message": request.query_params.get("message"),
-            "error": request.query_params.get("error"),
-        },
-    )
 
 
 @router.post("/{application_id}/kanban-move")
