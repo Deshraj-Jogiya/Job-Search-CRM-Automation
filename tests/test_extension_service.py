@@ -424,3 +424,66 @@ class TestApplicationMatchSummary:
         summary = extension_service.application_match_summary(db, application)
 
         assert summary["profile_warnings"] == []
+
+
+class TestEducationLevelAnswer:
+    """Real field flagged live 2026-09-16 as a required, blocking gap on
+    the actual Samsara form -- education[0] is the real highest/most-
+    recent degree (same reverse-chronological convention confirmed for
+    experience), matched against the field's real select options via
+    the same phrase cascade every other select answer already uses."""
+
+    def test_masters_degree_matches_a_real_masters_option(self, db, settings):
+        _set_profile(db, _profile(education=[
+            {"degree": "Master of Science, Information Technology", "school": "Arizona State University", "date": "Aug 2022 - Jul 2024"},
+            {"degree": "Bachelor of Technology, Computer Engineering", "school": "Institute of Advanced Research", "date": "Aug 2017 - Jul 2021"},
+        ]))
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        answers = extension_service.resolve_field_answers(db, application.id, [
+            {
+                "field_id": "f1",
+                "label": "What is your highest level of education in Computer Science, Statistics, or a related field?",
+                "type": "select",
+                "options": ["Select...", "High School Diploma", "Associate's Degree", "Bachelor's Degree", "Master's Degree", "Doctorate"],
+            },
+        ])
+
+        assert answers == {"f1": "Master's Degree"}
+
+    def test_phd_matches_a_real_doctorate_option(self, db, settings):
+        _set_profile(db, _profile(education=[{"degree": "Ph.D. in Computer Science", "school": "MIT", "date": "2020 - 2024"}]))
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        answers = extension_service.resolve_field_answers(db, application.id, [
+            {
+                "field_id": "f1", "label": "Highest level of education?", "type": "select",
+                "options": ["Select...", "Bachelor's Degree", "Master's Degree", "Doctorate"],
+            },
+        ])
+
+        assert answers == {"f1": "Doctorate"}
+
+    def test_no_education_data_leaves_it_blank(self, db, settings):
+        _set_profile(db, _profile())
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        answers = extension_service.resolve_field_answers(db, application.id, [
+            {"field_id": "f1", "label": "Highest level of education?", "type": "select", "options": ["Bachelor's Degree", "Master's Degree"]},
+        ])
+
+        assert answers == {}
+
+    def test_unrelated_label_is_not_matched(self, db, settings):
+        _set_profile(db, _profile(education=[{"degree": "Master of Science", "school": "X", "date": "2024"}]))
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        answers = extension_service.resolve_field_answers(db, application.id, [
+            {"field_id": "f1", "label": "What is your favorite color?"},
+        ])
+
+        assert answers == {}
