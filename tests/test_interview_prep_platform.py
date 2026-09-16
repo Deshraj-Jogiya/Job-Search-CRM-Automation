@@ -255,6 +255,7 @@ def _base_variant_entry(variant):
         "active_version": None,
         "pending_versions": [],
         "versions": [],
+        "contact": {},
         "eeo": {},
         "application_preferences": {},
         "education": [],

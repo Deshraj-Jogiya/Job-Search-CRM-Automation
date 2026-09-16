@@ -56,6 +56,7 @@ def profile_page(request: Request, db: Session = Depends(get_db)):
                 "active_version": active_version,
                 "pending_versions": pending_versions,
                 "versions": versions,
+                "contact": active_content.get("contact") or {},
                 "eeo": active_content.get("eeo") or {},
                 "application_preferences": active_content.get("application_preferences") or {},
                 "education": active_content.get("education") or [],
@@ -218,6 +219,57 @@ def update_preferences(
             db, variant_id, {"eeo": eeo, "application_preferences": application_preferences}
         )
         return _redirect(message="Application preferences saved.")
+    except ProfileServiceError as e:
+        return _redirect(error=str(e))
+
+
+@router.post("/variants/{variant_id}/contact")
+def update_contact(
+    variant_id: int,
+    email: str = Form(""),
+    phone: str = Form(""),
+    location: str = Form(""),
+    city: str = Form(""),
+    state: str = Form(""),
+    zip_code: str = Form(""),
+    linkedin: str = Form(""),
+    github: str = Form(""),
+    portfolio: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Real gap found live 2026-09-16: linkedin/github/portfolio/zip were
+    already real, matched fields (see app/services/extension_service.py
+    and lever_autofill.py, which both already read contact.linkedin/
+    github/portfolio) -- but the only way to ever SET them was pasting
+    raw profile JSON. A candidate using only the structured Profile page
+    had no way to add these at all. city/state/zip are new -- the
+    profile previously had only one free-text `location` string ("Tempe,
+    Arizona"), which doesn't map onto a real ATS form's separate zip-
+    code field.
+
+    update_structured_fields does a shallow top-level merge (content.
+    update({"contact": {...}})), which REPLACES the whole contact dict,
+    not a deep merge -- this form submits every contact field together,
+    pre-filled with current values, same convention the EEO/preferences
+    form above already uses, specifically so a save here can never
+    silently wipe out an existing email/phone/URL that just wasn't
+    re-typed."""
+    contact = {
+        k: v for k, v in {
+            "email": email.strip(),
+            "phone": phone.strip(),
+            "location": location.strip(),
+            "city": city.strip(),
+            "state": state.strip(),
+            "zip": zip_code.strip(),
+            "linkedin": linkedin.strip(),
+            "github": github.strip(),
+            "portfolio": portfolio.strip(),
+        }.items() if v
+    }
+    try:
+        profile_service.update_structured_fields(db, variant_id, {"contact": contact})
+        return _redirect(message="Contact details saved.")
     except ProfileServiceError as e:
         return _redirect(error=str(e))
 
