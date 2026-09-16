@@ -487,3 +487,71 @@ class TestEducationLevelAnswer:
         ])
 
         assert answers == {}
+
+
+class TestRelocationAssistanceAnswer:
+    """Real, required, blocking field on the actual Samsara form -- a
+    different question from "willing to relocate" (financial/logistical
+    help vs. general openness), so deliberately its own narrower
+    pattern rather than reusing mechanical_common_answer's existing one.
+    Every answer here still only ever lands on a form reviewed before a
+    real human submit click, never auto-submitted."""
+
+    def test_real_samsara_wording_answered_no_when_willing_to_relocate(self, db, settings):
+        _set_profile(db, _profile(application_preferences={"willing_to_relocate": "Yes"}))
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        answers = extension_service.resolve_field_answers(db, application.id, [
+            {"field_id": "f1", "label": "Samsara will not provide relocation assistance for this role. Do you require relocation assistance?"},
+        ])
+
+        assert answers == {"f1": "No"}
+
+    def test_answered_no_when_not_willing_to_relocate_either(self, db, settings):
+        # Not relocating at all -> definitionally no relocation assistance needed.
+        _set_profile(db, _profile(application_preferences={"willing_to_relocate": "No"}))
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        answers = extension_service.resolve_field_answers(db, application.id, [
+            {"field_id": "f1", "label": "Do you require relocation assistance?"},
+        ])
+
+        assert answers == {"f1": "No"}
+
+    def test_left_blank_for_a_genuine_maybe(self, db, settings):
+        _set_profile(db, _profile(application_preferences={"willing_to_relocate": "Depends on the role"}))
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        answers = extension_service.resolve_field_answers(db, application.id, [
+            {"field_id": "f1", "label": "Do you require relocation assistance?"},
+        ])
+
+        assert answers == {}
+
+    def test_left_blank_with_no_stored_preference_at_all(self, db, settings):
+        _set_profile(db, _profile())
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        answers = extension_service.resolve_field_answers(db, application.id, [
+            {"field_id": "f1", "label": "Do you require relocation assistance?"},
+        ])
+
+        assert answers == {}
+
+    def test_does_not_accidentally_trigger_on_a_plain_willing_to_relocate_question(self, db, settings):
+        # These stay two distinct patterns -- this one goes through
+        # mechanical_common_answer's own existing willing_to_relocate
+        # handling, not this new one.
+        _set_profile(db, _profile(application_preferences={"willing_to_relocate": "Yes"}))
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        answers = extension_service.resolve_field_answers(db, application.id, [
+            {"field_id": "f1", "label": "Are you willing to relocate?"},
+        ])
+
+        assert answers == {"f1": "Yes"}

@@ -255,6 +255,32 @@ def _education_level_answer(label: str, profile: dict) -> str | None:
     return None
 
 
+_RELOCATION_ASSISTANCE_RE = re.compile(r"relocation assistance|assistance.{0,20}relocat", re.I)
+
+
+def _relocation_assistance_answer(label: str, profile: dict) -> str | None:
+    """Deliberately narrower than mechanical_common_answer's own
+    willing_to_relocate pattern -- "do you REQUIRE relocation
+    ASSISTANCE" is a real, different question from "are you willing to
+    relocate" (financial/logistical help vs. general openness), and a
+    candidate can honestly be open to relocating without needing help
+    doing it. Only answers the safe, unambiguous direction: genuinely
+    willing to relocate implies "No, I don't need help" is a reasonable
+    real default (nothing in the stored preference suggests otherwise).
+    "Depends on the role" is a real, genuine maybe -- left blank rather
+    than guessed either way. Every answer here still only ever lands on
+    a form the candidate reviews before the real, human, manual submit
+    click -- this platform's one hard rule that never changes -- so a
+    reasonable default on a required dropdown is a real, bounded risk,
+    not a fabrication that could slip out unseen."""
+    if not _RELOCATION_ASSISTANCE_RE.search(label):
+        return None
+    willing = (profile.get("application_preferences") or {}).get("willing_to_relocate")
+    if willing in ("Yes", "No"):
+        return "No"
+    return None
+
+
 def _previously_worked_here_answer(label: str, profile: dict, current_company_name: str) -> str | None:
     """A real Yes/No inferable straight from the candidate's own work
     history: does any past employer's name match the company this
@@ -317,6 +343,8 @@ def resolve_field_answers(db: Session, application_id: int, fields: list[dict]) 
             answer = _previously_worked_here_answer(label, profile, application.posting.company_name_raw)
         if answer is None:
             answer = _education_level_answer(label, profile)
+        if answer is None:
+            answer = _relocation_assistance_answer(label, profile)
         if answer is None:
             answer = mechanical_common_answer(label, profile)
         if answer is None and is_referral_source_question(label):
