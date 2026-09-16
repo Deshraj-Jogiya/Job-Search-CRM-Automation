@@ -70,6 +70,17 @@ def find_fillable_application(db: Session, current_url: str) -> JobApplication |
 
 _PHRASE_RE_CACHE: dict[str, re.Pattern] = {}
 
+_APOSTROPHE_VARIANTS = str.maketrans({"’": "'", "‘": "'", "ʼ": "'", "´": "'", "`": "'"})
+
+
+def _normalize_apostrophes(text: str) -> str:
+    """Real gap found live 2026-09-16: the real Samsara Greenhouse form's
+    education-level options use a curly apostrophe ("Master’s") where
+    this app's own canonical phrases (_DEGREE_LEVEL_KEYWORDS) use a plain
+    ASCII one -- an otherwise-correct match silently failed on nothing but
+    that Unicode difference, invisible to a human glancing at both."""
+    return text.translate(_APOSTROPHE_VARIANTS)
+
 
 def _contains_as_phrase(haystack: str, needle: str) -> bool:
     """True if `needle` appears in `haystack` as real, whole words --
@@ -106,15 +117,16 @@ def _best_option_match(answer: str, options: list[str]) -> str | None:
        treated the same as no match at all."""
     if not answer or not options:
         return None
-    answer_norm = answer.strip().lower()
+    answer_norm = _normalize_apostrophes(answer.strip().lower())
 
     for option in options:
-        if option.strip().lower() == answer_norm:
+        if _normalize_apostrophes(option.strip().lower()) == answer_norm:
             return option
 
     candidates = [
         o for o in options
-        if _contains_as_phrase(answer_norm, o.strip().lower()) or _contains_as_phrase(o.strip().lower(), answer_norm)
+        if _contains_as_phrase(answer_norm, _normalize_apostrophes(o.strip().lower()))
+        or _contains_as_phrase(_normalize_apostrophes(o.strip().lower()), answer_norm)
     ]
     return candidates[0] if len(candidates) == 1 else None
 
@@ -383,13 +395,40 @@ def _real_years_in_data_related_roles(profile: dict) -> float | None:
             intervals.append(parsed)
     if not intervals:
         return None
-    total_months = sum(end - start for start, end in _merge_intervals(intervals))
+    # +1 per merged interval, not a bare end-start difference: both the
+    # start and end month labels are real months actually worked ("Aug
+    # 2021 - Mar 2022" is 8 real months -- Aug through Mar inclusive --
+    # not 7). Found live 2026-09-16: this undercounted every real
+    # interval by one month, which on Deshraj's real profile was the
+    # real difference between landing in no bucket at all and correctly
+    # landing in "3+ years".
+    total_months = sum(end - start + 1 for start, end in _merge_intervals(intervals))
     return round(total_months / 12, 1)
 
 
 _RANGE_PATTERN = re.compile(r"(\d+)\s*(?:-|–|to)\s*(\d+)", re.I)
 _PLUS_PATTERN = re.compile(r"(\d+)\s*\+")
 _UNDER_PATTERN = re.compile(r"(?:less than|under|fewer than)\s*(\d+)", re.I)
+
+
+def _bucket_candidates(value: float, options: list[str]) -> list[str]:
+    candidates = []
+    for option in options:
+        range_match = _RANGE_PATTERN.search(option)
+        if range_match:
+            low, high = float(range_match.group(1)), float(range_match.group(2))
+            if low <= value <= high:
+                candidates.append(option)
+            continue
+        plus_match = _PLUS_PATTERN.search(option)
+        if plus_match:
+            if value >= float(plus_match.group(1)):
+                candidates.append(option)
+            continue
+        under_match = _UNDER_PATTERN.search(option)
+        if under_match and value < float(under_match.group(1)):
+            candidates.append(option)
+    return candidates
 
 
 def _match_years_to_bucketed_option(years: float, options: list[str]) -> str | None:
@@ -399,24 +438,27 @@ def _match_years_to_bucketed_option(years: float, options: list[str]) -> str | N
     computed real number actually falls into. Only returns a match when
     exactly one option's range contains it; genuine ambiguity (e.g.
     poorly-formed or overlapping-looking options) is left for the human
-    rather than guessed."""
-    candidates = []
-    for option in options:
-        range_match = _RANGE_PATTERN.search(option)
-        if range_match:
-            low, high = float(range_match.group(1)), float(range_match.group(2))
-            if low <= years <= high:
-                candidates.append(option)
-            continue
-        plus_match = _PLUS_PATTERN.search(option)
-        if plus_match:
-            if years >= float(plus_match.group(1)):
-                candidates.append(option)
-            continue
-        under_match = _UNDER_PATTERN.search(option)
-        if under_match and years < float(under_match.group(1)):
-            candidates.append(option)
-    return candidates[0] if len(candidates) == 1 else None
+    rather than guessed.
+
+    The raw figure is tried FIRST and, if it cleanly matches exactly one
+    option, returned immediately -- rounding is only ever consulted as a
+    fallback when the raw figure matches NO option at all (real employer
+    bucket sets aren't guaranteed to cover every fractional value;
+    confirmed live: Samsara's own options are "0-1 years" / "1-2 years" /
+    "3+ years", note the gap, no "2-3" bucket exists at all). A real bug
+    caught by this function's own test before shipping: trying the
+    rounded figure unconditionally, even when the raw one already had a
+    clean match, could introduce a NEW ambiguity the raw figure never
+    had (e.g. 1.4 years cleanly matches "1-2 years" alone on the raw
+    value, but rounds to 1, which sits on the shared boundary of BOTH
+    "0-1 years" and "1-2 years") -- checking raw-first, and only ever
+    falling back to rounding on a genuine gap, avoids that regression
+    while still correctly landing 2.9 years on "3+ years"."""
+    raw_candidates = _bucket_candidates(years, options)
+    if raw_candidates:
+        return raw_candidates[0] if len(raw_candidates) == 1 else None
+    rounded_candidates = _bucket_candidates(round(years), options)
+    return rounded_candidates[0] if len(rounded_candidates) == 1 else None
 
 
 def _years_experience_answer(label: str, profile: dict, field_type: str | None, options: list[str] | None) -> str | None:
