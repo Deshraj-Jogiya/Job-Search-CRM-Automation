@@ -430,6 +430,43 @@
     // own broadcast too; the guard above is what stops that from
     // clobbering the result just set above.
     notifyFrames(match.data.application_id);
+    pollForNewFields(match.data.application_id);
+  }
+
+  // Real behavior confirmed live: Samsara's "Apply Now" reveals the
+  // actual form via client-side JS, not a real page navigation, so the
+  // one-time check above can run before the form even exists in the
+  // DOM. A prior version watched for this with a MutationObserver
+  // (reacting to every DOM change) -- pulled after finding a real,
+  // deterministic bug it caused (see mainFrameCheckAndFill's self-echo
+  // comment) and because reacting to every mutation, including ones
+  // this script's own fill triggers indirectly (a React re-render after
+  // a dispatched input/change event), is inherently harder to reason
+  // about correctly than something bounded and time-based. This instead
+  // just checks a few times on a plain timer -- can't spiral, doesn't
+  // react to its own side effects, stops on its own after a fixed
+  // window regardless of what happens.
+  function pollForNewFields(applicationId) {
+    let attempts = 0;
+    const maxAttempts = 10; // 10 * 1500ms = 15s, generous for a slow client-side reveal
+    const interval = setInterval(async () => {
+      attempts++;
+      if (attempts > maxAttempts) {
+        clearInterval(interval);
+        return;
+      }
+      const fillResult = await fillThisFrame(applicationId);
+      // total > 0, not just filled > 0 -- a poll that finds real fields
+      // but can't answer any of them is still real, new information
+      // worth showing (the "no fillable fields found" text is the
+      // stale/wrong thing to leave up once the form has actually
+      // appeared), not just a silent no-op.
+      if (fillResult.total > 0) {
+        lastFillAt = Date.now();
+        lastResult = { matched: true, application: lastResult && lastResult.application, ...fillResult };
+        renderBadge();
+      }
+    }, 1500);
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
