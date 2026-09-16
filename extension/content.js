@@ -217,6 +217,87 @@
     return { filled, total };
   }
 
+  // Real bug found live 2026-09-16 while inspecting the still-open
+  // "Where have you learned about Samsara" multi-select gap: Greenhouse's
+  // newer job-boards.greenhouse.io UI builds several fields (Country
+  // included -- not just that one multi-select) as a react-select-style
+  // widget: a plain <input type="text" role="combobox">, not a native
+  // <select>. setNativeValue's plain value-set makes it LOOK filled (the
+  // typed text visibly sits in the box) but never actually registers a
+  // selection in the widget's own internal state -- confirmed directly by
+  // setting Country's input value to "United States" this way and finding
+  // no select__single-value element (react-select's own real selected-
+  // value display) ever appears. A field that looks filled but was never
+  // really selected is exactly the "looks right, actually broken" bug
+  // class this whole extension exists to avoid -- so this needs a real
+  // click-based selection (open the menu, click the real rendered option),
+  // the same way a human fills it, not a text write. Detected generically
+  // (role="combobox" + aria-haspopup="true") since this is a react-select
+  // shape, not something specific to Greenhouse -- any ATS built on the
+  // same, very common library matches the same way.
+  function isReactSelectCombobox(el) {
+    return el.tagName === "INPUT" && el.getAttribute("role") === "combobox" && el.getAttribute("aria-haspopup") === "true";
+  }
+
+  function fireMouseSequence(target) {
+    ["mousedown", "mouseup", "click"].forEach((type) =>
+      target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window, button: 0 }))
+    );
+  }
+
+  function waitFor(predicate, attempts, intervalMs) {
+    return new Promise((resolve) => {
+      let count = 0;
+      (function check() {
+        const result = predicate();
+        if (result) return resolve(result);
+        count += 1;
+        if (count >= attempts) return resolve(null);
+        setTimeout(check, intervalMs);
+      })();
+    });
+  }
+
+  // Exact match only, same convention as the existing native-<select>
+  // matching just below -- never silently pick the closest-sounding
+  // option instead of the real one the backend actually resolved.
+  //
+  // Real bug caught live before shipping this: a plain, page-wide
+  // document.querySelectorAll('[role="option"]') is not safely scoped to
+  // THIS field -- if a previous field's menu failed to close cleanly (the
+  // real Samsara form has a phone-country-code combobox, labeled just
+  // "Country", whose menu stayed open after a failed match in testing),
+  // its stale options stay in the DOM and get mixed in with whatever
+  // field is being filled next, risking a click on the wrong field's
+  // option entirely. React-select reliably sets the input's aria-controls
+  // to its own listbox's real id once open (confirmed live) -- scoping
+  // the option search to that exact listbox is what actually makes this
+  // safe.
+  async function selectReactSelectOption(el, answer) {
+    fireMouseSequence(el.closest('[class*="control"]') || el);
+    const options = await waitFor(
+      () => {
+        const listboxId = el.getAttribute("aria-controls");
+        const listbox = listboxId && document.getElementById(listboxId);
+        if (!listbox) return null;
+        const found = Array.from(listbox.querySelectorAll('[role="option"]'));
+        return found.length > 0 ? found : null;
+      },
+      10,
+      50
+    );
+    if (!options) return false;
+    const match = options.find((o) => o.textContent.trim() === answer);
+    if (!match) {
+      // Close the menu rather than leave it stuck open with unmatched
+      // search text sitting in the box.
+      el.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+      return false;
+    }
+    fireMouseSequence(match);
+    return true;
+  }
+
   function fillThisFrame(applicationId) {
     const elements = Array.from(document.querySelectorAll("input, textarea, select"));
     const fields = [];
@@ -242,7 +323,7 @@
     const textFill =
       fields.length === 0
         ? Promise.resolve({ filled: 0, total: 0 })
-        : chrome.runtime.sendMessage({ type: "getAnswers", applicationId, fields }).then((response) => {
+        : chrome.runtime.sendMessage({ type: "getAnswers", applicationId, fields }).then(async (response) => {
             if (response.error) return { error: response.error };
             const answers = response.data;
             let filled = 0;
@@ -265,6 +346,19 @@
                   continue;
                 }
                 setNativeValue(el, match.value);
+              } else if (isReactSelectCombobox(el)) {
+                // A plain value-set here would only LOOK filled -- see
+                // selectReactSelectOption's docstring above. Real click-
+                // based selection instead; a failed match (the backend's
+                // answer text isn't one of this widget's real rendered
+                // options) is left honestly unanswered, same as any other
+                // field the backend can't confidently answer.
+                const ok = await selectReactSelectOption(el, answer);
+                if (!ok) {
+                  highlight(el, false);
+                  attemptedUnanswerable.add(el);
+                  continue;
+                }
               } else {
                 setNativeValue(el, answer);
               }
