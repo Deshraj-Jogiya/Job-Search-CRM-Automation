@@ -290,7 +290,7 @@ def _apply_discovered_slugs(db: Session, company: Company, results: dict) -> Non
             adaptation_service.record_slug_strategy_hit(db, ats, form)
 
 
-def _get_or_create_company(db: Session, raw_name: str) -> Company:
+def get_or_create_company(db: Session, raw_name: str) -> Company:
     """Board-slug probing does NOT happen inline here -- a single
     ingestion pass can create many new companies at once (e.g. a big
     first LinkedIn scan), and each probe is several real network calls.
@@ -345,7 +345,7 @@ def set_manual_board_slug(db: Session, company_name: str, ats_type: str, slug: s
 def _backfill_board_slugs(db: Session) -> None:
     """Probes a capped batch of not-yet-checked companies each cycle --
     this is the ONLY place board slugs get probed (new companies from
-    this cycle's ingestion included; see _get_or_create_company's
+    this cycle's ingestion included; see get_or_create_company's
     docstring for why probing isn't inline there). The network fetch
     (discover_slugs_with_forms, several requests per company) runs
     concurrently across the batch -- SQLAlchemy Sessions aren't
@@ -409,7 +409,7 @@ def _discover_companies_from_jobright(db: Session, settings: GlobalSettings, for
         normalized = normalize_company_name(name)
         exists = db.query(Company).filter(Company.normalized_name == normalized).first()
         if not exists:
-            _get_or_create_company(db, name)
+            get_or_create_company(db, name)
             new_count += 1
 
     log_activity(
@@ -501,7 +501,7 @@ def _discover_companies_from_ats_dataset(db: Session, settings: GlobalSettings, 
 
     verified_count = 0
     for (ats, name, slug), is_verified in zip(candidates, verified):
-        company = _get_or_create_company(db, name)
+        company = get_or_create_company(db, name)
         if is_verified:
             setattr(company, f"{ats}_slug", slug)
             company.board_slugs_checked_at = utcnow()
@@ -611,7 +611,7 @@ def _discover_companies_from_job_board_aggregator(db: Session, settings: GlobalS
         if normalized in existing_normalized or db.query(Company).filter(Company.normalized_name == normalized).first():
             continue
         existing_normalized.add(normalized)
-        company = _get_or_create_company(db, name_to_use)
+        company = get_or_create_company(db, name_to_use)
         setattr(company, f"{ats}_slug", slug)
         company.board_slugs_checked_at = utcnow()
         new_count += 1
@@ -670,7 +670,7 @@ def _discover_companies_from_yc_directory(db: Session, settings: GlobalSettings,
         if normalized in existing_normalized:
             continue
         existing_normalized.add(normalized)
-        _get_or_create_company(db, name)
+        get_or_create_company(db, name)
         new_count += 1
 
     log_activity(
@@ -713,7 +713,7 @@ def _find_matching_posting(db: Session, company_id: int, raw) -> tuple[JobPostin
 
 
 def _ingest_raw_posting(db: Session, module, raw) -> JobPosting | None:
-    company = _get_or_create_company(db, raw.company_name_raw)
+    company = get_or_create_company(db, raw.company_name_raw)
     matched, is_repost = _find_matching_posting(db, company.id, raw)
 
     if matched and not is_repost:

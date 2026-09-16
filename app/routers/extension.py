@@ -28,12 +28,16 @@ own script could not read this endpoint's response even if it guessed
 right. See csrf.py's EXEMPT_PATH_PREFIXES, which this path is added to.
 """
 
+import threading
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ..database import get_db
+from ..database import SessionLocal, get_db
+from ..models import JobApplication
 from ..services import auth_service, extension_service
+from ..services.activity_logger import log_exception
 
 router = APIRouter(prefix="/api/extension", tags=["extension"])
 
@@ -56,6 +60,13 @@ class MatchRequest(BaseModel):
 class FieldsRequest(BaseModel):
     application_id: int
     fields: list[dict]
+
+
+class AddJobRequest(BaseModel):
+    url: str
+    job_title: str
+    company_name: str
+    job_description: str
 
 
 @router.post("/match")
@@ -99,3 +110,79 @@ def document_for_attachment(
         media_type="application/pdf",
         headers={"X-Filename": filename},
     )
+
+
+def _score_and_tailor_in_background(application_id: int):
+    db = SessionLocal()
+    try:
+        extension_service.score_and_tailor_new_application(db, application_id)
+    except Exception as e:
+        # Broad on purpose, same reasoning as jobs.py's own
+        # _tailor_in_background -- a real LLM-provider failure here must
+        # never crash this thread silently and leave the application
+        # stuck at "Ingested" forever with no visible reason why.
+        log_exception(f"Add-job background scoring/tailoring failed for application {application_id}: {e}")
+        application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+        if application:
+            application.attention_reason = str(e)[:250]
+            db.commit()
+    finally:
+        db.close()
+
+
+@router.post("/jobs")
+def add_job(
+    body: AddJobRequest, db: Session = Depends(get_db), _account_id: int = Depends(require_extension_session)
+):
+    """The "+ Add This Job in One Click" popup action -- real fix for
+    the biggest, most-repeated gap this session's testing found: JobRight
+    and Simplify Copilot's own popups both let a user add an
+    unrecognized posting and generate tailored documents without ever
+    leaving the page (researched directly, not assumed). Returns fast
+    (just the real DB rows) -- scoring/tailoring/approval run in a
+    background thread, same pattern as jobs.py's own /score and /tailor
+    buttons, since a real multi-pass LLM tailoring run takes 30-90s."""
+    try:
+        application = extension_service.add_job_from_page(
+            db, body.url, body.job_title, body.company_name, body.job_description
+        )
+    except extension_service.ExtensionServiceError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    threading.Thread(target=_score_and_tailor_in_background, args=(application.id,), daemon=True).start()
+    return {"application_id": application.id}
+
+
+def _tailor_existing_in_background(application_id: int):
+    db = SessionLocal()
+    try:
+        from ..services import tailoring_service
+
+        tailoring_service.tailor_application(db, application_id)
+    except Exception as e:
+        log_exception(f"Extension-triggered tailoring failed for application {application_id}: {e}")
+        application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+        if application:
+            application.attention_reason = str(e)[:250]
+            db.commit()
+    finally:
+        db.close()
+
+
+@router.post("/applications/{application_id}/tailor")
+def tailor_existing_application(
+    application_id: int, db: Session = Depends(get_db), _account_id: int = Depends(require_extension_session)
+):
+    """The popup's "Generate Tailored Resume + Cover Letter" action for
+    an application the extension already matched but hasn't tailored
+    yet -- reuses the exact same tailoring_service.tailor_application
+    the Jobs page's own "Tailor Now" button calls, just reachable from
+    the extension's header-based auth instead of the cookie-session one.
+    Deliberately ONE combined action, not two independent ones: the real
+    pipeline generates both documents together in a single pass (shared
+    JD-matching context), so two separate buttons that both silently
+    ran the whole thing would be misleading about what each one does."""
+    application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+    threading.Thread(target=_tailor_existing_in_background, args=(application_id,), daemon=True).start()
+    return {"ok": True}

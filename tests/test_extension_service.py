@@ -783,3 +783,111 @@ class TestZipCodeAnswer:
         ])
 
         assert answers == {}
+
+
+class TestAddJobFromPage:
+    """The popup's "+ Add This Job in One Click" action -- real gap
+    Deshraj pointed at directly, researched against JobRight/Simplify
+    Copilot's own popups before building (both let a user add an
+    unrecognized posting and generate tailored documents right there).
+    Reuses intake_service.get_or_create_company (promoted from a private
+    helper, was intake_service._get_or_create_company) rather than a
+    second copy of that dedupe logic."""
+
+    def test_creates_a_real_posting_and_application(self, db, settings):
+        application = extension_service.add_job_from_page(
+            db, "https://example.com/careers/123", "Data Engineer", "Acme Analytics",
+            "A" * 60,  # real min-length JD text
+        )
+
+        assert application.status == "Ingested"
+        assert application.posting.job_title == "Data Engineer"
+        assert application.posting.company_name_raw == "Acme Analytics"
+        assert application.posting.source == "manual"
+        assert application.posting.job_url == "https://example.com/careers/123"
+
+    def test_reuses_an_existing_company_rather_than_creating_a_duplicate(self, db, settings):
+        from app.models import Company
+
+        make_company(db, name="Acme Analytics")
+
+        extension_service.add_job_from_page(
+            db, "https://example.com/careers/123", "Data Engineer", "Acme Analytics", "A" * 60
+        )
+
+        assert db.query(Company).filter(Company.name == "Acme Analytics").count() == 1
+
+    def test_adding_the_same_url_twice_returns_the_same_application_not_a_duplicate(self, db, settings):
+        first = extension_service.add_job_from_page(
+            db, "https://example.com/careers/123", "Data Engineer", "Acme Analytics", "A" * 60
+        )
+        second = extension_service.add_job_from_page(
+            db, "https://example.com/careers/123", "Data Engineer", "Acme Analytics", "A" * 60
+        )
+
+        assert first.id == second.id
+
+    def test_rejects_a_page_with_no_real_job_title(self, db, settings):
+        import pytest
+
+        with pytest.raises(extension_service.ExtensionServiceError):
+            extension_service.add_job_from_page(db, "https://example.com", "", "Acme", "A" * 60)
+
+    def test_rejects_a_page_with_too_little_real_description_text(self, db, settings):
+        import pytest
+
+        with pytest.raises(extension_service.ExtensionServiceError):
+            extension_service.add_job_from_page(db, "https://example.com", "Data Engineer", "Acme", "too short")
+
+
+class TestScoreAndTailorNewApplication:
+    """The real-time counterpart to confirmation_service.
+    evaluate_and_enqueue's asynchronous-discovery path -- a manually-
+    added job skips the timed "Pending Confirmation" window (the human
+    is already looking at this exact posting right now), but a genuine
+    hard-stop fabrication flag still goes to Needs Review exactly like
+    every other source, never silently approved."""
+
+    def test_a_clean_result_is_approved_immediately_skipping_pending_confirmation(self, db, settings):
+        from unittest.mock import patch
+
+        application = extension_service.add_job_from_page(
+            db, "https://example.com/careers/123", "Data Engineer", "Acme Analytics", "A" * 60
+        )
+
+        def fake_tailor(db_arg, application_id):
+            app = db_arg.query(type(application)).filter(type(application).id == application_id).first()
+            app.status = "Pending Confirmation"  # the real, clean-tailoring outcome for a non-Playwright-supported source
+            db_arg.commit()
+
+        with (
+            patch("app.services.matching_service.score_application") as mock_score,
+            patch("app.services.tailoring_service.tailor_application", side_effect=fake_tailor),
+        ):
+            extension_service.score_and_tailor_new_application(db, application.id)
+
+        mock_score.assert_called_once()
+        db.refresh(application)
+        assert application.status == "Approved"
+        assert application.confirmed_by_user is True
+
+    def test_a_hard_stop_flag_stays_in_needs_review_never_auto_approved(self, db, settings):
+        from unittest.mock import patch
+
+        application = extension_service.add_job_from_page(
+            db, "https://example.com/careers/123", "Data Engineer", "Acme Analytics", "A" * 60
+        )
+
+        def fake_tailor(db_arg, application_id):
+            app = db_arg.query(type(application)).filter(type(application).id == application_id).first()
+            app.status = "Needs Review"  # a real hard-stop fabrication finding
+            db_arg.commit()
+
+        with (
+            patch("app.services.matching_service.score_application"),
+            patch("app.services.tailoring_service.tailor_application", side_effect=fake_tailor),
+        ):
+            extension_service.score_and_tailor_new_application(db, application.id)
+
+        db.refresh(application)
+        assert application.status == "Needs Review"  # never auto-approved past a real safety flag

@@ -104,6 +104,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     fetchDocument(message.applicationId, message.documentType).then(sendResponse);
     return true;
   }
+  if (message.type === "addJob") {
+    // The popup's "+ Add This Job in One Click" action.
+    callApi("/api/extension/jobs", {
+      url: message.url,
+      job_title: message.jobTitle,
+      company_name: message.companyName,
+      job_description: message.jobDescription,
+    }).then(sendResponse);
+    return true;
+  }
+  if (message.type === "tailorApplication") {
+    // The popup's "Generate Tailored Resume + Cover Letter" action for
+    // an application that's already matched but has no tailored
+    // documents yet -- a POST with no body, so reuses callApi as-is.
+    callApi("/api/extension/applications/" + message.applicationId + "/tailor", {}).then(sendResponse);
+    return true;
+  }
   if (message.type === "broadcastFill") {
     // A content script can only ever message the background, never a
     // sibling frame directly -- this relays a confirmed match to every
