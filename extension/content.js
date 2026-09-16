@@ -57,6 +57,15 @@
   const isMainFrame = window === window.top;
   let lastResult = null;
 
+  // A field that comes back with no answer stays "fillable" forever
+  // (still empty) -- without tracking this, the MutationObserver-driven
+  // rescan (see watchForNewFields below, added for Samsara's real
+  // client-side "Apply Now" reveal) would re-ask the backend about the
+  // exact same unanswerable field on every DOM mutation, including this
+  // script's own highlight() outline changes. Tracked once per element
+  // for this page's lifetime.
+  const attemptedUnanswerable = new WeakSet();
+
   function findLabelText(el) {
     if (el.id) {
       const byFor = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
@@ -89,6 +98,7 @@
   }
 
   function isFillable(el) {
+    if (attemptedUnanswerable.has(el)) return false;
     if (el.disabled || el.readOnly) return false;
     if (el.offsetParent === null) return false; // hidden
     if (el.tagName === "INPUT") {
@@ -162,6 +172,7 @@
         const answer = answers[fieldId];
         if (!answer) {
           highlight(el, false);
+          attemptedUnanswerable.add(el);
           continue;
         }
         if (el.tagName === "SELECT") {
@@ -172,6 +183,7 @@
           const match = realOptions(el).find((o) => o.textContent.trim() === answer);
           if (!match) {
             highlight(el, false); // shouldn't happen; never silently pick the wrong option
+            attemptedUnanswerable.add(el);
             continue;
           }
           setNativeValue(el, match.value);
@@ -355,12 +367,16 @@
       hideBadge();
       return;
     }
+    const scoreSuffix =
+      lastResult.application && typeof lastResult.application.match_score === "number"
+        ? " (" + lastResult.application.match_score + "% match)"
+        : "";
     if (lastResult.total === 0) {
-      showBadge("Career Pilot: no fillable fields found", "#64748b");
+      showBadge("Career Pilot: no fillable fields found" + scoreSuffix, "#64748b");
       return;
     }
     showBadge(
-      "Career Pilot: filled " + lastResult.filled + "/" + lastResult.total + " -- click to re-run",
+      "Career Pilot: filled " + lastResult.filled + "/" + lastResult.total + scoreSuffix + " -- click to re-run",
       lastResult.filled === lastResult.total ? "#047857" : "#b45309"
     );
   }
@@ -373,6 +389,28 @@
   // (which reaches every frame when no frameId is given).
   function notifyFrames(applicationId) {
     return chrome.runtime.sendMessage({ type: "broadcastFill", applicationId });
+  }
+
+  // Real behavior confirmed live 2026-09-16: Samsara's "Apply Now" reveals
+  // the actual form via client-side JS, not a real page navigation --
+  // this content script only runs once per genuine navigation, so
+  // without this, a field that appears after that reveal would sit
+  // unfilled until the user manually clicked "Fill Again". Watches for
+  // new DOM content and re-scans automatically instead -- matches the
+  // "zero extra steps" goal the manual-click version fell short of.
+  function watchForNewFields(applicationId) {
+    let debounceTimer = null;
+    const observer = new MutationObserver(() => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(async () => {
+        const fillResult = await fillThisFrame(applicationId);
+        if (fillResult.filled > 0 || fillResult.total > 0) {
+          lastResult = { matched: true, application: lastResult && lastResult.application, ...fillResult };
+          renderBadge();
+        }
+      }, 600);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
   }
 
   async function mainFrameCheckAndFill() {
@@ -391,13 +429,26 @@
     await notifyFrames(match.data.application_id);
     lastResult = { matched: true, application: match.data, ...fillResult };
     renderBadge();
+    watchForNewFields(match.data.application_id);
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.type === "fillPage") {
       // Every frame (main + any real embedded ATS sub-frame) fills its
-      // own DOM in response to the main frame's broadcast above.
-      fillThisFrame(message.applicationId).then(sendResponse);
+      // own DOM in response to a broadcast (this main frame's own, or
+      // the popup's "Fill Again"). Real bug found live: this path never
+      // touched lastResult/renderBadge, so a fill triggered from the
+      // popup left the on-page badge showing whatever it said before --
+      // e.g. a stale "no fillable fields found" even after fields had
+      // genuinely just been filled by this exact call. Only the main
+      // frame owns a badge to update.
+      fillThisFrame(message.applicationId).then((fillResult) => {
+        if (isMainFrame) {
+          lastResult = { matched: true, application: lastResult && lastResult.application, ...fillResult };
+          renderBadge();
+        }
+        sendResponse(fillResult);
+      });
       return true;
     }
     if (message.type === "getStatus" && isMainFrame) {

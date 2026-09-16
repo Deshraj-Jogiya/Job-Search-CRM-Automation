@@ -65,12 +65,7 @@ def match_current_page(
     application = extension_service.find_fillable_application(db, body.url)
     if not application:
         return {"matched": False}
-    return {
-        "matched": True,
-        "application_id": application.id,
-        "job_title": application.posting.job_title,
-        "company_name": application.posting.company_name_raw,
-    }
+    return {"matched": True, **extension_service.application_match_summary(db, application)}
 
 
 @router.post("/answers")

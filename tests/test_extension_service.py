@@ -246,3 +246,83 @@ class TestBestOptionMatch:
         # this is exactly why the short-option branch uses a real
         # word-boundary regex instead of a bare substring check.
         assert extension_service._best_option_match("None of the above apply", ["Yes", "No"]) is None
+
+
+class TestApplicationMatchSummary:
+    """Added 2026-09-16 after comparing against JobRight's own extension
+    popup -- match score, which real documents ground the fill, and a
+    profile-completeness signal. Every piece here already existed
+    elsewhere in the app (JobApplication.match_score, TailoredDocument,
+    profile_service.profile_completeness_warnings); these tests cover
+    the bundling, not new intelligence."""
+
+    def test_reports_the_real_match_score(self, db, settings):
+        _set_profile(db, _profile())
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved", match_score=82)
+
+        summary = extension_service.application_match_summary(db, application)
+
+        assert summary["match_score"] == 82
+
+    def test_reports_no_tailored_documents_when_none_exist(self, db, settings):
+        _set_profile(db, _profile())
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        summary = extension_service.application_match_summary(db, application)
+
+        assert summary["has_tailored_resume"] is False
+        assert summary["has_tailored_cover_letter"] is False
+
+    def test_reports_real_tailored_documents_when_they_exist(self, db, settings):
+        from app.models import TailoredDocument
+
+        _set_profile(db, _profile())
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+        db.add(TailoredDocument(application_id=application.id, document_type="resume", content="{}"))
+        db.add(TailoredDocument(application_id=application.id, document_type="cover_letter", content="Dear..."))
+        db.commit()
+
+        summary = extension_service.application_match_summary(db, application)
+
+        assert summary["has_tailored_resume"] is True
+        assert summary["has_tailored_cover_letter"] is True
+
+    def test_profile_warnings_reflect_the_real_base_profile_not_per_job_flags(self, db, settings):
+        # Deliberately PROFILE-level, not per-job: an application can
+        # only reach "Approved" (the only status this ever matches)
+        # after clearing every per-job hard-stop flag, so this must
+        # reflect real profile gaps, never something job-specific.
+        _set_profile(db, {"name": "Deshraj Jogiya"})  # no experience/education/skills/certifications
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        summary = extension_service.application_match_summary(db, application)
+
+        assert len(summary["profile_warnings"]) > 0
+
+    def test_no_warnings_for_a_genuinely_complete_profile(self, db, settings):
+        _set_profile(db, {
+            "name": "Deshraj Jogiya",
+            "contact": {"email": "d@example.com"},
+            "experience": [{"title": "Engineer", "company": "Acme", "bullets": ["Did a real thing."]}],
+            "education": [{"school": "State U", "degree": "BS"}],
+            "skills": ["Python"],
+            "certifications": ["AWS"],
+        })
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        summary = extension_service.application_match_summary(db, application)
+
+        assert summary["profile_warnings"] == []
+
+    def test_no_profile_set_up_yet_falls_back_to_no_warnings_not_an_error(self, db, settings):
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        summary = extension_service.application_match_summary(db, application)
+
+        assert summary["profile_warnings"] == []
