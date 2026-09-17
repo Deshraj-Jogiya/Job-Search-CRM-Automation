@@ -85,6 +85,57 @@
   // once per element for this page's lifetime.
   const attemptedUnanswerable = new WeakSet();
 
+  // Real, major gap found live testing against a real SmartRecruiters
+  // application: its entire form is built from Shadow DOM web
+  // components (<spl-input>, <spl-form-field>, <spl-dropzone>, etc. --
+  // SmartRecruiters' own design system), nested multiple levels deep.
+  // A plain document.querySelectorAll never crosses a shadow boundary
+  // at all, by design (that's the whole point of shadow DOM
+  // encapsulation) -- confirmed live this meant the extension detected
+  // literally ZERO fields on this platform, not just some. queryAllDeep
+  // recursively collects matches from the light DOM AND every shadow
+  // root nested anywhere within it; on every other platform tested
+  // this session (none of which use shadow DOM), it behaves exactly
+  // like a plain querySelectorAll, so this is purely additive.
+  function queryAllDeep(root, selector) {
+    let results = Array.from(root.querySelectorAll(selector));
+    const all = root.querySelectorAll("*");
+    for (const el of all) {
+      if (el.shadowRoot) {
+        results = results.concat(queryAllDeep(el.shadowRoot, selector));
+      }
+    }
+    return results;
+  }
+
+  // A label and the element it describes (via for=/id) are only ever
+  // meaningfully connected within the SAME shadow root scope -- an id
+  // reference can't reach across a shadow boundary. el.getRootNode()
+  // returns the element's own ShadowRoot when it's inside one, or the
+  // top-level document otherwise, so scoping every for=/id lookup to
+  // the target element's own root (instead of always the top-level
+  // document) is what makes this work correctly inside SmartRecruiters'
+  // nested components without needing to know anything about them
+  // specifically.
+  function rootOf(el) {
+    return el.getRootNode();
+  }
+
+  // A plain node.parentElement walk stops dead at a ShadowRoot boundary
+  // (a ShadowRoot's own .parentElement is always null) -- real bug
+  // caught live testing SmartRecruiters' real resume upload: its real
+  // "Resume *" heading lives in the LIGHT DOM, one level above the
+  // <spl-dropzone> custom element whose shadow root contains the actual
+  // <input type="file">, so a plain parentElement walk from the input
+  // never reaches it at all. Jumping to the shadow root's own host
+  // element when parentElement is null is what lets an ancestor walk
+  // continue past a shadow boundary into the real surrounding page.
+  function parentOrHost(node) {
+    if (node.parentElement) return node.parentElement;
+    const root = node.getRootNode();
+    return root && root.host ? root.host : null;
+  }
+
   // Real bug found live testing against a real Workable application:
   // a real field's label (e.g. "Address") sits alongside a real SVG
   // help/info icon, and that icon's own accessibility fallback text
@@ -107,7 +158,7 @@
 
   function findLabelText(el) {
     if (el.id) {
-      const byFor = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+      const byFor = rootOf(el).querySelector(`label[for="${CSS.escape(el.id)}"]`);
       if (byFor && visibleText(byFor)) return visibleText(byFor);
     }
     const ancestorLabel = el.closest("label");
@@ -116,7 +167,7 @@
     if (ariaLabel && ariaLabel.trim()) return ariaLabel.trim();
     const ariaLabelledBy = el.getAttribute("aria-labelledby");
     if (ariaLabelledBy) {
-      const referenced = document.getElementById(ariaLabelledBy);
+      const referenced = rootOf(el).getElementById(ariaLabelledBy);
       if (referenced && visibleText(referenced)) return visibleText(referenced);
     }
     const placeholder = el.getAttribute("placeholder");
@@ -167,7 +218,7 @@
     const rect = el.getBoundingClientRect();
     if (rect.width > 2 && rect.height > 2) return false;
 
-    const label = (el.id && document.querySelector(`label[for="${CSS.escape(el.id)}"]`)) || el.closest("label");
+    const label = (el.id && rootOf(el).querySelector(`label[for="${CSS.escape(el.id)}"]`)) || el.closest("label");
     if (label) {
       const labelRect = label.getBoundingClientRect();
       if (labelRect.width > 2 && labelRect.height > 2) return false;
@@ -272,7 +323,7 @@
   // does for every other field type, covers both real shapes.
   function optionLabelFor(el) {
     if (el.id) {
-      const byFor = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+      const byFor = rootOf(el).querySelector(`label[for="${CSS.escape(el.id)}"]`);
       if (byFor && visibleText(byFor)) return visibleText(byFor);
     }
     const ancestorLabel = el.closest("label");
@@ -316,7 +367,7 @@
     const smallestContainer = node;
 
     const optionIds = new Set(groupEls.map((el) => el.id).filter(Boolean));
-    const labels = Array.from(smallestContainer.querySelectorAll("label"));
+    const labels = queryAllDeep(smallestContainer, "label");
     const labelHeading = labels.find((l) => {
       const forId = l.getAttribute("for");
       if (forId && optionIds.has(forId)) return false; // an option's own label via for=
@@ -340,7 +391,7 @@
   }
 
   function collectRadioCheckboxGroups() {
-    const elements = Array.from(document.querySelectorAll('input[type="radio"], input[type="checkbox"]'));
+    const elements = queryAllDeep(document, 'input[type="radio"], input[type="checkbox"]');
     const groups = new Map(); // shared name -> elements[]; an unnamed/standalone checkbox gets its own single-element group
     let anonIndex = 0;
     for (const el of elements) {
@@ -484,8 +535,8 @@
     const direct = findLabelText(el);
     if (direct && (RESUME_LABEL_RE.test(direct) || COVER_LETTER_LABEL_RE.test(direct))) return direct;
 
-    let node = el.parentElement;
-    for (let depth = 0; node && depth < 8; depth++, node = node.parentElement) {
+    let node = parentOrHost(el);
+    for (let depth = 0; node && depth < 8; depth++, node = parentOrHost(node)) {
       const text = node.textContent;
       const isResume = RESUME_LABEL_RE.test(text);
       const isCoverLetter = COVER_LETTER_LABEL_RE.test(text);
@@ -518,7 +569,7 @@
   }
 
   async function fillFileInputs(applicationId) {
-    const fileInputs = Array.from(document.querySelectorAll('input[type="file"]')).filter(isFillableFileInput);
+    const fileInputs = queryAllDeep(document, 'input[type="file"]').filter(isFillableFileInput);
     let filled = 0;
     let total = 0;
     for (const el of fileInputs) {
@@ -608,9 +659,9 @@
     return waitFor(
       () => {
         const listboxId = el.getAttribute("aria-controls");
-        const listbox = listboxId && document.getElementById(listboxId);
+        const listbox = listboxId && rootOf(el).getElementById(listboxId);
         if (!listbox) return null;
-        const found = Array.from(listbox.querySelectorAll('[role="option"]'));
+        const found = queryAllDeep(listbox, '[role="option"]');
         return found.length > 0 ? found : null;
       },
       10,
@@ -668,7 +719,7 @@
   }
 
   async function fillThisFrame(applicationId) {
-    const elements = Array.from(document.querySelectorAll("input, textarea, select"));
+    const elements = queryAllDeep(document, "input, textarea, select");
     const fields = [];
     const elementById = {};
     let nextId = 0;
