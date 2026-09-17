@@ -171,6 +171,149 @@
     el.style.outlineOffset = "1px";
   }
 
+  // Real gap found live 2026-09-16 while testing against Ashby -- the
+  // first ATS this whole extension had been tested against besides
+  // Greenhouse. EEO fields (gender, race, veteran/disability status)
+  // and real yes/no questions are commonly rendered as native
+  // <input type="radio">/"checkbox"> groups there, a shape this
+  // extension had ZERO detection for from its very first version. This
+  // predates the extension entirely -- the older Playwright-based
+  // autofill_service.py never handled radio/checkbox either (grep for
+  // "radio"/"checkbox" there returns nothing) -- it was never caught
+  // because every live test this whole session used Samsara's
+  // Greenhouse form, which happens not to use this shape at all. The
+  // backend's mechanical_common_answer already has real EEO-answering
+  // logic (gender/race/veteran/disability, sourced from the profile's
+  // own eeo fields) -- confirmed live it just needed a real caller: the
+  // real stored profile value ("No, I do not have a disability and
+  // have not had one in the past") is a literal, exact match for
+  // Ashby's own real rendered option text.
+  //
+  // Never auto-checks a consent/legal-acknowledgment checkbox ("I
+  // acknowledge...", "I agree...", "I certify...") -- those are a
+  // categorically different kind of question from a factual EEO
+  // default, same reasoning already applied to Samsara's "AI Policy"/
+  // "Processing of Personal Data" fields.
+  const CONSENT_CHECKBOX_RE = /\b(acknowledge|agree|certif|consent|have read|confirm)\b/i;
+
+  function optionLabelFor(el) {
+    if (!el.id) return null;
+    const byFor = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+    return byFor && byFor.textContent.trim() ? byFor.textContent.trim() : null;
+  }
+
+  function radioGroupContainer(el) {
+    return el.closest("fieldset") || el.closest('[role="radiogroup"], [role="group"]') || el.parentElement;
+  }
+
+  // The group's own question text -- confirmed live on a real Ashby
+  // EEO field: a <fieldset> whose own heading <label> is NOT for= any
+  // of the group's individual option inputs (each option has its own
+  // separate label that IS for= its own input, found via
+  // optionLabelFor above).
+  function groupQuestionLabel(container, optionIds) {
+    if (!container) return null;
+    const labels = Array.from(container.querySelectorAll("label"));
+    const heading = labels.find((l) => {
+      const forId = l.getAttribute("for");
+      return !forId || !optionIds.has(forId);
+    });
+    return heading && heading.textContent.trim() ? heading.textContent.trim() : null;
+  }
+
+  function collectRadioCheckboxGroups() {
+    const elements = Array.from(document.querySelectorAll('input[type="radio"], input[type="checkbox"]'));
+    const groups = new Map(); // shared name -> elements[]; an unnamed/standalone checkbox gets its own single-element group
+    let anonIndex = 0;
+    for (const el of elements) {
+      if (attemptedUnanswerable.has(el)) continue;
+      if (el.disabled) continue;
+      if (el.offsetParent === null) continue; // hidden
+      const key = el.name || `__anon${anonIndex++}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(el);
+    }
+    return groups;
+  }
+
+  async function fillRadioAndCheckboxGroups(applicationId) {
+    const groups = collectRadioCheckboxGroups();
+    const fields = [];
+    const groupById = {};
+    let nextId = 0;
+
+    for (const els of groups.values()) {
+      if (els.some((el) => el.checked)) continue; // already answered (by this extension or the human) -- never re-touch
+
+      if (els.length > 1) {
+        // A real multi-option group (radio, or occasionally checkboxes
+        // sharing a name for a "select several" pattern) -- represented
+        // to the backend exactly like a native <select>, reusing its
+        // existing exact-match/phrase-cascade matching, not a second
+        // copy of that logic.
+        const container = radioGroupContainer(els[0]);
+        const optionIds = new Set(els.map((el) => el.id).filter(Boolean));
+        const label = groupQuestionLabel(container, optionIds);
+        if (!label) continue;
+        const options = els.map((el) => optionLabelFor(el)).filter(Boolean);
+        if (options.length === 0) continue;
+        const fieldId = "r" + nextId++;
+        fields.push({ field_id: fieldId, label, type: "select", options });
+        groupById[fieldId] = els;
+      } else {
+        // A single standalone checkbox -- a real yes/no toggle (e.g.
+        // "Current role"), never a multi-choice group. Represented as a
+        // synthetic Yes/No "select" so it reuses the exact same
+        // resolution path a real 2-option select already has, rather
+        // than a third, separate answer shape.
+        const el = els[0];
+        const label = optionLabelFor(el) || findLabelText(el);
+        if (!label || CONSENT_CHECKBOX_RE.test(label)) continue;
+        const fieldId = "r" + nextId++;
+        fields.push({ field_id: fieldId, label, type: "select", options: ["Yes", "No"] });
+        groupById[fieldId] = els;
+      }
+    }
+
+    if (fields.length === 0) return { filled: 0, total: 0 };
+
+    const response = await chrome.runtime.sendMessage({ type: "getAnswers", applicationId, fields });
+    if (response.error) return { error: response.error };
+    const answers = response.data;
+    let filled = 0;
+    for (const [fieldId, els] of Object.entries(groupById)) {
+      const answer = answers[fieldId];
+      if (!answer) {
+        els.forEach((el) => attemptedUnanswerable.add(el)); // never keep re-asking every poll -- same posture as any other unanswerable field
+        continue;
+      }
+      if (els.length > 1) {
+        const match = els.find((el) => optionLabelFor(el) === answer);
+        if (!match) {
+          els.forEach((el) => attemptedUnanswerable.add(el)); // shouldn't happen; never guess
+          continue;
+        }
+        match.checked = true;
+        match.dispatchEvent(new Event("input", { bubbles: true }));
+        match.dispatchEvent(new Event("change", { bubbles: true }));
+        highlight(match, true);
+        filled++;
+      } else if (answer === "Yes") {
+        els[0].checked = true;
+        els[0].dispatchEvent(new Event("input", { bubbles: true }));
+        els[0].dispatchEvent(new Event("change", { bubbles: true }));
+        highlight(els[0], true);
+        filled++;
+      } else {
+        // "No" -- already correctly unchecked, nothing to click. Marked
+        // resolved anyway so this doesn't keep re-appearing (and
+        // re-inflating the running total) on every later poll.
+        attemptedUnanswerable.add(els[0]);
+      }
+    }
+    return { filled, total: fields.length };
+  }
+
   // File attachment: real, sanctioned browser API -- constructing a real
   // in-memory File from bytes this extension already legitimately fetched
   // (via the authenticated /api/extension/documents route) and assigning
@@ -471,14 +614,21 @@
             return { filled, total: fields.length };
           });
 
-    // File inputs run alongside the text/select batch, not through it --
-    // which document goes where is decided client-side from the label
-    // (see documentTypeForFileInput), never sent to the backend as a text
-    // field to be "answered".
-    return Promise.all([textFill, fillFileInputs(applicationId)]).then(([textResult, fileResult]) => {
-      if (textResult.error) return textResult;
-      return { filled: textResult.filled + fileResult.filled, total: textResult.total + fileResult.total };
-    });
+    // File inputs and radio/checkbox groups both run alongside the text/
+    // select batch, not through it -- each has its own detection shape
+    // (which document goes where is decided client-side from the label;
+    // radio/checkbox groups need their own DOM grouping-by-name pass)
+    // that doesn't fit the plain input/textarea/select scan above.
+    return Promise.all([textFill, fillFileInputs(applicationId), fillRadioAndCheckboxGroups(applicationId)]).then(
+      ([textResult, fileResult, radioResult]) => {
+        if (textResult.error) return textResult;
+        if (radioResult.error) return radioResult;
+        return {
+          filled: textResult.filled + fileResult.filled + radioResult.filled,
+          total: textResult.total + fileResult.total + radioResult.total,
+        };
+      }
+    );
   }
 
   // Best-effort extraction for the popup's "+ Add This Job in One Click"
