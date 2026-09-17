@@ -30,10 +30,28 @@ from .profile_service import profile_completeness_warnings
 from ..database import utcnow
 from ..models import JobApplication, JobPosting, TailoredDocument
 
-_FIRST_NAME_RE = re.compile(r"\bfirst\s*name\b", re.I)
-_LAST_NAME_RE = re.compile(r"\blast\s*name\b", re.I)
+# English + German synonyms -- real gap found live 2026-09-16 on a real
+# German-language Personio posting (The Mobility House): "Vorname"/
+# "Nachname"/"Telefon" matched none of the English-only patterns, so
+# name and phone silently went unanswered while "E-Mail" happened to
+# already match _EMAIL_RE's existing e-?mail pattern. Not full i18n --
+# just the 4 fields confirmed to actually appear on a real non-English
+# form so far; a genuinely new language showing up live is the same
+# "extend the pattern" fix, not a redesign.
+_FIRST_NAME_RE = re.compile(r"\bfirst\s*name\b|\bvorname\b", re.I)
+_LAST_NAME_RE = re.compile(r"\blast\s*name\b|\bsurname\b|\bnachname\b", re.I)
 _EMAIL_RE = re.compile(r"\be-?mail\b", re.I)
-_PHONE_RE = re.compile(r"\bphone\b", re.I)
+_PHONE_RE = re.compile(r"\bphone\b|\btelephone\b|\btelefon\b", re.I)
+# A real single combined "Full name" field -- found live on a real
+# Recruitee posting (Metyis AG): label was literally "Full name *", which
+# neither _FIRST_NAME_RE nor _LAST_NAME_RE matches (no "first"/"last"),
+# so it silently went unanswered even though the profile's own `name` is
+# exactly what it needs. Bare "Name" (trimmed of "*"/"(required)"/
+# punctuation) is matched too, but deliberately anchored to the WHOLE
+# label -- "Name" is common enough as a substring (Company Name, Employer
+# Name) that a loose \bname\b search would misfire on those.
+_FULL_NAME_RE = re.compile(r"\bfull\s*name\b", re.I)
+_BARE_NAME_RE = re.compile(r"^name\s*[:\*]?\s*(\(required\))?$", re.I)
 _COVER_LETTER_RE = re.compile(r"cover letter", re.I)
 
 
@@ -70,6 +88,7 @@ def find_fillable_application(db: Session, current_url: str) -> JobApplication |
 
 
 _PHRASE_RE_CACHE: dict[str, re.Pattern] = {}
+_LEADING_YES_NO_RE = re.compile(r"^(yes|no)\b")
 
 _APOSTROPHE_VARIANTS = str.maketrans({"’": "'", "‘": "'", "ʼ": "'", "´": "'", "`": "'"})
 
@@ -115,7 +134,17 @@ def _best_option_match(answer: str, options: list[str]) -> str | None:
     2. Either string contains the other AS WHOLE WORDS (never a bare
        substring check -- see _contains_as_phrase), AND exactly one
        option qualifies. More than one candidate means real ambiguity,
-       treated the same as no match at all."""
+       treated the same as no match at all.
+    3. Same leading Yes/No word, for a verbose custom option a real
+       employer wrote out as a full sentence (e.g. "Yes, I would require
+       visa sponsorship or another type of work authorization support.")
+       that shares no other phrase at all with the profile's own short
+       stored answer ("Yes, in the future") -- real gap found live
+       2026-09-16 on a real Hack The Box posting, where step 2 above
+       never matches since neither string contains the other. Only
+       applied when the ANSWER itself starts with yes/no (never fires
+       for an unrelated free-text answer), and only when exactly one
+       option shares that same leading word."""
     if not answer or not options:
         return None
     answer_norm = _normalize_apostrophes(answer.strip().lower())
@@ -129,7 +158,19 @@ def _best_option_match(answer: str, options: list[str]) -> str | None:
         if _contains_as_phrase(answer_norm, _normalize_apostrophes(o.strip().lower()))
         or _contains_as_phrase(_normalize_apostrophes(o.strip().lower()), answer_norm)
     ]
-    return candidates[0] if len(candidates) == 1 else None
+    if len(candidates) == 1:
+        return candidates[0]
+
+    answer_lead = _LEADING_YES_NO_RE.match(answer_norm)
+    if answer_lead:
+        lead_matches = [
+            o for o in options
+            if (m := _LEADING_YES_NO_RE.match(_normalize_apostrophes(o.strip().lower())))
+            and m.group(1) == answer_lead.group(1)
+        ]
+        if len(lead_matches) == 1:
+            return lead_matches[0]
+    return None
 
 
 def application_match_summary(db: Session, application: JobApplication) -> dict:
@@ -182,7 +223,23 @@ def application_match_summary(db: Session, application: JobApplication) -> dict:
 _LINKEDIN_RE = re.compile(r"linkedin", re.I)
 _GITHUB_RE = re.compile(r"\bgithub\b", re.I)
 _PORTFOLIO_RE = re.compile(r"portfolio|personal website|website\b", re.I)
-_COUNTRY_RE = re.compile(r"\bcountry\b", re.I)
+# Real, serious bug found live 2026-09-16: this used to be a bare
+# \bcountry\b search over the WHOLE label, which matches any label that
+# merely mentions the word "country" -- including real visa-sponsorship/
+# work-authorization questions phrased as "...legally authorized to work
+# in your country of residence?" (confirmed live on both a real Workable
+# and a real Recruitee posting). Since _contact_answer runs before
+# mechanical_common_answer in resolve_field_answers' cascade, this
+# silently returned "United States" for those questions -- which then
+# failed to match any real Yes/No or verbose visa option and left the
+# field blank, even though mechanical_common_answer had the actual
+# correct answer the whole time. Narrowed to only match when "country"
+# (optionally "country code"/"calling code") is essentially the WHOLE
+# label -- the real narrow case this was built for (a bare "Country"
+# field next to a phone number), never a country mentioned in passing
+# inside a longer sentence.
+_COUNTRY_RE = re.compile(r"^country(\s*(code|calling code))?$", re.I)
+_COUNTRY_LABEL_STRIP_RE = re.compile(r"[\*:]|\(required\)", re.I)
 _RECENT_EMPLOYER_RE = re.compile(r"(most recent|current|last) employer|employer name", re.I)
 _PREVIOUSLY_WORKED_RE = re.compile(r"previously work(ed)? (at|for|here)|worked (at|for|here) before", re.I)
 _US_PHONE_RE = re.compile(r"^\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}$")
@@ -197,6 +254,8 @@ def _contact_answer(label: str, profile: dict) -> str | None:
     if _LAST_NAME_RE.search(label):
         name_parts = (profile.get("name") or "").split()
         return " ".join(name_parts[1:]) if len(name_parts) > 1 else None
+    if _FULL_NAME_RE.search(label) or _BARE_NAME_RE.match(label.strip()):
+        return profile.get("name") or None
     if _EMAIL_RE.search(label):
         return contact.get("email") or None
     if _PHONE_RE.search(label):
@@ -219,7 +278,8 @@ def _contact_answer(label: str, profile: dict) -> str | None:
     # narrow: only answers when the stored phone genuinely looks like a
     # real US number (matches this candidate's actual real data), never
     # a blind default for every fork/profile.
-    if _COUNTRY_RE.search(label) and contact.get("phone") and _US_PHONE_RE.match(contact["phone"].strip()):
+    stripped_label = _COUNTRY_LABEL_STRIP_RE.sub("", label).strip()
+    if _COUNTRY_RE.match(stripped_label) and contact.get("phone") and _US_PHONE_RE.match(contact["phone"].strip()):
         return "United States"
     # No zip/postal code field exists in the profile schema today (only
     # a free-text contact.location like "Tempe, Arizona") -- checked the
