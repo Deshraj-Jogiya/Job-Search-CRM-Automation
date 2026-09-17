@@ -460,15 +460,36 @@
           els.forEach((el) => attemptedUnanswerable.add(el)); // shouldn't happen; never guess
           continue;
         }
-        match.checked = true;
-        match.dispatchEvent(new Event("input", { bubbles: true }));
-        match.dispatchEvent(new Event("change", { bubbles: true }));
+        // Real bug found live 2026-09-17 in Deshraj's own actual Chrome,
+        // not just script injection: on a real Workable radio (visa
+        // sponsorship), setting .checked = true and dispatching synthetic
+        // input/change events left the underlying DOM property genuinely
+        // true, confirmed directly -- but the VISIBLE custom-styled radio
+        // circle stayed empty, and reloading/re-scanning never fixed it,
+        // because Workable's own React component drives that circle from
+        // its own internal state, not the native :checked pseudo-class.
+        // Even calling the value through the native property setter (the
+        // same trick setNativeValue uses for text/select) still left it
+        // visually unchecked -- confirmed live, ruling that out too. Only
+        // a real .click() worked: it runs the browser's OWN native
+        // activation behavior (check the box, uncheck radio siblings,
+        // fire input/change) exactly as a real user click would, which is
+        // what actually reaches a React onChange handler reliably, not a
+        // script-dispatched event on an already-set property. This is the
+        // same principle the react-select combobox handling below already
+        // uses (click the real option, never write a value) -- now
+        // applied to plain radio/checkbox groups too. Never used before
+        // this because every native radio/checkbox tested earlier this
+        // session (Ashby, Lever, Recruitee) happened not to be React-
+        // controlled -- .click() is a strict superset of the old
+        // behavior for those (a real click on an ordinary native input
+        // does the exact same checked-plus-events sequence), so this is
+        // additive, not a narrower fix.
+        match.click();
         highlight(match, true);
         filled++;
       } else if (answer === "Yes") {
-        els[0].checked = true;
-        els[0].dispatchEvent(new Event("input", { bubbles: true }));
-        els[0].dispatchEvent(new Event("change", { bubbles: true }));
+        els[0].click();
         highlight(els[0], true);
         filled++;
       } else {
