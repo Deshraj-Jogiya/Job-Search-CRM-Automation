@@ -217,29 +217,80 @@
   // "Processing of Personal Data" fields.
   const CONSENT_CHECKBOX_RE = /\b(acknowledge|agree|certif|consent|have read|confirm)\b/i;
 
+  // Real bug caught live testing against a second real ATS (Lever)
+  // before shipping: Lever's own radio/checkbox options have no id at
+  // all -- each option's real text lives in a <label> that WRAPS the
+  // input directly (`<label><input>...<span>He/him</span></label>`),
+  // never a separate `label[for=id]`. Ashby's own options DO use
+  // for=id. Checking both, in the same order findLabelText already
+  // does for every other field type, covers both real shapes.
   function optionLabelFor(el) {
-    if (!el.id) return null;
-    const byFor = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
-    return byFor && byFor.textContent.trim() ? byFor.textContent.trim() : null;
+    if (el.id) {
+      const byFor = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+      if (byFor && byFor.textContent.trim()) return byFor.textContent.trim();
+    }
+    const ancestorLabel = el.closest("label");
+    if (ancestorLabel && ancestorLabel.textContent.trim()) return ancestorLabel.textContent.trim();
+    return null;
   }
 
-  function radioGroupContainer(el) {
-    return el.closest("fieldset") || el.closest('[role="radiogroup"], [role="group"]') || el.parentElement;
+  // The group's own real question text -- three real shapes confirmed
+  // live, neither Greenhouse-specific knowledge, all from genuinely
+  // different real fields (two different ATSes, and two different
+  // real Lever field shapes from each other):
+  // 1. Ashby: a <fieldset> spanning the whole group, with its own
+  //    heading <label> alongside each option's separate label[for=id]
+  //    (excluded here since it's for= one of the group's own ids).
+  // 2. Lever's own standard fields (e.g. Pronouns): no <fieldset>, no
+  //    heading <label> either -- the real question text is a plain
+  //    sibling <div>, some bounded number of levels above whatever
+  //    div/ul wraps all the real options, that doesn't itself contain
+  //    any of the group's own inputs.
+  // 3. Lever's EMPLOYER-CUSTOMIZED questions (a real Allegiant one:
+  //    "This position requires working at our Las Vegas, NV
+  //    headquarters..."): the heading isn't a separate element at all
+  //    -- it's a plain text node typed directly inside the SAME
+  //    container that also holds the real options, ahead of them in
+  //    DOM order.
+  function headingOwnText(node) {
+    const ownText = Array.from(node.childNodes)
+      .filter((n) => n.nodeType === Node.TEXT_NODE)
+      .map((n) => n.textContent.trim())
+      .join(" ")
+      .trim();
+    return ownText || null;
   }
 
-  // The group's own question text -- confirmed live on a real Ashby
-  // EEO field: a <fieldset> whose own heading <label> is NOT for= any
-  // of the group's individual option inputs (each option has its own
-  // separate label that IS for= its own input, found via
-  // optionLabelFor above).
-  function groupQuestionLabel(container, optionIds) {
-    if (!container) return null;
-    const labels = Array.from(container.querySelectorAll("label"));
-    const heading = labels.find((l) => {
+  function groupQuestionLabel(groupEls) {
+    let node = groupEls[0];
+    while (node && !groupEls.every((el) => node.contains(el))) {
+      node = node.parentElement;
+    }
+    if (!node) return null;
+    const smallestContainer = node;
+
+    const optionIds = new Set(groupEls.map((el) => el.id).filter(Boolean));
+    const labels = Array.from(smallestContainer.querySelectorAll("label"));
+    const labelHeading = labels.find((l) => {
       const forId = l.getAttribute("for");
-      return !forId || !optionIds.has(forId);
+      if (forId && optionIds.has(forId)) return false; // an option's own label via for=
+      if (groupEls.some((el) => l.contains(el))) return false; // an option's own label via wrapping
+      return l.textContent.trim();
     });
-    return heading && heading.textContent.trim() ? heading.textContent.trim() : null;
+    if (labelHeading) return labelHeading.textContent.trim();
+
+    let ancestor = smallestContainer;
+    for (let depth = 0; ancestor && depth < 5; depth++, ancestor = ancestor.parentElement) {
+      if (ancestor.children) {
+        const headingChild = Array.from(ancestor.children).find(
+          (c) => !groupEls.some((el) => c.contains(el)) && c.textContent.trim()
+        );
+        if (headingChild) return headingChild.textContent.trim();
+      }
+      const ownText = headingOwnText(ancestor);
+      if (ownText) return ownText;
+    }
+    return null;
   }
 
   function collectRadioCheckboxGroups() {
@@ -272,9 +323,7 @@
         // to the backend exactly like a native <select>, reusing its
         // existing exact-match/phrase-cascade matching, not a second
         // copy of that logic.
-        const container = radioGroupContainer(els[0]);
-        const optionIds = new Set(els.map((el) => el.id).filter(Boolean));
-        const label = groupQuestionLabel(container, optionIds);
+        const label = groupQuestionLabel(els);
         if (!label) continue;
         const options = els.map((el) => optionLabelFor(el)).filter(Boolean);
         if (options.length === 0) continue;
