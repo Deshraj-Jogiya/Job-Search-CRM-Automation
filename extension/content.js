@@ -116,10 +116,31 @@
     return Array.from(selectEl.options).filter((o) => !isPlaceholderOption(o));
   }
 
+  // Real, serious bug found live 2026-09-16 testing against a real
+  // Salesforce Workday application: a genuine anti-bot honeypot field
+  // (Workday's own data-automation-id="beecatcher", name="website",
+  // labeled "Enter website. This input is for robots only, do not
+  // enter if you're human.") has offsetParent !== null -- the existing
+  // hidden check never caught it -- because it's hidden via the classic
+  // clip-to-1px-and-clip-rect technique (width/height 1px, clip:
+  // rect(1px,1px,1px,1px)), not display:none. Confirmed live this would
+  // have been genuinely filled: the label contains the word "website",
+  // which matches _PORTFOLIO_RE on the backend, and it would have
+  // returned Deshraj's real portfolio URL -- exactly the kind of thing
+  // that gets a real application flagged as a bot submission. A field
+  // sized at ~0px is never something a real human looking at the page
+  // could see or intentionally fill, honeypot or not, so this check is
+  // safe and generic, not honeypot-specific detection.
+  function isEffectivelyHidden(el) {
+    if (el.offsetParent === null) return true;
+    const rect = el.getBoundingClientRect();
+    return rect.width <= 2 || rect.height <= 2;
+  }
+
   function isFillable(el) {
     if (attemptedUnanswerable.has(el)) return false;
     if (el.disabled || el.readOnly) return false;
-    if (el.offsetParent === null) return false; // hidden
+    if (isEffectivelyHidden(el)) return false;
     if (el.tagName === "INPUT") {
       const type = (el.getAttribute("type") || "text").toLowerCase();
       // Real bug found live 2026-09-16: a react-select combobox's own
@@ -228,7 +249,7 @@
     for (const el of elements) {
       if (attemptedUnanswerable.has(el)) continue;
       if (el.disabled) continue;
-      if (el.offsetParent === null) continue; // hidden
+      if (isEffectivelyHidden(el)) continue;
       const key = el.name || `__anon${anonIndex++}`;
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(el);
@@ -328,7 +349,15 @@
   function isFillableFileInput(el) {
     if (attemptedUnanswerable.has(el)) return false;
     if (el.disabled || el.readOnly) return false;
-    if (el.offsetParent === null) return false; // hidden
+    // Deliberately NOT isEffectivelyHidden here -- confirmed live the
+    // real Greenhouse resume/cover-letter file inputs are themselves
+    // genuinely 1x1px (class="visually-hidden", the standard a11y
+    // utility that visually hides the ugly native file input behind a
+    // custom-styled "Attach" button while keeping it the real click
+    // target). isEffectivelyHidden's near-zero-size check would exclude
+    // every real file input on this exact pattern -- only offsetParent
+    // (true display:none/detached) applies here.
+    if (el.offsetParent === null) return false;
     if (el.tagName !== "INPUT" || (el.getAttribute("type") || "").toLowerCase() !== "file") return false;
     return el.files.length === 0;
   }
