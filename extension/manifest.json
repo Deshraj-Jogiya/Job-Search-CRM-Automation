@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Career Pilot Autofill",
-  "version": "1.14.0",
+  "version": "1.15.0",
   "description": "Fills real job application forms using your own Career Pilot profile -- runs in your real browser so it works even on employer-embedded forms the server-side automation gets blocked on.",
   "permissions": ["cookies", "storage"],
   "host_permissions": ["<all_urls>"],
