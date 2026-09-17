@@ -245,15 +245,24 @@ async function addThisJob() {
   }
 
   addJobBtn.textContent = "Added";
-  addJobSubtextEl.textContent = "Scoring & tailoring now -- usually 30-90s.";
-  pollForMatchAfterAdd(tab, 15); // ~90s total at 6s intervals
+  addJobSubtextEl.textContent = "Scoring & tailoring now -- usually takes a few minutes.";
+  pollForMatchAfterAdd(tab, 40); // ~6.7 min at 10s intervals -- real observed tailoring runs 3-5 min, never longer so far
 }
 
 // Best-effort while the popup happens to stay open -- a real multi-pass
 // LLM tailoring run keeps going server-side (same background-thread
 // pattern as the Jobs page's own "Tailor Now" button) even if the user
 // closes the popup immediately after adding, so a lost poll here is
-// never a lost result, only a missed live update.
+// never a lost result, only a missed live update. Real gap fixed
+// 2026-09-16: this used to give up after 90s, well short of the 3-5
+// minutes tailoring actually takes (confirmed against the live DB) --
+// closing the popup or switching tabs before it finished left the badge
+// stuck showing "still tailoring" forever, which read as broken even
+// though the backend was working correctly. content.js's own
+// scheduleRematchPolling now covers the same window independently (so
+// this recovers even if the popup was closed the whole time), but this
+// still needs to reach that long itself for anyone who keeps the popup
+// open and watches it.
 async function pollForMatchAfterAdd(tab, attemptsLeft) {
   if (attemptsLeft <= 0) {
     addJobSubtextEl.textContent =
@@ -279,7 +288,7 @@ async function pollForMatchAfterAdd(tab, attemptsLeft) {
     await fillCurrentPage(); // completes the one-click promise: added, tailored, AND filled
     return;
   }
-  setTimeout(() => pollForMatchAfterAdd(tab, attemptsLeft - 1), 6000);
+  setTimeout(() => pollForMatchAfterAdd(tab, attemptsLeft - 1), 10000);
 }
 
 // The popup's "Generate Tailored Resume + Cover Letter" action for an
@@ -287,7 +296,7 @@ async function pollForMatchAfterAdd(tab, attemptsLeft) {
 async function generateTailoredDocuments() {
   if (!currentApplication) return;
   generateDocsBtn.disabled = true;
-  generateDocsBtn.textContent = "Tailoring... (usually 30-90s)";
+  generateDocsBtn.textContent = "Tailoring... (usually a few minutes)";
 
   const result = await chrome.runtime.sendMessage({
     type: "tailorApplication",
@@ -299,7 +308,7 @@ async function generateTailoredDocuments() {
     generateDocsBtn.textContent = "Generate Tailored Resume + Cover Letter";
     return;
   }
-  pollForTailoredDocuments(15);
+  pollForTailoredDocuments(40); // ~6.7 min at 10s intervals -- see pollForMatchAfterAdd's comment
 }
 
 async function pollForTailoredDocuments(attemptsLeft) {
@@ -319,7 +328,7 @@ async function pollForTailoredDocuments(attemptsLeft) {
     renderInfoPanel(result.data);
     return;
   }
-  setTimeout(() => pollForTailoredDocuments(attemptsLeft - 1), 6000);
+  setTimeout(() => pollForTailoredDocuments(attemptsLeft - 1), 10000);
 }
 
 async function loadBaseUrl() {

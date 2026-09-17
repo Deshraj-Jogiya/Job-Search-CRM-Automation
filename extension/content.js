@@ -577,12 +577,26 @@
       if (!documentType) continue;
       total++;
       const ok = await attachDocument(el, applicationId, documentType);
+      // Real bug found live 2026-09-16 on a real Personio application:
+      // its real CV/cover-letter inputs are multiple="" (a custom widget
+      // that lets a candidate attach several files), and its own React
+      // state resets the native input back to el.files.length === 0
+      // after each accepted file -- ready for the NEXT file, not "still
+      // empty". isFillableFileInput's el.files.length === 0 check can't
+      // tell that apart from "never attached", so every later
+      // click-triggered poll re-attached the SAME document again,
+      // producing 5 duplicate resume entries / 6 duplicate cover-letter
+      // entries in Personio's own UI. A successful attach is now marked
+      // resolved here too (previously only a FAILED attempt was), the
+      // same "never re-touch once resolved" posture already used for
+      // every other field type -- regardless of what el.files reports
+      // afterward.
+      attemptedUnanswerable.add(el);
       if (ok) {
         highlight(el, true);
         filled++;
       } else {
         highlight(el, false); // no tailored document available yet, or a network/auth error -- left blank on purpose, never a guess
-        attemptedUnanswerable.add(el);
       }
     }
     return { filled, total };
@@ -1084,6 +1098,69 @@
   let lastFillAt = 0;
   const SELF_ECHO_WINDOW_MS = 1500;
 
+  // Real gap found live 2026-09-16, root cause behind several distinct
+  // complaints that turned out to be the same bug: checkMatch was only
+  // ever called ONCE, at initial page load. A real "+Add This Job" ->
+  // tailor cycle consistently takes 3-5 minutes (confirmed against the
+  // live DB across 6 real applications, none stuck, none slower than
+  // ~4m) -- far longer than the popup's own ~90s post-add poll window --
+  // so by the time tailoring actually finished, nothing on the page ever
+  // asked again: not on a later popup reopen (it only ever read the
+  // content script's stale first-check cache), not on returning to the
+  // tab, not even just sitting on the same page the whole time. That
+  // silence is what looked like "stuck tailoring" and drove clicking
+  // "+Add This Job" a second time on the same real posting -- creating a
+  // genuine duplicate application (confirmed live: two real Metyis AG
+  // applications, two real Hack The Box ones). find_fillable_application
+  // already matches by HOSTNAME, not exact path, so a bounded re-poll
+  // here also fixes the duplicate at the root: once the first add
+  // finishes tailoring, ANY open tab on that same site picks it up on
+  // its own, well before a human would give up and click Add again.
+  // 20s x 20 attempts = ~6.7 minutes, comfortably above every real
+  // tailoring time observed so far, then stops rather than polling a
+  // page that was never going to match forever.
+  const REMATCH_POLL_INTERVAL_MS = 20000;
+  const REMATCH_MAX_ATTEMPTS = 20;
+  let rematchTimer = null;
+
+  function stopRematchPolling() {
+    if (rematchTimer) {
+      clearInterval(rematchTimer);
+      rematchTimer = null;
+    }
+  }
+
+  function scheduleRematchPolling() {
+    stopRematchPolling(); // never run two overlapping loops on the same frame
+    let attempts = 0;
+    rematchTimer = setInterval(async () => {
+      attempts++;
+      if (attempts > REMATCH_MAX_ATTEMPTS) {
+        stopRematchPolling();
+        return;
+      }
+      const match = await chrome.runtime.sendMessage({ type: "checkMatch", url: location.href });
+      if (match.error || !match.data.matched) return; // keep trying -- a transient error or still-tailoring isn't the end of the window
+      stopRematchPolling();
+      await handleMatch(match.data);
+    }, REMATCH_POLL_INTERVAL_MS);
+  }
+
+  async function handleMatch(matchData) {
+    stopRematchPolling(); // this frame is matched now -- no more need to keep asking
+    ownFillResult = await fillThisFrame(matchData.application_id);
+    lastFillAt = Date.now();
+    updateBadgeResult(matchData);
+    // Sub-frames (a real embedded ATS iframe, e.g. Greenhouse on an
+    // employer's own page) never call mainFrameCheckAndFill themselves
+    // (isMainFrame is false there) -- this is the only way they learn
+    // the applicationId and fill their own DOM. This frame receives its
+    // own broadcast too; the guard above is what stops that from
+    // clobbering the result just set above.
+    notifyFrames(matchData.application_id);
+    pollForNewFields(matchData.application_id);
+  }
+
   async function mainFrameCheckAndFill() {
     const match = await chrome.runtime.sendMessage({ type: "checkMatch", url: location.href });
     if (match.error) {
@@ -1094,19 +1171,14 @@
     if (!match.data.matched) {
       lastResult = { matched: false };
       renderBadge();
+      // "URL isn't set yet" isn't a real error here since it's already
+      // filtered out above via match.error -- this only ever schedules
+      // for a genuine "no Approved application matches this page (yet)"
+      // result, which is exactly the case that might become true soon.
+      scheduleRematchPolling();
       return;
     }
-    ownFillResult = await fillThisFrame(match.data.application_id);
-    lastFillAt = Date.now();
-    updateBadgeResult(match.data);
-    // Sub-frames (a real embedded ATS iframe, e.g. Greenhouse on an
-    // employer's own page) never call mainFrameCheckAndFill themselves
-    // (isMainFrame is false there) -- this is the only way they learn
-    // the applicationId and fill their own DOM. This frame receives its
-    // own broadcast too; the guard above is what stops that from
-    // clobbering the result just set above.
-    notifyFrames(match.data.application_id);
-    pollForNewFields(match.data.application_id);
+    await handleMatch(match.data);
   }
 
   // Real behavior confirmed live: Samsara's "Apply Now" reveals the

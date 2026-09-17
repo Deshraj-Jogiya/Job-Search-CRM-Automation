@@ -106,6 +106,80 @@ def test_resolve_field_answers_uses_mechanical_common_answer_for_eeo_and_prefere
     assert answers == {"f1": "Prefer not to say", "f2": "No"}
 
 
+def test_resolve_field_answers_answers_visa_question_that_also_mentions_country(db, settings):
+    # Real, serious bug found live 2026-09-16 on real Workable and
+    # Recruitee applications: _contact_answer's old bare \bcountry\b
+    # search matched this label (it mentions "country of residence"),
+    # returning "United States" -- which then failed to match any real
+    # Yes/No or verbose visa option and left the field blank, even though
+    # mechanical_common_answer had the real, correct answer the whole
+    # time. This is the exact real wording from the live Hack The Box
+    # posting, not a synthetic example.
+    _set_profile(db, _profile(application_preferences={"visa_sponsorship": "Yes, in the future"}))
+    company = make_company(db)
+    application = make_application(db, make_posting(db, company), status="Approved")
+
+    answers = extension_service.resolve_field_answers(db, application.id, [
+        {
+            "field_id": "f1",
+            "label": "Would you require visa sponsorship or other work authorization support now or "
+            "in the future in order to be legally authorized to work in your country of residence?",
+            "type": "select",
+            "options": [
+                "No, I would not require any visa sponsorship or any work authorization support.",
+                "Yes, I would require visa sponsorship or another type of work authorization support.",
+            ],
+        },
+        {
+            "field_id": "f2",
+            "label": "Do you need, or will you need in the future, visa sponsorship for working in the "
+            "country where the role you've applied to is located?",
+            "type": "select",
+            "options": ["Yes", "No"],
+        },
+    ])
+
+    assert answers == {
+        "f1": "Yes, I would require visa sponsorship or another type of work authorization support.",
+        "f2": "Yes",
+    }
+
+
+def test_resolve_field_answers_fills_a_combined_full_name_field(db, settings):
+    # Real gap found live 2026-09-16 on a real Metyis AG (Recruitee)
+    # posting: label was literally "Full name *", a single combined
+    # field neither _FIRST_NAME_RE nor _LAST_NAME_RE matches.
+    _set_profile(db, _profile())
+    company = make_company(db)
+    application = make_application(db, make_posting(db, company), status="Approved")
+
+    answers = extension_service.resolve_field_answers(db, application.id, [
+        {"field_id": "f1", "label": "Full name *"},
+        {"field_id": "f2", "label": "Name"},
+    ])
+
+    assert answers == {"f1": "Deshraj Jogiya", "f2": "Deshraj Jogiya"}
+
+
+def test_resolve_field_answers_understands_german_field_labels(db, settings):
+    # Real gap found live 2026-09-16 on a real The Mobility House
+    # (Personio) posting, entirely in German: "Vorname"/"Nachname"/
+    # "Telefon" matched none of the English-only patterns, so only
+    # Email got filled (its label "E-Mail* (required)" happened to
+    # already match the existing e-?mail pattern).
+    _set_profile(db, _profile())
+    company = make_company(db)
+    application = make_application(db, make_posting(db, company), status="Approved")
+
+    answers = extension_service.resolve_field_answers(db, application.id, [
+        {"field_id": "f1", "label": "Vorname"},
+        {"field_id": "f2", "label": "Nachname"},
+        {"field_id": "f3", "label": "Telefon* (required)"},
+    ])
+
+    assert answers == {"f1": "Deshraj", "f2": "Jogiya", "f3": "555-0100"}
+
+
 def test_resolve_field_answers_uses_the_real_posting_source_for_referral_question(db, settings):
     _set_profile(db, _profile())
     company = make_company(db)
