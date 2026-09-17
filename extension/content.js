@@ -85,19 +85,39 @@
   // once per element for this page's lifetime.
   const attemptedUnanswerable = new WeakSet();
 
+  // Real bug found live testing against a real Workable application:
+  // a real field's label (e.g. "Address") sits alongside a real SVG
+  // help/info icon, and that icon's own accessibility fallback text
+  // ("SVGs not supported by this browser.") is a real text node inside
+  // the <svg>, included in .textContent even though no real browser in
+  // use today actually falls back to it. Left in, this polluted both
+  // regular field labels and, worse, real select/radio OPTION text
+  // (e.g. "SVGs not supported by this browser.Yes" instead of "Yes"),
+  // which only happened to still match the backend's exact answer via
+  // a lucky word-boundary next to a trailing period -- fragile, not a
+  // real fix. Strips any <svg> descendant's text before reading a
+  // label, generically (no Workable-specific knowledge), by reading
+  // from a clone with all <svg> descendants removed rather than the
+  // live element.
+  function visibleText(el) {
+    const clone = el.cloneNode(true);
+    clone.querySelectorAll("svg").forEach((svg) => svg.remove());
+    return clone.textContent.trim();
+  }
+
   function findLabelText(el) {
     if (el.id) {
       const byFor = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
-      if (byFor && byFor.textContent.trim()) return byFor.textContent.trim();
+      if (byFor && visibleText(byFor)) return visibleText(byFor);
     }
     const ancestorLabel = el.closest("label");
-    if (ancestorLabel && ancestorLabel.textContent.trim()) return ancestorLabel.textContent.trim();
+    if (ancestorLabel && visibleText(ancestorLabel)) return visibleText(ancestorLabel);
     const ariaLabel = el.getAttribute("aria-label");
     if (ariaLabel && ariaLabel.trim()) return ariaLabel.trim();
     const ariaLabelledBy = el.getAttribute("aria-labelledby");
     if (ariaLabelledBy) {
       const referenced = document.getElementById(ariaLabelledBy);
-      if (referenced && referenced.textContent.trim()) return referenced.textContent.trim();
+      if (referenced && visibleText(referenced)) return visibleText(referenced);
     }
     const placeholder = el.getAttribute("placeholder");
     if (placeholder && placeholder.trim()) return placeholder.trim();
@@ -122,19 +142,37 @@
   // labeled "Enter website. This input is for robots only, do not
   // enter if you're human.") has offsetParent !== null -- the existing
   // hidden check never caught it -- because it's hidden via the classic
-  // clip-to-1px-and-clip-rect technique (width/height 1px, clip:
-  // rect(1px,1px,1px,1px)), not display:none. Confirmed live this would
-  // have been genuinely filled: the label contains the word "website",
-  // which matches _PORTFOLIO_RE on the backend, and it would have
-  // returned Deshraj's real portfolio URL -- exactly the kind of thing
-  // that gets a real application flagged as a bot submission. A field
-  // sized at ~0px is never something a real human looking at the page
-  // could see or intentionally fill, honeypot or not, so this check is
-  // safe and generic, not honeypot-specific detection.
+  // clip-to-1px-and-clip-rect technique (width/height ~1px), not
+  // display:none. Confirmed live this would have been genuinely
+  // filled: the label contains the word "website", which matches
+  // _PORTFOLIO_RE on the backend, and it would have returned Deshraj's
+  // real portfolio URL -- exactly the kind of thing that gets a real
+  // application flagged as a bot submission.
+  //
+  // A near-zero-size INPUT alone is not enough to call it hidden,
+  // though -- a real bug caught live testing against a real Recruitee
+  // application immediately after shipping the naive version of this
+  // check: Recruitee's own real radio/checkbox inputs are THEMSELVES
+  // genuinely ~1x1px (a completely different custom-styling technique
+  // than Ashby's, which keeps the native input full-sized), with a
+  // real, visible, normally-sized <label> as the actual control a
+  // human sees and clicks. The distinguishing signal, confirmed
+  // against both real cases: Workday's honeypot has NO real visible
+  // label either (its own label is ALSO ~1x1px, genuinely invisible to
+  // any human) -- Recruitee's real radio's label is a real, visible
+  // 105x48px element. Only when BOTH the element and its own label (if
+  // any) are near-zero-sized is this actually invisible to a human.
   function isEffectivelyHidden(el) {
     if (el.offsetParent === null) return true;
     const rect = el.getBoundingClientRect();
-    return rect.width <= 2 || rect.height <= 2;
+    if (rect.width > 2 && rect.height > 2) return false;
+
+    const label = (el.id && document.querySelector(`label[for="${CSS.escape(el.id)}"]`)) || el.closest("label");
+    if (label) {
+      const labelRect = label.getBoundingClientRect();
+      if (labelRect.width > 2 && labelRect.height > 2) return false;
+    }
+    return true;
   }
 
   function isFillable(el) {
@@ -157,7 +195,15 @@
       // selected-value display instead of the input's own (unreliable,
       // for this widget shape) value attribute.
       if (isReactSelectCombobox(el)) return !hasReactSelectValue(el);
-      return ["text", "email", "tel", "url"].includes(type) && !el.value;
+      // "number" added after finding real, live Recruitee fields this
+      // excluded entirely -- "How many years of professional
+      // experience do you have?" and an hourly-rate field are both
+      // genuinely <input type="number">, and years-of-experience is
+      // exactly the kind of field the backend already has real answer
+      // logic for (_years_experience_answer returns a plain number
+      // string for a non-select field, which a real number input
+      // accepts the same as any text value).
+      return ["text", "email", "tel", "url", "number"].includes(type) && !el.value;
     }
     if (el.tagName === "TEXTAREA") return !el.value;
     if (el.tagName === "SELECT") {
@@ -227,10 +273,10 @@
   function optionLabelFor(el) {
     if (el.id) {
       const byFor = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
-      if (byFor && byFor.textContent.trim()) return byFor.textContent.trim();
+      if (byFor && visibleText(byFor)) return visibleText(byFor);
     }
     const ancestorLabel = el.closest("label");
-    if (ancestorLabel && ancestorLabel.textContent.trim()) return ancestorLabel.textContent.trim();
+    if (ancestorLabel && visibleText(ancestorLabel)) return visibleText(ancestorLabel);
     return null;
   }
 
@@ -275,17 +321,17 @@
       const forId = l.getAttribute("for");
       if (forId && optionIds.has(forId)) return false; // an option's own label via for=
       if (groupEls.some((el) => l.contains(el))) return false; // an option's own label via wrapping
-      return l.textContent.trim();
+      return visibleText(l);
     });
-    if (labelHeading) return labelHeading.textContent.trim();
+    if (labelHeading) return visibleText(labelHeading);
 
     let ancestor = smallestContainer;
     for (let depth = 0; ancestor && depth < 5; depth++, ancestor = ancestor.parentElement) {
       if (ancestor.children) {
         const headingChild = Array.from(ancestor.children).find(
-          (c) => !groupEls.some((el) => c.contains(el)) && c.textContent.trim()
+          (c) => !groupEls.some((el) => c.contains(el)) && visibleText(c)
         );
-        if (headingChild) return headingChild.textContent.trim();
+        if (headingChild) return visibleText(headingChild);
       }
       const ownText = headingOwnText(ancestor);
       if (ownText) return ownText;
@@ -398,15 +444,24 @@
   function isFillableFileInput(el) {
     if (attemptedUnanswerable.has(el)) return false;
     if (el.disabled || el.readOnly) return false;
-    // Deliberately NOT isEffectivelyHidden here -- confirmed live the
-    // real Greenhouse resume/cover-letter file inputs are themselves
-    // genuinely 1x1px (class="visually-hidden", the standard a11y
-    // utility that visually hides the ugly native file input behind a
-    // custom-styled "Attach" button while keeping it the real click
-    // target). isEffectivelyHidden's near-zero-size check would exclude
-    // every real file input on this exact pattern -- only offsetParent
-    // (true display:none/detached) applies here.
-    if (el.offsetParent === null) return false;
+    // Deliberately no visibility/hidden check of any kind here -- real
+    // bug found live testing against a real Personio application: its
+    // real resume file input (id="doc-input-cv") is display:none
+    // entirely (offsetParent === null, width/height 0), triggered only
+    // through a separate, visible "Upload CV" button that calls the
+    // real input's own .click() under the hood. An offsetParent check
+    // (matching every other field type) would have excluded it
+    // completely -- file attachment would never have worked on
+    // Personio at all. This is safe specifically for file inputs
+    // because attachDocument sets .files via DataTransfer directly on
+    // the element, which needs no real visibility or user-driven click
+    // to register -- unlike a text/select/radio field, there's no
+    // "the user needs to be able to see and interact with this"
+    // requirement here. The real safety net against ever attaching to
+    // an unrelated hidden input stays documentTypeForFileInput's own
+    // requirement of an unambiguous resume/cover-letter label match --
+    // not visibility.
+    if (!document.contains(el)) return false;
     if (el.tagName !== "INPUT" || (el.getAttribute("type") || "").toLowerCase() !== "file") return false;
     return el.files.length === 0;
   }
