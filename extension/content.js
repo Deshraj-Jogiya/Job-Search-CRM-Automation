@@ -510,8 +510,17 @@
   // security reasons -- a page/script should never be able to point a file
   // input at an arbitrary path on disk it didn't pick itself). This is the
   // same technique real extensions like JobRight's use.
-  const RESUME_LABEL_RE = /(resume|\bcv\b)/i;
-  const COVER_LETTER_LABEL_RE = /cover\s*letter/i;
+  // German added 2026-09-17 -- real bug found live testing the actual
+  // installed extension against the real Mobility House (Personio)
+  // posting: its document section labels are "Lebenslauf"*/"Anschreiben"*
+  // (German for CV/resume and cover letter), which neither pattern
+  // matched -- so NEITHER document got attached at all on that real
+  // form, the single most serious gap category this whole project has
+  // hunted down before. Same posture as the contact-field regexes fixed
+  // earlier this session: not full i18n, extend the same way if a new
+  // language turns up.
+  const RESUME_LABEL_RE = /(resume|\bcv\b|lebenslauf)/i;
+  const COVER_LETTER_LABEL_RE = /(cover\s*letter|anschreiben)/i;
 
   function isFillableFileInput(el) {
     if (attemptedUnanswerable.has(el)) return false;
