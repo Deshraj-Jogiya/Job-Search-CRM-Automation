@@ -138,3 +138,37 @@ def test_one_failing_application_does_not_stop_the_rest_of_the_batch(db, setting
     confirmation_service.progress_ingested_applications(db)  # must not raise
 
     assert _reload(db, app2_id).match_score == 0  # the second application still got processed
+
+
+def test_null_settings_do_not_crash_the_batch(db, settings, monkeypatch):
+    """Real bug found live 2026-09-18, minutes after this function first
+    deployed: a migration adding a new nullable column to GlobalSettings
+    (a pre-existing singleton row) never backfills that existing row --
+    the Column's Python-side default only applies to a brand-new row.
+    The live settings row genuinely had min_score_for_auto_tailor=NULL,
+    and an unguarded int-vs-None comparison crashed the ENTIRE batch via
+    pool.map()'s list(), not just one application. Both settings used
+    here get an explicit `or` fallback specifically to survive this."""
+    _settings(db, auto_score_batch_size=None, min_score_for_auto_tailor=None)
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application = make_application(db, posting, status="Ingested")
+    application_id = application.id
+
+    def fake_score(db, application_id):
+        app = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+        app.match_score = 70
+        db.commit()
+        return app
+
+    tailored_ids = []
+
+    monkeypatch.setattr(matching_service, "score_application", fake_score)
+    monkeypatch.setattr(tailoring_service, "tailor_application", lambda db, aid: tailored_ids.append(aid))
+
+    confirmation_service.progress_ingested_applications(db)  # must not raise
+
+    # Falls back to the documented defaults (50 for the tailor threshold)
+    # -- 70 >= 50, so this should still have been tailored, not silently
+    # dropped just because the setting itself was NULL.
+    assert tailored_ids == [application_id]

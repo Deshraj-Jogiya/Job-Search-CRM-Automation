@@ -123,15 +123,34 @@ def _score_and_maybe_tailor_one(application_id: int, min_score_for_auto_tailor: 
             log_activity(db, f"Auto-score failed for application {application_id}: {e}", "ERROR")
             return (application_id, "score_failed")
 
-        if application.match_score < min_score_for_auto_tailor:
-            return (application_id, "scored_only")
-
+        # Real bug found live 2026-09-18, minutes after deploying this:
+        # an unguarded comparison here ('<' between the real int score
+        # and a None threshold) crashed with a TypeError and took down
+        # the WHOLE batch via pool.map()'s list() -- not just this one
+        # application -- exactly the failure mode the docstring above
+        # promises can't happen. Root cause was a real, easy-to-repeat
+        # gotcha, not bad luck: a migration adding a new nullable column
+        # to GlobalSettings (a pre-existing singleton row) never
+        # backfills that existing row -- the Column's Python-side
+        # default=50 only ever applies to a brand-new row, so the live
+        # settings row genuinely had NULL here until fixed by hand. This
+        # try/except is the actual fix (any unexpected error, from any
+        # cause, for any one application, can never again escape this
+        # function and abort the rest of the batch); the settings
+        # values also get an explicit `or` fallback below as defense in
+        # depth against the exact same NULL-column gotcha recurring.
         try:
+            if application.match_score < min_score_for_auto_tailor:
+                return (application_id, "scored_only")
+
             tailoring_service.tailor_application(db, application_id)
             return (application_id, "tailored")
         except Exception as e:
             log_activity(db, f"Auto-tailor failed for application {application_id}: {e}", "ERROR")
             return (application_id, "tailor_failed")
+    except Exception as e:
+        log_activity(db, f"Unexpected error progressing application {application_id}: {e}", "ERROR")
+        return (application_id, "unexpected_error")
     finally:
         db.close()
 
@@ -160,18 +179,25 @@ def progress_ingested_applications(db: Session) -> None:
     from concurrent.futures import ThreadPoolExecutor
 
     settings = get_or_create_settings(db)
+    # `or` fallback, not just the Column's Python-side default -- see
+    # _score_and_maybe_tailor_one's comment for the real gotcha this
+    # guards against (a migration-added nullable column on this
+    # pre-existing singleton row never gets backfilled, so the live
+    # value can genuinely be NULL even though the model declares a
+    # default).
+    batch_size = settings.auto_score_batch_size or 16
     application_ids = [
         row[0]
         for row in db.query(JobApplication.id)
         .filter(JobApplication.status == "Ingested")
         .order_by(JobApplication.id.asc())
-        .limit(settings.auto_score_batch_size)
+        .limit(batch_size)
         .all()
     ]
     if not application_ids:
         return
 
-    min_score = settings.min_score_for_auto_tailor
+    min_score = settings.min_score_for_auto_tailor or 50
     with ThreadPoolExecutor(max_workers=min(len(application_ids), _PROGRESS_CONCURRENCY)) as pool:
         list(pool.map(lambda aid: _score_and_maybe_tailor_one(aid, min_score), application_ids))
 
