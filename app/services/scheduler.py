@@ -147,5 +147,18 @@ def start_scheduler() -> None:
 
 def stop_scheduler() -> None:
     if scheduler.running:
-        scheduler.shutdown()
+        # Real outage found live 2026-09-18: shutdown()'s own default is
+        # wait=True, which blocks the ENTIRE process shutdown until any
+        # currently-executing job returns -- with _progress_tick's real,
+        # multi-worker LLM calls (each can genuinely take well over a
+        # minute), a restart landing mid-batch hung for the better part
+        # of 90 seconds until systemd's own stop timeout finally forced
+        # a SIGKILL, a real ~90s outage on every deploy that happened to
+        # land mid-batch. wait=False returns immediately instead; an
+        # in-flight application's work gets abandoned either way once
+        # the process actually exits (that was already happening, just
+        # after the long hang, not instead of it) -- this only removes
+        # the hang, it doesn't change what was already an interrupted,
+        # non-atomic unit of work.
+        scheduler.shutdown(wait=False)
         print("Background scheduler shut down.")
