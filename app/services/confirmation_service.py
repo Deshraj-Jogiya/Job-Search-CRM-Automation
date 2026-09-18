@@ -88,6 +88,49 @@ def has_hard_stop_flag(application: JobApplication) -> str | None:
     return None
 
 
+def progress_ingested_applications(db: Session) -> None:
+    """Real, serious gap found live 2026-09-18: automated intake creates
+    real "Ingested" JobApplication rows, but nothing ever automatically
+    scores or tailors them -- score/tailor only ever existed as single-
+    application, one-click routes. 605 applications had silently piled
+    up at "Ingested" with automation running cleanly for hours, only
+    discovered because nothing was progressing past raw discovery.
+
+    Scores a bounded batch every scheduler tick (a real LLM call each --
+    unbounded would risk both a cost spike and the Anthropic API's own
+    rate limit), oldest-first so nothing waits forever behind a growing
+    queue. Every scored application gets tailored too UNLESS its score
+    is below min_score_for_auto_tailor -- a low-scoring one is still
+    genuinely visible and sorted correctly in /queue (score_application
+    already populates score_breakdown regardless of whether this goes on
+    to tailor), it just doesn't spend real tailoring cost on a match this
+    project's own scoring already thinks is a poor fit. A per-application
+    try/except means one bad posting (a malformed JD, a transient LLM
+    error) can't silently stop the rest of the batch."""
+    from . import matching_service, tailoring_service
+
+    settings = get_or_create_settings(db)
+    batch = (
+        db.query(JobApplication)
+        .filter(JobApplication.status == "Ingested")
+        .order_by(JobApplication.id.asc())
+        .limit(settings.auto_score_batch_size)
+        .all()
+    )
+    for application in batch:
+        try:
+            matching_service.score_application(db, application.id)
+        except Exception as e:
+            log_activity(db, f"Auto-score failed for application {application.id}: {e}", "ERROR")
+            continue
+
+        if application.match_score >= settings.min_score_for_auto_tailor:
+            try:
+                tailoring_service.tailor_application(db, application.id)
+            except Exception as e:
+                log_activity(db, f"Auto-tailor failed for application {application.id}: {e}", "ERROR")
+
+
 def evaluate_and_enqueue(db: Session, application_id: int) -> JobApplication:
     """Call once tailoring succeeds. Routes to Needs Review (flagged, no
     timeout), straight to Approved + an auto-launched real browser
