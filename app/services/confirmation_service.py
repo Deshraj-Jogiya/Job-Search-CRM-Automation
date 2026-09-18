@@ -186,10 +186,33 @@ def progress_ingested_applications(db: Session) -> None:
     # value can genuinely be NULL even though the model declares a
     # default).
     batch_size = settings.auto_score_batch_size or 16
+    # Real, serious bug found live 2026-09-18, minutes after this first
+    # deployed: filtering on status == "Ingested" ALONE isn't enough --
+    # a low-scoring application (correctly, deliberately left at
+    # "Ingested" rather than tailored, per this function's own design)
+    # never leaves that status, so it kept getting re-selected by every
+    # single tick forever. Confirmed live: the exact same ~12 postings
+    # (by title/company) got scored again, and again, and again across
+    # consecutive ticks -- real wasted LLM cost every 2 minutes, while
+    # genuinely untouched applications further back in the queue never
+    # got reached at all, since oldest-first always re-picked the same
+    # already-scored-but-never-progressing front of the line.
+    #
+    # match_analysis_json.is_(None), not match_score.is_(None) -- caught
+    # LIVE, before shipping, by directly checking real never-scored rows:
+    # JobApplication.match_score has its own Column(default=0), so a
+    # freshly-ingested row already has match_score=0 (not NULL) the
+    # moment it's created, before this ever touches it. Filtering on
+    # match_score being NULL would have selected literally nothing,
+    # ever -- a worse regression than the one being fixed.
+    # match_analysis_json is never set until score_application actually
+    # runs (a real json.dumps(result) call), so it's the genuinely
+    # reliable "never scored" signal, confirmed directly against 5 real
+    # freshly-ingested rows before trusting it.
     application_ids = [
         row[0]
         for row in db.query(JobApplication.id)
-        .filter(JobApplication.status == "Ingested")
+        .filter(JobApplication.status == "Ingested", JobApplication.match_analysis_json.is_(None))
         .order_by(JobApplication.id.asc())
         .limit(batch_size)
         .all()

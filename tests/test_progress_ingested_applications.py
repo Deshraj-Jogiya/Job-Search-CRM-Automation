@@ -172,3 +172,43 @@ def test_null_settings_do_not_crash_the_batch(db, settings, monkeypatch):
     # -- 70 >= 50, so this should still have been tailored, not silently
     # dropped just because the setting itself was NULL.
     assert tailored_ids == [application_id]
+
+
+def test_a_low_scoring_application_is_never_reselected_on_a_later_call(db, settings, monkeypatch):
+    """Real, serious bug found live 2026-09-18, minutes after this first
+    deployed: filtering the batch on status == "Ingested" ALONE wasn't
+    enough -- a low-scoring application (correctly, deliberately left
+    at "Ingested" rather than tailored) never leaves that status, so it
+    kept getting re-selected and re-scored by EVERY subsequent call,
+    forever. Confirmed live: the same ~12 real postings got scored
+    again, and again, every 2 minutes, while genuinely untouched
+    applications further back in the queue never got reached at all.
+    match_analysis_json (never NULL after a real score, regardless of
+    the score's value) is what actually excludes an already-scored
+    application from being picked up again -- match_score itself can't
+    be used for this (its own Column default=0 means a freshly-ingested,
+    NEVER-scored row already reads 0, not NULL, confirmed directly
+    against real data before trusting this)."""
+    _settings(db, auto_score_batch_size=10, min_score_for_auto_tailor=50)
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application_id = make_application(db, posting, status="Ingested").id
+
+    score_calls = []
+
+    def fake_score(db, application_id):
+        score_calls.append(application_id)
+        app = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+        app.match_score = 20  # below the 50 threshold -- stays "Ingested"
+        app.match_analysis_json = "{}"  # what a real score_application call always sets
+        db.commit()
+        return app
+
+    monkeypatch.setattr(matching_service, "score_application", fake_score)
+    monkeypatch.setattr(tailoring_service, "tailor_application", lambda db, aid: None)
+
+    confirmation_service.progress_ingested_applications(db)
+    confirmation_service.progress_ingested_applications(db)  # a later tick
+
+    assert score_calls == [application_id]  # only ever scored once, not every call
+    assert _reload(db, application_id).status == "Ingested"  # correctly still not tailored
