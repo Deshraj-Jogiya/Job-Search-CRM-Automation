@@ -212,3 +212,35 @@ def test_a_low_scoring_application_is_never_reselected_on_a_later_call(db, setti
 
     assert score_calls == [application_id]  # only ever scored once, not every call
     assert _reload(db, application_id).status == "Ingested"  # correctly still not tailored
+
+
+def test_a_high_scoring_application_stuck_after_a_tailoring_failure_gets_retried(db, settings, monkeypatch):
+    """Second real gap found the same day, right after the fix above:
+    excluding every already-scored row also silently orphaned an
+    application that scored WELL but whose tailor_application call
+    itself failed once (confirmed live: 4 real applications stuck
+    exactly this way from a transient LLM/JSON error earlier the same
+    session) -- without this, a genuinely good match never got a second
+    chance. A low scorer stays correctly excluded forever (this
+    function's own design never tailors it); only a high scorer whose
+    tailoring hasn't actually succeeded yet should be retried."""
+    _settings(db, auto_score_batch_size=10, min_score_for_auto_tailor=50)
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application_id = make_application(db, posting, status="Ingested").id
+
+    # Simulates the real stuck state directly: already scored well, but
+    # tailoring never actually succeeded (status never left "Ingested").
+    stuck = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+    stuck.match_score = 80
+    stuck.match_analysis_json = "{}"
+    db.commit()
+
+    tailored_ids = []
+
+    monkeypatch.setattr(matching_service, "score_application", lambda db, aid: db.query(JobApplication).filter(JobApplication.id == aid).first())
+    monkeypatch.setattr(tailoring_service, "tailor_application", lambda db, aid: tailored_ids.append(aid))
+
+    confirmation_service.progress_ingested_applications(db)
+
+    assert tailored_ids == [application_id]  # got a real second chance, not abandoned

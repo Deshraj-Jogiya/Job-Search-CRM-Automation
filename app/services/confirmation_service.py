@@ -17,6 +17,7 @@ somewhere.
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from ..database import utcnow
@@ -209,10 +210,28 @@ def progress_ingested_applications(db: Session) -> None:
     # runs (a real json.dumps(result) call), so it's the genuinely
     # reliable "never scored" signal, confirmed directly against 5 real
     # freshly-ingested rows before trusting it.
+    #
+    # A second real gap found the same day, checking for exactly this
+    # kind of leftover: excluding every already-scored row also silently
+    # orphaned applications that scored WELL (worth tailoring) but whose
+    # tailor_application call itself failed (a transient LLM hiccup, a
+    # malformed JSON response -- confirmed live, 4 real applications
+    # stuck exactly this way from the crash earlier this same session).
+    # Those never get a second chance without this OR clause -- a low
+    # scorer is correctly final (this function's own design never
+    # tailors it), but a high scorer stuck at "Ingested" with tailoring
+    # never having actually succeeded should be retried, not abandoned.
+    min_score = settings.min_score_for_auto_tailor or 50
     application_ids = [
         row[0]
         for row in db.query(JobApplication.id)
-        .filter(JobApplication.status == "Ingested", JobApplication.match_analysis_json.is_(None))
+        .filter(
+            JobApplication.status == "Ingested",
+            or_(
+                JobApplication.match_analysis_json.is_(None),
+                JobApplication.match_score >= min_score,
+            ),
+        )
         .order_by(JobApplication.id.asc())
         .limit(batch_size)
         .all()
@@ -220,7 +239,6 @@ def progress_ingested_applications(db: Session) -> None:
     if not application_ids:
         return
 
-    min_score = settings.min_score_for_auto_tailor or 50
     with ThreadPoolExecutor(max_workers=min(len(application_ids), _PROGRESS_CONCURRENCY)) as pool:
         list(pool.map(lambda aid: _score_and_maybe_tailor_one(aid, min_score), application_ids))
 
