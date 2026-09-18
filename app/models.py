@@ -764,7 +764,12 @@ class GlobalSettings(Base):
     # project has already observed between clearly-mismatched postings
     # (28-52%) and plausible near-fits (62-78%) puts a reasonable floor
     # around the middle of that gap, not at the stricter auto-launch bar.
-    auto_score_batch_size = Column(Integer, default=15)
+    # 16 = roughly 2 full rounds of the 8-worker pool per 2-minute
+    # progress tick (see scheduler.py's _PROGRESS_TICK_MINUTES/
+    # confirmation_service._PROGRESS_CONCURRENCY) -- sized to fit
+    # comfortably within one tick interval rather than an arbitrary
+    # round number.
+    auto_score_batch_size = Column(Integer, default=16)
     min_score_for_auto_tailor = Column(Integer, default=50)
 
     # Quiet hours -- a confirmation deadline that would land inside
