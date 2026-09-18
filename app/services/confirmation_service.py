@@ -88,6 +88,46 @@ def has_hard_stop_flag(application: JobApplication) -> str | None:
     return None
 
 
+_PROGRESS_CONCURRENCY = 5
+
+
+def _score_and_maybe_tailor_one(application_id: int, min_score_for_auto_tailor: int) -> tuple[int, str]:
+    """Runs on its own thread with its own DB session -- SQLAlchemy
+    Sessions aren't thread-safe (same reasoning as
+    intake_service._backfill_board_slugs), so real concurrency here
+    means a genuinely separate session per application, never the
+    caller's own. Real cost/latency data from a live 2026-09-18 catch-up
+    run: scoring alone is fast, but tailoring is a real multi-pass LLM
+    process that can take well over a minute per application -- fully
+    sequential batches of even 15 could take longer than the 5-minute
+    tick interval itself. A small worker pool (5, matching the same
+    bound _backfill_board_slugs already uses) keeps this well within a
+    single tick's real wall-clock budget without spamming the Anthropic
+    API's own rate limit."""
+    from ..database import SessionLocal
+    from . import matching_service, tailoring_service
+
+    db = SessionLocal()
+    try:
+        try:
+            application = matching_service.score_application(db, application_id)
+        except Exception as e:
+            log_activity(db, f"Auto-score failed for application {application_id}: {e}", "ERROR")
+            return (application_id, "score_failed")
+
+        if application.match_score < min_score_for_auto_tailor:
+            return (application_id, "scored_only")
+
+        try:
+            tailoring_service.tailor_application(db, application_id)
+            return (application_id, "tailored")
+        except Exception as e:
+            log_activity(db, f"Auto-tailor failed for application {application_id}: {e}", "ERROR")
+            return (application_id, "tailor_failed")
+    finally:
+        db.close()
+
+
 def progress_ingested_applications(db: Session) -> None:
     """Real, serious gap found live 2026-09-18: automated intake creates
     real "Ingested" JobApplication rows, but nothing ever automatically
@@ -96,39 +136,36 @@ def progress_ingested_applications(db: Session) -> None:
     up at "Ingested" with automation running cleanly for hours, only
     discovered because nothing was progressing past raw discovery.
 
-    Scores a bounded batch every scheduler tick (a real LLM call each --
-    unbounded would risk both a cost spike and the Anthropic API's own
-    rate limit), oldest-first so nothing waits forever behind a growing
-    queue. Every scored application gets tailored too UNLESS its score
-    is below min_score_for_auto_tailor -- a low-scoring one is still
-    genuinely visible and sorted correctly in /queue (score_application
-    already populates score_breakdown regardless of whether this goes on
-    to tailor), it just doesn't spend real tailoring cost on a match this
-    project's own scoring already thinks is a poor fit. A per-application
-    try/except means one bad posting (a malformed JD, a transient LLM
-    error) can't silently stop the rest of the batch."""
-    from . import matching_service, tailoring_service
+    Scores (and, above the tailor threshold, tailors) a bounded batch
+    every scheduler tick -- oldest-first so nothing waits forever behind
+    a growing queue, processed concurrently (see
+    _score_and_maybe_tailor_one) since sequential processing of a real
+    multi-pass tailoring workload doesn't reliably finish within one
+    tick interval. A low-scoring application is still genuinely visible
+    and sorted correctly in /queue (score_application already populates
+    score_breakdown regardless of whether it goes on to tailor), it just
+    doesn't spend real tailoring cost on a match this project's own
+    scoring already thinks is a poor fit. This is the ONLY place that
+    claims work from the "Ingested" queue -- a separate ad-hoc script
+    processing the same queue concurrently would race with this exact
+    function and risk double-processing the same application."""
+    from concurrent.futures import ThreadPoolExecutor
 
     settings = get_or_create_settings(db)
-    batch = (
-        db.query(JobApplication)
+    application_ids = [
+        row[0]
+        for row in db.query(JobApplication.id)
         .filter(JobApplication.status == "Ingested")
         .order_by(JobApplication.id.asc())
         .limit(settings.auto_score_batch_size)
         .all()
-    )
-    for application in batch:
-        try:
-            matching_service.score_application(db, application.id)
-        except Exception as e:
-            log_activity(db, f"Auto-score failed for application {application.id}: {e}", "ERROR")
-            continue
+    ]
+    if not application_ids:
+        return
 
-        if application.match_score >= settings.min_score_for_auto_tailor:
-            try:
-                tailoring_service.tailor_application(db, application.id)
-            except Exception as e:
-                log_activity(db, f"Auto-tailor failed for application {application.id}: {e}", "ERROR")
+    min_score = settings.min_score_for_auto_tailor
+    with ThreadPoolExecutor(max_workers=min(len(application_ids), _PROGRESS_CONCURRENCY)) as pool:
+        list(pool.map(lambda aid: _score_and_maybe_tailor_one(aid, min_score), application_ids))
 
 
 def evaluate_and_enqueue(db: Session, application_id: int) -> JobApplication:
