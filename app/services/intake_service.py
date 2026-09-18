@@ -703,11 +703,29 @@ def _find_matching_posting(db: Session, company_id: int, raw) -> tuple[JobPostin
 
     normalized_title = normalize_title(raw.job_title)
     threshold = adaptation_service.current_dedupe_threshold(db)
-    candidates = db.query(JobPosting).filter(JobPosting.company_id == company_id).all()
-    for candidate in candidates:
-        if adaptation_service.fuzzy_title_match(normalize_title(candidate.job_title), normalized_title, threshold):
-            gap = utcnow() - candidate.last_seen_at
-            return candidate, gap > timedelta(days=_REPOST_GAP_DAYS)
+    # Real, significant egress bug found live 2026-09-18: this used to be
+    # db.query(JobPosting).filter(...).all() -- a FULL ORM fetch (every
+    # column, including job_description, a Text field that's often
+    # several KB per posting) of EVERY historical posting this company
+    # has ever had, for every single raw posting scanned, on every
+    # 10-minute intake cycle, across every direct-ATS source. The
+    # description text is never actually read here -- only job_title and
+    # last_seen_at are. With 354 target companies and years of
+    # accumulated postings, this was very likely the real driver behind
+    # exceeding Supabase's free-tier egress quota. Narrowed to only the
+    # 3 columns this loop actually uses; the one real match (if any) is
+    # fetched as a full object afterward, since committing an update
+    # needs a real mutable ORM instance, not a lightweight row.
+    candidates = (
+        db.query(JobPosting.id, JobPosting.job_title, JobPosting.last_seen_at)
+        .filter(JobPosting.company_id == company_id)
+        .all()
+    )
+    for candidate_id, candidate_title, candidate_last_seen_at in candidates:
+        if adaptation_service.fuzzy_title_match(normalize_title(candidate_title), normalized_title, threshold):
+            matched = db.get(JobPosting, candidate_id)
+            gap = utcnow() - candidate_last_seen_at
+            return matched, gap > timedelta(days=_REPOST_GAP_DAYS)
 
     return None, False
 
