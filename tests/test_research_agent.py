@@ -133,6 +133,7 @@ class TestUngroundedFinalAnswerRejected:
 
 def test_count_applications_tool_reflects_real_database_state(db):
     from app.models import JobApplication, JobPosting, Company
+    from app.database import utcnow
 
     company = Company(name="Test Co", normalized_name="test co")
     db.add(company)
@@ -144,7 +145,48 @@ def test_count_applications_tool_reflects_real_database_state(db):
     db.commit()
     db.refresh(posting)
 
-    db.add(JobApplication(posting_id=posting.id, status="applied"))
+    # applied_at set alongside status="Applied", matching how
+    # confirmation_service.mark_applied actually stamps both together --
+    # a status alone, with no timestamp, is not real production data.
+    db.add(JobApplication(posting_id=posting.id, status="Applied", applied_at=utcnow()))
+    db.commit()
+
+    llm = ScriptedLLM([
+        "Thought: check the count.\nAction: count_applications\nAction Input: applied",
+        "Thought: got it.\nFinal Answer: There is 1 applied application.",
+    ])
+    result = run_research_agent(db, llm, "How many applications are marked applied?")
+
+    assert "1 application(s) with status 'applied'" in result.steps[0].observation
+
+
+def test_count_applications_applied_includes_ones_that_progressed_further(db):
+    """Real bug found live 2026-09-18: analytics_service's own dashboard
+    stat counts "applied" as applied_at.isnot(None) -- true forever once
+    reached, even after the application later moves to Interviewing or
+    Offer. This tool used to do a literal CURRENT-status match instead,
+    so an application that had progressed to "Interviewing" no longer
+    counted as "applied" here -- the research agent gave a different
+    number than the dashboard for the exact same real data, asked the
+    exact same plain-English question."""
+    from app.models import JobApplication, JobPosting, Company
+    from app.database import utcnow
+
+    company = Company(name="Test Co", normalized_name="test co")
+    db.add(company)
+    db.commit()
+    db.refresh(company)
+
+    posting = JobPosting(company_id=company.id, company_name_raw="Test Co", job_title="Engineer", job_description="d", source="test")
+    db.add(posting)
+    db.commit()
+    db.refresh(posting)
+
+    now = utcnow()
+    # This application applied, then progressed to Interviewing -- its
+    # CURRENT status is "Interviewing", but applied_at is still set,
+    # exactly matching the dashboard's own "applied" definition.
+    db.add(JobApplication(posting_id=posting.id, status="Interviewing", applied_at=now, interviewing_at=now))
     db.commit()
 
     llm = ScriptedLLM([
