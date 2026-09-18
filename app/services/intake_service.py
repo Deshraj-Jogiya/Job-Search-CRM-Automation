@@ -913,17 +913,27 @@ def _run_source(db: Session, module, source_row: JobSource, location_query: str)
 
 
 def _flag_stale_postings(db: Session, threshold_days: int) -> None:
+    # Real, same-class egress bug as _find_matching_posting's, found
+    # live 2026-09-18 while auditing for others after fixing that one:
+    # this runs on EVERY scheduler tick (no _is_due cadence gate, unlike
+    # every other intake source), and used to fetch full JobPosting ORM
+    # objects -- every column, including job_description -- just to flip
+    # one boolean. Low real impact today only because this DB was
+    # recently wiped and this fresh batch hasn't aged past the 45-day
+    # threshold yet; it would have started mattering for real once
+    # postings actually aged, on every 5-minute tick, forever. A bulk
+    # UPDATE never fetches any row data at all -- there's no per-row
+    # Python logic here beyond "flip the flag," the ORM loop was never
+    # needed.
     cutoff = utcnow() - timedelta(days=threshold_days)
-    stale = (
+    count = (
         db.query(JobPosting)
         .filter(JobPosting.first_seen_at < cutoff, JobPosting.staleness_flag == False)  # noqa: E712
-        .all()
+        .update({"staleness_flag": True}, synchronize_session=False)
     )
-    for posting in stale:
-        posting.staleness_flag = True
-    if stale:
+    if count:
         db.commit()
-        log_activity(db, f"Flagged {len(stale)} posting(s) as stale (open > {threshold_days} days).", "INFO")
+        log_activity(db, f"Flagged {count} posting(s) as stale (open > {threshold_days} days).", "INFO")
 
 
 def _propose_intake_targeting(profile_content: dict) -> dict:

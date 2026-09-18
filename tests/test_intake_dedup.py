@@ -12,7 +12,7 @@ from datetime import timedelta
 from conftest import make_company, make_posting
 
 from app.database import utcnow
-from app.services.intake_service import _find_matching_posting
+from app.services.intake_service import _find_matching_posting, _flag_stale_postings
 from app.services.sources.base import RawPosting
 
 
@@ -67,3 +67,31 @@ def test_exact_external_id_match_wins_over_fuzzy_title_matching(db):
     assert matched is not None
     assert matched.id == existing.id
     assert is_repost is False
+
+
+def test_flag_stale_postings_flags_old_unflagged_postings_via_bulk_update(db):
+    """Real gap found live 2026-09-18: this used to fetch full ORM
+    objects (every column, including job_description) just to flip one
+    boolean, and ran on EVERY scheduler tick with no cadence gate at
+    all. Switched to a single bulk UPDATE that never fetches row data;
+    this locks in the external behavior is unchanged."""
+    company = make_company(db)
+    old_posting = make_posting(
+        db, company, job_url="https://example.com/job/old", first_seen_at=utcnow() - timedelta(days=60)
+    )
+    fresh_posting = make_posting(
+        db, company, job_url="https://example.com/job/fresh", first_seen_at=utcnow() - timedelta(days=1)
+    )
+    already_flagged = make_posting(
+        db, company, job_url="https://example.com/job/already-flagged",
+        first_seen_at=utcnow() - timedelta(days=90), staleness_flag=True,
+    )
+
+    _flag_stale_postings(db, threshold_days=45)
+
+    db.refresh(old_posting)
+    db.refresh(fresh_posting)
+    db.refresh(already_flagged)
+    assert old_posting.staleness_flag is True
+    assert fresh_posting.staleness_flag is False
+    assert already_flagged.staleness_flag is True
