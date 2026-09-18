@@ -32,6 +32,18 @@ from .activity_logger import log_activity, sweep_activity_log_retention
 scheduler = BackgroundScheduler()
 
 _TICK_MINUTES = 5
+# Real gap found live 2026-09-18: score/tailor used to run inside the
+# same 5-minute _tick() as intake, so it only ever got one bite at the
+# queue per intake cycle -- and sat waiting behind intake's own slower
+# work (bulk company discovery, per-source polling) before it even
+# started. Real tailoring is a genuine multi-pass LLM process (well
+# over a minute per application), so with intake regularly outpacing it
+# (222 new postings in a single first cycle after re-enabling
+# automation), a shared 5-minute cadence meant the Ingested queue could
+# only ever grow, never catch up. Split onto its own, independent,
+# shorter cadence so it gets far more real attempts at the queue,
+# without being gated behind intake's own pace at all.
+_PROGRESS_TICK_MINUTES = 2
 _BACKUP_INTERVAL_HOURS = 24
 # Real-world practice around resume length/format moves slowly (this is
 # what motivated building trend_research_service.py in the first place --
@@ -66,10 +78,20 @@ def _run_if_automation_enabled(name: str, fn) -> None:
 
 def _tick() -> None:
     _run_isolated("intake", intake_service.run_intake_cycle)
-    _run_if_automation_enabled("score/tailor ingested applications", confirmation_service.progress_ingested_applications)
     _run_if_automation_enabled("expired-confirmation sweep", confirmation_service.sweep_expired_confirmations)
     _run_if_automation_enabled("rejected-retention sweep", confirmation_service.sweep_rejected_retention)
     _run_if_automation_enabled("notification digest", notification_service.send_digest)
+
+
+def _progress_tick() -> None:
+    # Its own job (see _PROGRESS_TICK_MINUTES's comment) -- APScheduler's
+    # default max_instances=1 per job means if one run is still going
+    # (a real multi-pass tailoring batch can outlast the 2-minute
+    # interval) the next firing is skipped rather than piling up
+    # concurrent runs of this same job, which combined with
+    # progress_ingested_applications' own "only place that claims work
+    # from the Ingested queue" invariant keeps this race-free.
+    _run_if_automation_enabled("score/tailor ingested applications", confirmation_service.progress_ingested_applications)
 
 
 def _backup_tick() -> None:
@@ -102,6 +124,14 @@ def _trend_check_tick() -> None:
 def start_scheduler() -> None:
     if not scheduler.running:
         scheduler.add_job(_tick, trigger="interval", minutes=_TICK_MINUTES, name="job_intake_tick")
+        # max_instances=1 explicit, not just APScheduler's own default --
+        # this is the actual safety property _progress_tick's docstring
+        # depends on (never two concurrent runs of this job racing to
+        # claim the same Ingested rows), stated here rather than assumed.
+        scheduler.add_job(
+            _progress_tick, trigger="interval", minutes=_PROGRESS_TICK_MINUTES, name="progress_ingested_tick",
+            max_instances=1,
+        )
         scheduler.add_job(_backup_tick, trigger="interval", hours=_BACKUP_INTERVAL_HOURS, name="scheduled_backup")
         scheduler.add_job(
             _activity_log_retention_tick, trigger="interval", hours=_BACKUP_INTERVAL_HOURS, name="activity_log_retention",
@@ -109,8 +139,9 @@ def start_scheduler() -> None:
         scheduler.add_job(_trend_check_tick, trigger="interval", days=_TREND_CHECK_INTERVAL_DAYS, name="trend_check")
         scheduler.start()
         print(
-            f"Background scheduler started (tick every {_TICK_MINUTES}m, backup every "
-            f"{_BACKUP_INTERVAL_HOURS}h, trend check every {_TREND_CHECK_INTERVAL_DAYS}d)."
+            f"Background scheduler started (intake tick every {_TICK_MINUTES}m, progress tick every "
+            f"{_PROGRESS_TICK_MINUTES}m, backup every {_BACKUP_INTERVAL_HOURS}h, trend check every "
+            f"{_TREND_CHECK_INTERVAL_DAYS}d)."
         )
 
 
