@@ -745,6 +745,28 @@ class GlobalSettings(Base):
     # hardcode for every user's risk tolerance.
     min_score_for_auto_launch = Column(Integer, default=65)
 
+    # Real, serious gap found live 2026-09-18: automated intake discovers
+    # postings and creates real "Ingested" JobApplication rows, but
+    # nothing ever automatically scores or tailors them -- the scheduler
+    # tick only ran intake/confirmation-sweeps/digest, and score/tailor
+    # only ever existed as single-application, one-click routes
+    # (POST /{id}/score, /{id}/tailor). 605 applications had silently
+    # piled up at "Ingested" with automation on and running cleanly for
+    # hours, discovered only because nothing was progressing past raw
+    # discovery. auto_score_batch_size paces how many Ingested
+    # applications get scored per scheduler tick (a real LLM call each,
+    # ~$0.03-0.05 -- unbounded-per-tick would risk both a cost spike and
+    # hitting the Anthropic API's own rate limit). min_score_for_auto_tailor
+    # is deliberately a LOWER bar than min_score_for_auto_launch (65) --
+    # that one gates skipping straight to an unattended browser launch,
+    # this one only gates whether it's worth spending real tailoring
+    # cost on a genuine, if imperfect, fit at all; the natural gap this
+    # project has already observed between clearly-mismatched postings
+    # (28-52%) and plausible near-fits (62-78%) puts a reasonable floor
+    # around the middle of that gap, not at the stricter auto-launch bar.
+    auto_score_batch_size = Column(Integer, default=15)
+    min_score_for_auto_tailor = Column(Integer, default=50)
+
     # Quiet hours -- a confirmation deadline that would land inside
     # this daily local-time window gets pushed to the end of it, so it
     # never silently lapses while the user is predictably unreachable
