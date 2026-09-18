@@ -88,7 +88,15 @@ def has_hard_stop_flag(application: JobApplication) -> str | None:
     return None
 
 
-_PROGRESS_CONCURRENCY = 5
+# Raised from 5 -> 8 alongside splitting this onto its own, shorter
+# 2-minute scheduler cadence (see scheduler.py's _PROGRESS_TICK_MINUTES)
+# -- both real throughput levers for the same problem (intake regularly
+# outpaces this, so the Ingested queue could only ever grow). Anthropic's
+# own per-account rate limits are the real ceiling here, not an
+# arbitrary number -- 8 concurrent real LLM calls is a modest increase,
+# not an aggressive one; raise further only after confirming live it
+# isn't producing real 429s.
+_PROGRESS_CONCURRENCY = 8
 
 
 def _score_and_maybe_tailor_one(application_id: int, min_score_for_auto_tailor: int) -> tuple[int, str]:
