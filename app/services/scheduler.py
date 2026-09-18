@@ -66,6 +66,7 @@ def _run_if_automation_enabled(name: str, fn) -> None:
 
 def _tick() -> None:
     _run_isolated("intake", intake_service.run_intake_cycle)
+    _run_if_automation_enabled("score/tailor ingested applications", confirmation_service.progress_ingested_applications)
     _run_if_automation_enabled("expired-confirmation sweep", confirmation_service.sweep_expired_confirmations)
     _run_if_automation_enabled("rejected-retention sweep", confirmation_service.sweep_rejected_retention)
     _run_if_automation_enabled("notification digest", notification_service.send_digest)
