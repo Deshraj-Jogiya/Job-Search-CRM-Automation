@@ -7,6 +7,13 @@ Type=oneshot
 User=opc
 WorkingDirectory=/opt/career-pilot
 EnvironmentFile=/opt/career-pilot/worker.env
+# PYTHONUNBUFFERED=1 -- without it, Python fully block-buffers stdout
+# when it isn't a TTY (true of anything systemd runs), so every print()
+# in cli_pipeline.py sits in an internal buffer instead of reaching
+# journalctl until it fills or the process exits. Confirmed live: real
+# work was running (a real tailoring pass takes 5-20+ minutes) while
+# journalctl showed nothing past "Starting..." the whole time.
+Environment=PYTHONUNBUFFERED=1
 ExecStart=/opt/career-pilot/venv/bin/python -m app.cli_pipeline
 # Real, deliberate choice: runs as `opc` (the account actually logged in
 # to the real `claude` CLI), never as `career-pilot` (the unprivileged
