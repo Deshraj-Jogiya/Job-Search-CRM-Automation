@@ -1,0 +1,18 @@
+[Unit]
+Description=Run the Claude-subscription-CLI score/tailor pipeline periodically
+
+[Timer]
+OnBootSec=2min
+# Measured from when the run last STARTED, not from when it finished --
+# for a run that legitimately takes many minutes (real tailoring calls
+# take 5-20+ min each), systemd won't start a second overlapping
+# instance of the same oneshot service anyway, so this just means "go
+# again as soon as reasonably possible" rather than a strict cadence.
+# The script itself exits fast (no real work, no cost) once the daily
+# call cap is hit or the backlog is empty, so a short interval here is
+# cheap even when idle.
+OnUnitActiveSec=5min
+Unit=career-pilot-cli-pipeline.service
+
+[Install]
+WantedBy=timers.target

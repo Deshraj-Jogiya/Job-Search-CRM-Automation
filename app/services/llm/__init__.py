@@ -30,10 +30,20 @@ def get_llm_provider():
     elif provider_name == "ollama":
         from .ollama_provider import OllamaProvider
         return OllamaProvider()
+    elif provider_name == "claude_cli":
+        # Runs the real, locally-installed `claude` program against a
+        # Claude subscription's own usage allowance instead of the
+        # metered API -- see claude_cli_provider.py's own docstring for
+        # why this exists and the one operational rule it depends on
+        # (only ever point CLAUDE_CLI_PATH at a machine YOU are
+        # personally logged in to; never a shared server under someone
+        # else's control).
+        from .claude_cli_provider import ClaudeCliProvider
+        return ClaudeCliProvider()
     else:
         raise RuntimeError(
             f"Unknown LLM_PROVIDER '{provider_name}'. Expected one of: "
-            f"anthropic, openai_compatible, ollama."
+            f"anthropic, openai_compatible, ollama, claude_cli."
         )
 
 
