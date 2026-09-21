@@ -1,0 +1,15 @@
+[Unit]
+Description=Career Pilot -- score/tailor backlog via Claude subscription CLI
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=opc
+WorkingDirectory=/opt/career-pilot
+EnvironmentFile=/opt/career-pilot/worker.env
+ExecStart=/opt/career-pilot/venv/bin/python -m app.cli_pipeline
+# Real, deliberate choice: runs as `opc` (the account actually logged in
+# to the real `claude` CLI), never as `career-pilot` (the unprivileged
+# system user the main uvicorn service runs as, with no access to opc's
+# login). See app/cli_pipeline.py's own docstring and
+# app/services/llm/claude_cli_provider.py's for the full reasoning.
