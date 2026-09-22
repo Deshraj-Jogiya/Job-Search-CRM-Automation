@@ -224,7 +224,24 @@ class AutofillServiceError(Exception):
 
 
 def is_supported(source: str) -> bool:
-    return source in _SUPPORTED_SOURCES
+    # Retired 2026-09-22, deliberately, not a regression -- the VM's own
+    # Playwright-based autofill is real, working code (kept in place,
+    # not deleted, in case a future session revives it on different
+    # infrastructure) but it's unusable on THIS VM now: Xvfb/x11vnc/
+    # noVNC were shut down after real, repeated failures (bot-detection
+    # flags on the VM's own datacenter IP, a shared VNC screen with no
+    # window switcher, a file-upload selector that silently missed a
+    # whole Greenhouse layout) made it worse than the real alternative,
+    # the Career Pilot browser extension running in the user's own real
+    # Chrome. Every call site here already gates on is_supported() with
+    # a real "not supported" fallback built in (jobs.py's explicit
+    # autofill route, the approve-and-launch path, and
+    # confirmation_service.evaluate_and_enqueue's auto-launch-on-clean-
+    # tailor path) -- returning False here is the one place that stops
+    # all three from attempting a doomed browser launch against a
+    # display server that no longer exists, without touching any of
+    # their own logic.
+    return False
 
 
 def supported_sources() -> list[str]:

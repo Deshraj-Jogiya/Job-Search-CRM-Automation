@@ -25,7 +25,17 @@ def test_flagged_application_goes_to_needs_review_with_no_deadline(db, settings)
     assert result.confirmation_deadline is None
 
 
-def test_clean_autofill_supported_application_auto_approves_and_launches_browser(db, settings):
+def test_a_formerly_autofill_supported_source_now_enters_the_ordinary_timed_queue(db, settings):
+    """Real behavior change, 2026-09-22, not a regression: the VM's own
+    Playwright autofill is retired (autofill_service.is_supported now
+    always returns False -- real, repeated failures on this VM made it
+    worse than the Career Pilot browser extension). A clean, greenhouse-
+    sourced application no longer skips straight to Approved with an
+    auto-launched browser; it falls through to the same ordinary,
+    human-reviewed Pending Confirmation path every other source already
+    used. This test used to assert the opposite -- updated to match,
+    not deleted, since a clean application on a real ATS source still
+    needs correct routing."""
     company = make_company(db)
     posting = make_posting(db, company, source="greenhouse")
     application = make_application(db, posting)
@@ -35,10 +45,9 @@ def test_clean_autofill_supported_application_auto_approves_and_launches_browser
     ) as launch_mock:
         result = confirmation_service.evaluate_and_enqueue(db, application.id)
 
-    assert result.status == "Approved"
-    assert result.confirmed_by_user is False
-    assert result.confirmation_deadline is None
-    launch_mock.assert_called_once_with(application.id)
+    assert result.status == "Pending Confirmation"
+    assert result.confirmation_deadline is not None
+    launch_mock.assert_not_called()
 
 
 def test_clean_autofill_supported_but_below_score_threshold_enters_timed_queue_instead(db, settings):
