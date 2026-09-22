@@ -63,9 +63,18 @@ def test_valid_drag_dispatches_through_the_real_guarded_function_with_real_side_
     assert json.loads(response.body)["ok"] is True
 
 
-def test_drag_to_approved_launches_autofill_exactly_like_the_existing_button(db, settings):
+def test_drag_to_approved_no_longer_launches_the_retired_vm_autofill(db, settings):
+    """Real behavior change, 2026-09-22, not a regression: the VM's own
+    Playwright autofill is retired (autofill_service.is_supported now
+    always returns False). Dragging to Approved on the Kanban board
+    still approves the application -- that's the human's own explicit
+    decision, independent of autofill support -- it just no longer
+    tries to launch a browser against a display server that no longer
+    exists. Renamed and updated from a test that used to assert the
+    opposite, kept rather than deleted since the approve-on-drag
+    behavior itself still needs covering."""
     company = make_company(db)
-    posting = make_posting(db, company, source="greenhouse")  # autofill-supported
+    posting = make_posting(db, company, source="greenhouse")
     application = make_application(db, posting, status="Needs Review")
 
     with patch("app.services.autofill_service.launch_autofill_in_background") as launch_mock:
@@ -73,8 +82,8 @@ def test_drag_to_approved_launches_autofill_exactly_like_the_existing_button(db,
 
     db.refresh(application)
     assert application.status == "Approved"
-    launch_mock.assert_called_once_with(application.id)
-    assert "opening a real browser" in json.loads(response.body)["message"]
+    launch_mock.assert_not_called()
+    assert json.loads(response.body)["message"] == "Approved."
 
 
 def test_drag_from_wrong_source_status_is_rejected_not_silently_applied(db, settings):

@@ -310,24 +310,22 @@
         {% elif application.status == "Approved" %}
         <section class="variant-block">
             <h2>Approved -- Ready to Submit</h2>
-            {% if autofill_supported %}
+            <!-- 2026-09-22: the VM's own Playwright-based autofill (the
+                 old "Open Application (Pre-fill for Review)" button
+                 here) is retired -- real, repeated failures (bot-
+                 detection flags on the VM's datacenter IP, a shared
+                 VNC screen with no window switcher, a file-upload
+                 selector that silently missed a whole Greenhouse
+                 layout) made it worse than the alternative: the Career
+                 Pilot browser extension, running in your own real
+                 Chrome on your own real IP. Tailored documents are
+                 still rendered and ready above regardless of source. -->
             <p class="muted-note">
-                Opens a real, visible browser window on this machine with the real application form pre-filled
-                from your tailored documents and profile -- resume/cover letter attached, contact fields and
-                screening-question drafts filled in. Nothing is ever submitted automatically: review every
-                field yourself, including the fields left blank on purpose, and click Submit in that window
-                only when you're satisfied.
+                Tailored documents above are ready. Open the real posting yourself and let the Career Pilot
+                browser extension fill it in your own Chrome, then come back and mark it once you've submitted.
             </p>
-            <form method="post" action="/jobs/{{ application.id }}/autofill" class="inline-form">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <button type="submit">Open Application (Pre-fill for Review)</button>
-            </form>
-            {% else %}
-            <p class="muted-note">
-                Tailored documents above are ready. Autofill isn't built yet for this source ({{ posting.source }}
-                -- currently: {{ autofill_supported_sources | join(", ") }}) -- go apply using them yourself, then
-                come back and mark it once you have.
-            </p>
+            {% if posting.job_url %}
+            <a href="{{ posting.job_url }}" target="_blank" rel="noopener" class="btn-primary">Open real posting ↗</a>
             {% endif %}
             <form method="post" action="/jobs/{{ application.id }}/mark-applied" class="inline-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
