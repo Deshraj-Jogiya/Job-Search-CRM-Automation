@@ -3,6 +3,14 @@
 {% block title %}Career Pilot{% endblock %}
 
 {% block content %}
+<div class="dashboard-automation-status">
+    <form method="post" action="/settings/automation/toggle" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="{{ 'btn-on' if settings.automation_enabled else 'btn-off' }}">
+            Automation: {{ "ON" if settings.automation_enabled else "OFF" }}
+        </button>
+    </form>
+</div>
 {% if showcase_mode %}
 <div class="flash flash-error" role="status">
     You're viewing a public demo. A sample profile was created automatically, and automation is off
