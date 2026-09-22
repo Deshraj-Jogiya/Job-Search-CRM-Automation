@@ -4,15 +4,6 @@
 
 {% block header_title %}<a href="/" class="plain-link">Career Pilot</a> / Queue{% endblock %}
 
-{% block nav %}
-<a href="/jobs">Jobs</a>
-<a href="/jobs/ready-to-apply">Ready to Apply</a>
-<a href="/jobs/review">Review Queue</a>
-<a href="/analytics">Analytics</a>
-<a href="/metrics">Metrics</a>
-<a href="/adaptation">Adaptation</a>
-{% endblock %}
-
 {% block content %}
 {% if message %}
 <div class="flash flash-ok" role="status">{{ message }}</div>
