@@ -12,6 +12,23 @@
 <div class="flash flash-error" role="alert">{{ error }}</div>
 {% endif %}
 
+{#
+    List / Board toggle (2026-09-22) -- explicit user direction: "why
+    give it separate nav buttons instead put it in a toggle... for
+    kanban and other related one to it". List and Kanban query the same
+    JobApplication data (see _load_active_applications), just rendered
+    two different ways -- a real toggle candidate, unlike Daily Triage
+    or Review Queue/Ready to Apply which stay/are their own pages.
+    /jobs/kanban still works, it redirects here with ?tab=board (see
+    jobs.py), so no existing link/bookmark breaks.
+#}
+<div class="tab-bar" role="tablist" aria-label="Jobs view">
+    <button type="button" class="tab-btn" data-tab="list" role="tab">List</button>
+    <button type="button" class="tab-btn" data-tab="board" role="tab">Board</button>
+</div>
+
+<div class="tab-panel" data-tab-panel="list">
+
 {% macro job_card(app) %}
 <li class="job-item">
     <div class="job-item-header">
@@ -347,4 +364,140 @@
     <p class="muted-note">No postings found yet -- click "Search Now" above to start, or wait for the next scheduled search.</p>
     {% endif %}
 </section>
+
+</div>
+
+<div class="tab-panel" data-tab-panel="board">
+    <div id="kanban-flash-slot"></div>
+    <p class="muted-note">
+        Drag a card to move it forward. "Ingested" and "Tailored" are dimmed because the automation sets those on
+        its own -- there's nothing to drag there by hand.
+    </p>
+    <div class="kanban-board" id="kanban-board">
+        {% for status, interactive in column_order %}
+        <div class="kanban-column {% if not interactive %}kanban-auto{% endif %}" data-status="{{ status }}" data-interactive="{{ interactive|lower }}">
+            <div class="kanban-column-header">
+                <span class="kanban-column-title">{{ status }}{% if not interactive %} <span class="muted-note">(auto)</span>{% endif %}</span>
+                <span class="kanban-column-count">{{ columns[status]|length }}</span>
+            </div>
+            <div class="kanban-cards" id="kanban-cards-{{ loop.index }}" data-status="{{ status }}">
+                {% for app in columns[status] %}
+                <div class="kanban-card" data-application-id="{{ app.id }}" data-status="{{ status }}">
+                    <a class="kanban-card-title" href="/jobs/{{ app.id }}">{{ app.posting.job_title }}</a>
+                    <div class="kanban-card-company">{{ app.posting.company_name_raw }}</div>
+                    {% if app.match_score %}<span class="badge badge-active">{{ app.match_score }}% match</span>{% endif %}
+                    {% if app.active_interview_prep %}<span class="badge badge-active">prep ready</span>{% endif %}
+                    {% if app.attention_reason %}<span class="flag-warning">needs attention</span>{% endif %}
+                    {% if status == "Pending Confirmation" and app.confirmation_deadline %}
+                    <div class="muted-note" style="margin-top:6px;">auto-proceeds {{ app.confirmation_deadline.strftime("%Y-%m-%d %H:%M") }} UTC</div>
+                    {% endif %}
+                </div>
+                {% else %}
+                <p class="kanban-empty-note">Nothing here.</p>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/vendor/sortable.min.js"></script>
+<script>
+    // List/Board tab switching -- same client-side, localStorage-
+    // persisted pattern as the light/dark theme toggle and the Review
+    // Queue/Ready to Apply tabs. ?tab= (used by the /jobs/kanban
+    // redirect) wins over a saved preference.
+    (function () {
+        var tabBtns = document.querySelectorAll(".tab-btn");
+        var panels = document.querySelectorAll(".tab-panel");
+        function activate(tab) {
+            tabBtns.forEach(function (btn) {
+                btn.classList.toggle("tab-btn-active", btn.dataset.tab === tab);
+            });
+            panels.forEach(function (panel) {
+                panel.hidden = panel.dataset.tabPanel !== tab;
+            });
+            try { localStorage.setItem("jobsActiveTab", tab); } catch (e) { /* unavailable -- just won't persist */ }
+        }
+        var urlTab = new URLSearchParams(window.location.search).get("tab");
+        var saved = null;
+        try { saved = localStorage.getItem("jobsActiveTab"); } catch (e) { /* unavailable */ }
+        activate(urlTab || saved || "list");
+        tabBtns.forEach(function (btn) {
+            btn.addEventListener("click", function () { activate(btn.dataset.tab); });
+        });
+    })();
+
+    // Mirrors confirmation_service.KANBAN_VALID_SOURCE_STATUSES exactly
+    // (passed from the server, not hand-copied) -- lets onMove reject an
+    // invalid drag target before drop, so a round-trip 400 is the rare
+    // case, not the normal one. The server-side dispatch in
+    // routers/jobs.py's kanban_move is still the real authority: this
+    // is a UX nicety, never trusted alone.
+    const VALID_SOURCE_STATUSES = {{ valid_source_statuses_json|safe }};
+    // The board's drag POST is a fetch(), not a <form> submit -- doesn't
+    // get a csrf_token field for free the way every other action in this
+    // app does, and CSRFMiddleware (app/csrf.py) checks EVERY POST with
+    // a form-encoded body, no route-based exemption. Without this every
+    // drag would 403.
+    const CSRF_TOKEN = "{{ csrf_token }}";
+
+    function showFlash(kind, text) {
+        const slot = document.getElementById("kanban-flash-slot");
+        slot.innerHTML = "";
+        const div = document.createElement("div");
+        div.className = kind === "error" ? "flash flash-error" : "flash flash-ok";
+        div.setAttribute("role", kind === "error" ? "alert" : "status");
+        div.textContent = text;
+        slot.appendChild(div);
+    }
+
+    document.querySelectorAll(".kanban-cards").forEach(function (listEl) {
+        // Ingested/Tailored columns: pull disabled so a card can't even
+        // be lifted out (nothing manually moves FROM those two -- see
+        // KANBAN_VALID_SOURCE_STATUSES, neither ever appears as an
+        // allowed source), and sort disabled since reordering within an
+        // automation-owned column has no real meaning to persist.
+        const interactive = listEl.closest(".kanban-column").dataset.interactive === "true";
+        new Sortable(listEl, {
+            group: { name: "kanban", pull: interactive, put: true },
+            sort: interactive,
+            animation: 150,
+            onMove: function (evt) {
+                const targetStatus = evt.to.dataset.status;
+                const sourceStatus = evt.dragged.dataset.status;
+                const allowedSources = VALID_SOURCE_STATUSES[targetStatus];
+                return Boolean(allowedSources && allowedSources.includes(sourceStatus));
+            },
+            onEnd: function (evt) {
+                if (evt.from === evt.to) return;
+                const card = evt.item;
+                const applicationId = card.dataset.applicationId;
+                const targetStatus = evt.to.dataset.status;
+
+                const body = new URLSearchParams();
+                body.set("target_status", targetStatus);
+                body.set("csrf_token", CSRF_TOKEN);
+
+                fetch("/jobs/" + applicationId + "/kanban-move", { method: "POST", body: body })
+                    .then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+                    .then(function (result) {
+                        if (result.ok && result.data.ok) {
+                            card.dataset.status = targetStatus;
+                            showFlash("ok", result.data.message);
+                        } else {
+                            evt.from.insertBefore(card, evt.from.children[evt.oldIndex] || null);
+                            showFlash("error", result.data.error || "Couldn't move that card.");
+                        }
+                    })
+                    .catch(function () {
+                        evt.from.insertBefore(card, evt.from.children[evt.oldIndex] || null);
+                        showFlash("error", "Couldn't reach the server -- the card was put back.");
+                    });
+            },
+        });
+    });
+</script>
 {% endblock %}

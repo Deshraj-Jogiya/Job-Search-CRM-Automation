@@ -243,6 +243,12 @@ KANBAN_COLUMNS = (
 
 @router.get("", response_class=HTMLResponse)
 def jobs_page(request: Request, db: Session = Depends(get_db)):
+    """List and Board (Kanban) are two tabs on this one page as of
+    2026-09-22 -- explicit user direction ("kanban and other related
+    one to it"). Both genuinely query the same _load_active_applications
+    data, just rendered two different ways (grouped-by-stage list vs.
+    drag-and-drop columns), so one fetch here serves both tab panels
+    (see jobs.html)."""
     applications = _load_active_applications(db)
     sources = db.query(JobSource).order_by(JobSource.name).all()
     keywords = db.query(SearchKeyword).order_by(SearchKeyword.keyword).all()
@@ -277,6 +283,9 @@ def jobs_page(request: Request, db: Session = Depends(get_db)):
             "target_companies": target_companies[:_TARGET_COMPANIES_PREVIEW_LIMIT],
             "target_companies_total": len(target_companies),
             "automation_enabled": settings.automation_enabled,
+            "columns": _group_applications_by_status(applications),
+            "column_order": KANBAN_COLUMNS,
+            "valid_source_statuses_json": json.dumps(confirmation_service.KANBAN_VALID_SOURCE_STATUSES),
             "message": request.query_params.get("message"),
             "error": request.query_params.get("error"),
         },
@@ -629,21 +638,18 @@ def _build_detail_context(application_id: int, request: Request, db: Session, di
 # ="kanban", which then 422s trying to parse it as an int). This route
 # must stay declared before application_detail below for that reason;
 # don't move it back down.
-@router.get("/kanban", response_class=HTMLResponse)
-def kanban_page(request: Request, db: Session = Depends(get_db)):
-    applications = _load_active_applications(db)
-    columns = _group_applications_by_status(applications)
-    return render(
-        request,
-        "kanban.html",
-        {
-            "columns": columns,
-            "column_order": KANBAN_COLUMNS,
-            "valid_source_statuses_json": json.dumps(confirmation_service.KANBAN_VALID_SOURCE_STATUSES),
-            "message": request.query_params.get("message"),
-            "error": request.query_params.get("error"),
-        },
-    )
+@router.get("/kanban")
+def kanban_page(request: Request):
+    """Real redirect, not a page of its own, as of 2026-09-22: the
+    board is now the second tab on /jobs (see jobs_page) -- explicit
+    user direction to toggle List and Board together, since they query
+    the same data just rendered two different ways. Kept as a real
+    route (not removed) so any existing link/bookmark to the old
+    standalone page still lands somewhere correct, with the right tab
+    pre-selected."""
+    params = dict(request.query_params)
+    params["tab"] = "board"
+    return RedirectResponse(url=f"/jobs?{urlencode(params)}", status_code=303)
 
 
 @router.get("/ready-to-apply")
