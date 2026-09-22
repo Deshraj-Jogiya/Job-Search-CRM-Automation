@@ -389,6 +389,16 @@ def mark_applied(db: Session, application_id: int) -> JobApplication:
 
     application.status = "Applied"
     application.applied_at = utcnow()
+    # Real bug found live 2026-09-22: attention_reason is only ever SET
+    # (on a failure), never cleared on a later success -- an
+    # application that failed once (e.g. a transient autofill/LLM
+    # error) but was genuinely, successfully submitted afterward kept
+    # showing that stale, since-resolved error forever. Confirmed live:
+    # a real Applied application still displayed an old "credit balance
+    # too low" message from a fixed bug, days later. The human just
+    # confirmed this one actually went through -- whatever it says is
+    # moot now.
+    application.attention_reason = None
     db.commit()
     log_activity(db, f"Marked '{application.posting.job_title}' at {application.posting.company_name_raw} as Applied.", "INFO")
     return application
