@@ -31,11 +31,17 @@
     /jobs/ready-to-apply URL still works, it redirects there with the
     right tab pre-selected (see jobs.py) -- removing the link here does
     not remove the page.
+
+    "Kanban" was its own nav link briefly too -- explicit user direction
+    to toggle it with List instead, since both render the exact same
+    _load_active_applications data, just two different ways. One nav
+    link now, /jobs, with Board as its second tab (see jobs.html). The
+    old /jobs/kanban URL still works, it redirects here with the right
+    tab pre-selected (see jobs.py).
 -->
 <a href="/jobs">Jobs</a>
 <a href="/queue">Daily Triage</a>
 <a href="/jobs/review">Review Queue</a>
-<a href="/jobs/kanban">Kanban</a>
 <a href="/analytics">Analytics</a>
 <a href="/metrics">Metrics</a>
 <a href="/profile">Profile</a>

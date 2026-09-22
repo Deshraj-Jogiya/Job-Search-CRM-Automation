@@ -1,14 +1,20 @@
-"""Real end-to-end render check for kanban.html against real DB-backed
-fixtures, same pattern as test_jobs_page_template.py -- catches template-
-level bugs (a card in the wrong column, a missing CSRF token that would
-403 every drag, a missing "(auto)" label) that a pure logic test of
-_group_applications_by_status alone can't."""
+"""Real end-to-end render check for the Board tab on jobs.html, same
+pattern as test_jobs_page_template.py -- catches template-level bugs (a
+card in the wrong column, a missing CSRF token that would 403 every
+drag, a missing "(auto)" label) that a pure logic test of
+_group_applications_by_status alone can't.
+
+Ported 2026-09-22 from a standalone kanban.html to jobs.html's second
+tab -- explicit user direction to toggle List and Board together, since
+both render the same _load_active_applications data. The old
+kanban.html no longer exists; these are the same real checks, just
+against where that markup actually lives now."""
 
 import json
 
 from jinja2 import Environment, FileSystemLoader
 
-from app.routers.jobs import KANBAN_COLUMNS, _group_applications_by_status
+from app.routers.jobs import KANBAN_COLUMNS, _group_applications_by_stage, _group_applications_by_status
 from tests.conftest import make_application, make_company, make_posting
 
 env = Environment(loader=FileSystemLoader("app/templates"))
@@ -16,6 +22,14 @@ env = Environment(loader=FileSystemLoader("app/templates"))
 
 def _render(columns, valid_source_statuses=None, **extra):
     context = {
+        # List-tab context -- present so the template renders at all;
+        # the assertions in this file only ever look at the board tab.
+        "application_groups": _group_applications_by_stage([]),
+        "applications_total": 0,
+        "sources": [], "keywords": [], "seniority_exclusions": [], "location_exclusions": [],
+        "target_companies": [], "target_companies_total": 0,
+        "automation_enabled": True,
+        # Board-tab context -- the real subject of this file.
         "columns": columns,
         "column_order": KANBAN_COLUMNS,
         "valid_source_statuses_json": json.dumps(valid_source_statuses or {}),
@@ -24,7 +38,13 @@ def _render(columns, valid_source_statuses=None, **extra):
         "static_version": "0", "is_authenticated": False,
     }
     context.update(extra)
-    return env.get_template("kanban.html").render(**context)
+    return env.get_template("jobs.html").render(**context)
+
+
+def test_both_tab_buttons_are_present(db):
+    html = _render(_group_applications_by_status([]))
+    assert 'data-tab="list"' in html
+    assert 'data-tab="board"' in html
 
 
 def test_card_renders_in_its_real_status_column(db):
@@ -66,7 +86,7 @@ def test_valid_source_statuses_are_passed_through_to_the_client_untouched(db):
 
 
 def test_pending_confirmation_deadline_shown_only_on_that_column(db):
-    from datetime import datetime, timedelta
+    from datetime import datetime
 
     company = make_company(db)
     application = make_application(

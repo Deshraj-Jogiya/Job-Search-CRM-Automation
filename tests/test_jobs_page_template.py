@@ -5,9 +5,11 @@ real total shown. Renders the actual template against real DB-backed
 fixtures and the router's own grouping function, catching anything a
 pure-logic test of _group_applications_by_stage alone couldn't."""
 
+import json
+
 from jinja2 import Environment, FileSystemLoader
 
-from app.routers.jobs import _group_applications_by_stage
+from app.routers.jobs import KANBAN_COLUMNS, _group_applications_by_stage, _group_applications_by_status
 from tests.conftest import make_application, make_company, make_posting
 
 env = Environment(loader=FileSystemLoader("app/templates"))
@@ -18,6 +20,11 @@ def _base_context(**extra):
         "sources": [], "keywords": [], "seniority_exclusions": [], "location_exclusions": [],
         "target_companies": [], "target_companies_total": 0,
         "automation_enabled": True,
+        # Board tab's context -- see test_kanban_page_template.py for
+        # the real checks on this tab; present here only so the list-
+        # view tests in this file render the template at all.
+        "columns": _group_applications_by_status([]), "column_order": KANBAN_COLUMNS,
+        "valid_source_statuses_json": json.dumps({}),
         "message": None, "error": None,
         "csrf_token": "test-token", "static_version": "0", "is_authenticated": False,
     }
