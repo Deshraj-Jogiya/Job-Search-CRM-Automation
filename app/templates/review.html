@@ -1,8 +1,8 @@
 {% extends "_base.html" %}
 
-{% block title %}Career Pilot -- Review{% endblock %}
+{% block title %}Career Pilot -- Review Queue{% endblock %}
 
-{% block header_title %}<a href="/" class="plain-link">Career Pilot</a> / <a href="/jobs" class="plain-link">Jobs</a> / Review{% endblock %}
+{% block header_title %}<a href="/" class="plain-link">Career Pilot</a> / <a href="/jobs" class="plain-link">Jobs</a> / Review Queue{% endblock %}
 
 {% block content %}
 {% if message %}
@@ -12,103 +12,182 @@
 <div class="flash flash-error" role="alert">{{ error }}</div>
 {% endif %}
 
-<section class="variant-block">
-    <h2>Ready for Bulk Review ({{ pending|length }})</h2>
-    <p class="muted-note">Clean matches -- safe to select-all and process together.</p>
-    {% if pending %}
-    <form method="post">
-        <div class="table-scroll">
-            <table class="review-table">
-                <thead>
-                    <tr>
-                        <th><input type="checkbox" onclick="toggleAll('pending-cb', this.checked)" aria-label="Select all ready-for-review applications"></th>
-                        <th>Company</th>
-                        <th>Title</th>
-                        <th>Score</th>
-                        <th>Auto-proceeds</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for app in pending %}
-                    <tr>
-                        <td><input type="checkbox" class="pending-cb" name="application_ids" value="{{ app.id }}" aria-label="Select {{ app.posting.job_title }} at {{ app.posting.company_name_raw }}"></td>
-                        <td>{{ app.posting.company_name_raw }}</td>
-                        <td><a href="/jobs/{{ app.id }}">{{ app.posting.job_title }}</a></td>
-                        <td>{{ app.match_score }}%</td>
-                        <td>{{ app.confirmation_deadline.strftime("%Y-%m-%d %H:%M") if app.confirmation_deadline else "--" }} UTC</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <div class="pending-actions">
-            <button type="submit" formaction="/jobs/review/approve">Approve Selected</button>
-            <button type="submit" formaction="/jobs/review/reject" class="btn-danger">Reject Selected</button>
-        </div>
-    </form>
-    {% else %}
-    <p class="muted-note">Nothing waiting here right now.</p>
-    {% endif %}
-</section>
+{#
+    Real linked pair, toggled together (2026-09-22): Review Queue clears
+    what's flagged or waiting INTO Approved; Ready to Apply is exactly
+    where those Approved applications go next. Explicit user direction:
+    "keep the toggle for the review queue and ready to apply which will
+    make sense once its ready" -- Daily Triage and the List/Kanban pair
+    stay separate pages, this toggle is scoped to only these two.
+    /jobs/ready-to-apply still works, it redirects here with ?tab=
+    ready-to-apply (see jobs.py) so no existing link/bookmark breaks.
+#}
+<div class="tab-bar" role="tablist" aria-label="Review view">
+    <button type="button" class="tab-btn" data-tab="review" role="tab">Review Queue</button>
+    <button type="button" class="tab-btn" data-tab="ready-to-apply" role="tab">Ready to Apply</button>
+</div>
 
-<section class="variant-block">
-    <h2>Needs Review -- Flagged ({{ needs_review|length }})</h2>
-    <p class="muted-note">
-        These were flagged (tailoring fabrication warning, or a scam-pattern match) and have no timeout --
-        deliberately kept separate from bulk selection above so a habit of "select all" can't wave through
-        something that needs individual judgment. Open each one to see why before deciding.
-    </p>
-    {% if needs_review %}
-    <form method="post">
-        <div class="table-scroll">
-            <table class="review-table">
-                <thead>
-                    <tr>
-                        <th><input type="checkbox" onclick="toggleAll('review-cb', this.checked)" aria-label="Select all flagged applications"></th>
-                        <th>Company</th>
-                        <th>Title</th>
-                        <th>Flag</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for app in needs_review %}
-                    <tr{% if loop.index > 50 %} hidden class="needs-review-overflow-row"{% endif %}>
-                        <td><input type="checkbox" class="review-cb" name="application_ids" value="{{ app.id }}" aria-label="Select {{ app.posting.job_title }} at {{ app.posting.company_name_raw }}"></td>
-                        <td>{{ app.posting.company_name_raw }}</td>
-                        <td><a href="/jobs/{{ app.id }}">{{ app.posting.job_title }}</a></td>
-                        <td class="flash-error-inline">{{ app.attention_reason or (app.posting.scam_flag_reason if app.posting else "") }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% if needs_review|length > 50 %}
-        <!-- Real gap found live 2026-09-22: this table rendered all
-             242 flagged rows unbounded, a genuine "endless scroll"
-             page -- the same shape this project already fixed for the
-             Jobs page's Target Companies list. Newest-first ordering
-             (see the route) means the first 50 are the ones most worth
-             seeing by default; the rest stay in the DOM (so "select
-             all" and bulk actions below still cover every row, not
-             just the visible ones) and are revealed on request instead
-             of a second server round-trip. -->
-        <button type="button" class="btn-link" id="needs-review-show-all">Show all {{ needs_review|length }}, not just the newest 50</button>
+<div class="tab-panel" data-tab-panel="review">
+    <section class="variant-block">
+        <h2>Ready for Bulk Review ({{ pending|length }})</h2>
+        <p class="muted-note">Clean matches -- safe to select-all and process together.</p>
+        {% if pending %}
+        <form method="post">
+            <div class="table-scroll">
+                <table class="review-table">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" onclick="toggleAll('pending-cb', this.checked)" aria-label="Select all ready-for-review applications"></th>
+                            <th>Company</th>
+                            <th>Title</th>
+                            <th>Score</th>
+                            <th>Auto-proceeds</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for app in pending %}
+                        <tr>
+                            <td><input type="checkbox" class="pending-cb" name="application_ids" value="{{ app.id }}" aria-label="Select {{ app.posting.job_title }} at {{ app.posting.company_name_raw }}"></td>
+                            <td>{{ app.posting.company_name_raw }}</td>
+                            <td><a href="/jobs/{{ app.id }}">{{ app.posting.job_title }}</a></td>
+                            <td>{{ app.match_score }}%</td>
+                            <td>{{ app.confirmation_deadline.strftime("%Y-%m-%d %H:%M") if app.confirmation_deadline else "--" }} UTC</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="pending-actions">
+                <button type="submit" formaction="/jobs/review/approve">Approve Selected</button>
+                <button type="submit" formaction="/jobs/review/reject" class="btn-danger">Reject Selected</button>
+            </div>
+        </form>
+        {% else %}
+        <p class="muted-note">Nothing waiting here right now.</p>
         {% endif %}
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <div class="pending-actions">
-            <button type="submit" formaction="/jobs/review/approve">Approve Selected</button>
-            <button type="submit" formaction="/jobs/review/reject" class="btn-danger">Reject Selected</button>
+    </section>
+
+    <section class="variant-block">
+        <h2>Needs Review -- Flagged ({{ needs_review|length }})</h2>
+        <p class="muted-note">
+            These were flagged (tailoring fabrication warning, or a scam-pattern match) and have no timeout --
+            deliberately kept separate from bulk selection above so a habit of "select all" can't wave through
+            something that needs individual judgment. Open each one to see why before deciding.
+        </p>
+        {% if needs_review %}
+        <form method="post">
+            <div class="table-scroll">
+                <table class="review-table">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" onclick="toggleAll('review-cb', this.checked)" aria-label="Select all flagged applications"></th>
+                            <th>Company</th>
+                            <th>Title</th>
+                            <th>Flag</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for app in needs_review %}
+                        <tr{% if loop.index > 50 %} hidden class="needs-review-overflow-row"{% endif %}>
+                            <td><input type="checkbox" class="review-cb" name="application_ids" value="{{ app.id }}" aria-label="Select {{ app.posting.job_title }} at {{ app.posting.company_name_raw }}"></td>
+                            <td>{{ app.posting.company_name_raw }}</td>
+                            <td><a href="/jobs/{{ app.id }}">{{ app.posting.job_title }}</a></td>
+                            <td class="flash-error-inline">{{ app.attention_reason or (app.posting.scam_flag_reason if app.posting else "") }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% if needs_review|length > 50 %}
+            <button type="button" class="btn-link" id="needs-review-show-all">Show all {{ needs_review|length }}, not just the newest 50</button>
+            {% endif %}
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="pending-actions">
+                <button type="submit" formaction="/jobs/review/approve">Approve Selected</button>
+                <button type="submit" formaction="/jobs/review/reject" class="btn-danger">Reject Selected</button>
+            </div>
+        </form>
+        {% else %}
+        <p class="muted-note">Nothing flagged right now.</p>
+        {% endif %}
+    </section>
+</div>
+
+<div class="tab-panel" data-tab-panel="ready-to-apply">
+    <p class="muted-note">
+        Every Approved application, freshest posting first. Open the real posting yourself and let the
+        Career Pilot browser extension fill it, this page doesn't run any automation itself. Mark it applied here
+        once you've submitted, so it drops off this list.
+    </p>
+
+    <div class="ready-to-apply-list">
+        {% for application, posting in ready_to_apply_rows %}
+        <div class="ready-to-apply-row" data-application-id="{{ application.id }}">
+            <div class="ready-to-apply-main">
+                <div class="ready-to-apply-title">
+                    <a href="/jobs/{{ application.id }}">{{ posting.job_title }}</a>
+                    <span class="muted-note">at {{ posting.company_name_raw }}</span>
+                </div>
+                <div class="ready-to-apply-meta">
+                    {% if application.match_score %}<span class="badge badge-active">{{ application.match_score }}% match</span>{% endif %}
+                    <span class="badge">{{ posting.source }}</span>
+                    <span class="muted-note">first seen {{ posting.first_seen_at.strftime("%Y-%m-%d") }}</span>
+                    {% if application.attention_reason %}
+                    <span class="flag-warning" title="{{ application.attention_reason }}">needs a look before you open it</span>
+                    {% endif %}
+                </div>
+                {% if application.attention_reason %}
+                <div class="muted-note ready-to-apply-attention">{{ application.attention_reason }}</div>
+                {% endif %}
+            </div>
+            <div class="ready-to-apply-actions">
+                {% if posting.job_url %}
+                <a href="{{ posting.job_url }}" target="_blank" rel="noopener" class="btn-primary">Open real posting ↗</a>
+                {% else %}
+                <span class="muted-note">no posting URL on file</span>
+                {% endif %}
+                <form method="post" action="/jobs/{{ application.id }}/mark-applied" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn-secondary">Mark Applied</button>
+                </form>
+            </div>
         </div>
-    </form>
-    {% else %}
-    <p class="muted-note">Nothing flagged right now.</p>
-    {% endif %}
-</section>
+        {% else %}
+        <p class="muted-note">Nothing Approved right now.</p>
+        {% endfor %}
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+    // Tab switching -- client-side only, no reload, same persistence
+    // pattern as theme.js's light/dark toggle (localStorage, restored
+    // on load). ?tab= in the URL (used by the /jobs/ready-to-apply
+    // redirect) wins over a saved preference, so a bookmark/link always
+    // lands where it says.
+    (function () {
+        var tabBtns = document.querySelectorAll(".tab-btn");
+        var panels = document.querySelectorAll(".tab-panel");
+        function activate(tab) {
+            tabBtns.forEach(function (btn) {
+                btn.classList.toggle("tab-btn-active", btn.dataset.tab === tab);
+            });
+            panels.forEach(function (panel) {
+                panel.hidden = panel.dataset.tabPanel !== tab;
+            });
+            try { localStorage.setItem("reviewActiveTab", tab); } catch (e) { /* unavailable -- just won't persist */ }
+        }
+        var urlTab = new URLSearchParams(window.location.search).get("tab");
+        var saved = null;
+        try { saved = localStorage.getItem("reviewActiveTab"); } catch (e) { /* unavailable */ }
+        activate(urlTab || saved || "review");
+        tabBtns.forEach(function (btn) {
+            btn.addEventListener("click", function () { activate(btn.dataset.tab); });
+        });
+    })();
+
     function toggleAll(className, checked) {
         document.querySelectorAll("." + className).forEach(function (cb) { cb.checked = checked; });
     }
