@@ -73,7 +73,7 @@
                 </thead>
                 <tbody>
                     {% for app in needs_review %}
-                    <tr>
+                    <tr{% if loop.index > 50 %} hidden class="needs-review-overflow-row"{% endif %}>
                         <td><input type="checkbox" class="review-cb" name="application_ids" value="{{ app.id }}" aria-label="Select {{ app.posting.job_title }} at {{ app.posting.company_name_raw }}"></td>
                         <td>{{ app.posting.company_name_raw }}</td>
                         <td><a href="/jobs/{{ app.id }}">{{ app.posting.job_title }}</a></td>
@@ -83,6 +83,18 @@
                 </tbody>
             </table>
         </div>
+        {% if needs_review|length > 50 %}
+        <!-- Real gap found live 2026-09-22: this table rendered all
+             242 flagged rows unbounded, a genuine "endless scroll"
+             page -- the same shape this project already fixed for the
+             Jobs page's Target Companies list. Newest-first ordering
+             (see the route) means the first 50 are the ones most worth
+             seeing by default; the rest stay in the DOM (so "select
+             all" and bulk actions below still cover every row, not
+             just the visible ones) and are revealed on request instead
+             of a second server round-trip. -->
+        <button type="button" class="btn-link" id="needs-review-show-all">Show all {{ needs_review|length }}, not just the newest 50</button>
+        {% endif %}
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <div class="pending-actions">
             <button type="submit" formaction="/jobs/review/approve">Approve Selected</button>
@@ -99,6 +111,15 @@
 <script>
     function toggleAll(className, checked) {
         document.querySelectorAll("." + className).forEach(function (cb) { cb.checked = checked; });
+    }
+    var showAllBtn = document.getElementById("needs-review-show-all");
+    if (showAllBtn) {
+        showAllBtn.addEventListener("click", function () {
+            document.querySelectorAll(".needs-review-overflow-row").forEach(function (row) {
+                row.hidden = false;
+            });
+            showAllBtn.remove();
+        });
     }
 </script>
 {% endblock %}
