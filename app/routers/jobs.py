@@ -22,7 +22,7 @@ one misclick away.
 import io
 import json
 import threading
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -473,7 +473,16 @@ def review_page(request: Request, db: Session = Depends(get_db)):
     Confirmation (clean, safe to bulk) and Needs Review (flagged) are
     kept in structurally separate sections/forms -- not just visually --
     so a "select all" in one section can never sweep up a flagged item
-    that specifically needs individual judgment."""
+    that specifically needs individual judgment.
+
+    Also renders the Ready to Apply data as a second tab on the same
+    page (client-side toggle, see review.html) -- explicit user
+    direction 2026-09-22: these two are a real linked pair (this page
+    clears things INTO Approved; Ready to Apply is exactly where
+    Approved things go next), unlike Daily Triage or the List/Kanban
+    pair, which stay separate. /jobs/ready-to-apply still works as a
+    real redirect here (see ready_to_apply_page below), so no existing
+    link/bookmark breaks."""
     pending = (
         db.query(JobApplication)
         .join(JobPosting)
@@ -488,6 +497,13 @@ def review_page(request: Request, db: Session = Depends(get_db)):
         .order_by(JobApplication.created_at.desc())
         .all()
     )
+    ready_to_apply_rows = (
+        db.query(JobApplication, JobPosting)
+        .join(JobPosting, JobApplication.posting_id == JobPosting.id)
+        .filter(JobApplication.status == "Approved")
+        .order_by(JobPosting.first_seen_at.desc())
+        .all()
+    )
 
     return render(
         request,
@@ -495,6 +511,7 @@ def review_page(request: Request, db: Session = Depends(get_db)):
         {
             "pending": pending,
             "needs_review": needs_review,
+            "ready_to_apply_rows": ready_to_apply_rows,
             "message": request.query_params.get("message"),
             "error": request.query_params.get("error"),
         },
@@ -629,40 +646,23 @@ def kanban_page(request: Request, db: Session = Depends(get_db)):
     )
 
 
-@router.get("/ready-to-apply", response_class=HTMLResponse)
-def ready_to_apply_page(request: Request, db: Session = Depends(get_db)):
-    """Real gap found live 2026-09-22: every Approved application has a
-    real posting URL, but there was no single page that just lists them
-    with that link front and center -- finding one meant digging through
-    the full Jobs list or opening each detail page individually. Built
-    after retiring the VM's Playwright-based autofill (killed by real,
-    repeated failures: bot-detection flags, a hard-coded selector that
-    missed a whole Greenhouse layout, a shared VNC screen with no
-    taskbar) in favor of the browser extension, which needs a human to
-    actually open each real posting themselves -- this page is that
-    human's one stop to find them, freshest posting first so a stale,
-    likely-closed listing never gets worked before a fresh one.
+@router.get("/ready-to-apply")
+def ready_to_apply_page(request: Request):
+    """Real redirect, not a page of its own, as of 2026-09-22: Ready to
+    Apply is now the second tab on /jobs/review (see review_page) --
+    explicit user direction that these two are a real linked pair,
+    toggled together like the light/dark theme switch, unlike Daily
+    Triage or the List/Kanban pair. Kept as a real route (not just
+    removed) so any existing link/bookmark to the old standalone page
+    still lands somewhere correct, with the right tab pre-selected.
 
     Registered BEFORE the /{application_id} catch-all -- Starlette
     matches routes in registration order, not by specificity, and this
     project has hit that exact shadowing bug once already (the Kanban
     board's own route, see its own history)."""
-    rows = (
-        db.query(JobApplication, JobPosting)
-        .join(JobPosting, JobApplication.posting_id == JobPosting.id)
-        .filter(JobApplication.status == "Approved")
-        .order_by(JobPosting.first_seen_at.desc())
-        .all()
-    )
-    return render(
-        request,
-        "ready_to_apply.html",
-        {
-            "rows": rows,
-            "message": request.query_params.get("message"),
-            "error": request.query_params.get("error"),
-        },
-    )
+    params = dict(request.query_params)
+    params["tab"] = "ready-to-apply"
+    return RedirectResponse(url=f"/jobs/review?{urlencode(params)}", status_code=303)
 
 
 @router.get("/{application_id}", response_class=HTMLResponse)
