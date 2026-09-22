@@ -26,7 +26,16 @@ RestartSec=5
 # /tmp/.X11-unix socket Xvfb listens on, breaking the DISPLAY connection.
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/opt/career-pilot
+# /tmp added 2026-09-22 -- real bug found live: ProtectSystem=strict
+# makes /tmp read-only too (a separate mechanism from PrivateTmp, which
+# is deliberately off above), and Playwright's BrowserType.launch needs
+# to mkdtemp its own artifacts dir there. Several real Approved
+# applications (CHAOS Industries, Avride, two at Anthropic) had already
+# failed autofill with "EROFS: read-only file system" before this was
+# caught -- this was never a one-off, every autofill attempt would hit
+# it. /tmp stays the REAL /tmp (not an isolated PrivateTmp one), so
+# Xvfb's /tmp/.X11-unix socket is unaffected by this change.
+ReadWritePaths=/opt/career-pilot /tmp
 
 [Install]
 WantedBy=multi-user.target
