@@ -1408,3 +1408,37 @@ html.light-theme .flag-warning {
 .tab-btn-active:hover {
     color: #fff;
 }
+
+/* Collapsed-by-default salary correction (2026-09-22) -- the summary
+   reads as a small inline link, matching .btn-link's look, not a
+   default browser disclosure widget with its own marker/spacing. */
+.salary-correct-details {
+    display: inline-block;
+}
+
+.salary-correct-details summary {
+    display: inline;
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    font-weight: 500;
+    text-decoration: underline;
+    cursor: pointer;
+    list-style: none;
+}
+
+.salary-correct-details summary::-webkit-details-marker {
+    display: none;
+}
+
+.salary-correct-details summary:hover {
+    color: var(--text-primary);
+}
+
+.salary-correct-details[open] summary {
+    display: block;
+    margin-bottom: 4px;
+}
+
+.salary-correct-details form {
+    margin-top: 2px;
+}
