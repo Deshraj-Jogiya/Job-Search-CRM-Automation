@@ -27,7 +27,7 @@
     "sponsorship_signal_bonus": "Sponsorship Signal",
 } %}
 
-{% macro queue_table(applications, empty_message) %}
+{% macro queue_table(applications, empty_message, table_id) %}
 {% if applications %}
 <div class="table-scroll">
     <table class="review-table">
@@ -45,7 +45,7 @@
         </thead>
         <tbody>
             {% for app in applications %}
-            <tr>
+            <tr{% if loop.index > 50 %} hidden class="queue-overflow-row-{{ table_id }}"{% endif %}>
                 <td><a href="/jobs/{{ app.id }}">{{ app.posting.job_title }}</a></td>
                 <td>{{ app.posting.company_name_raw }}</td>
                 <td>
@@ -103,6 +103,16 @@
         </tbody>
     </table>
 </div>
+{% if applications|length > 50 %}
+<!-- Real gap found live 2026-09-22, same shape as the Review page's
+     fix earlier the same day: this table could render hundreds of rows
+     unbounded (confirmed live: "Everything Else" had 809). Sorted by
+     score already (see queue_service._sorted_by_score), so the first
+     50 are the highest-scoring ones by default; the rest stay in the
+     DOM (Skip/Not-a-Fit still work on every row, not just visible
+     ones) and reveal on a real click instead of a second round-trip. -->
+<button type="button" class="btn-link queue-show-all" data-table-id="{{ table_id }}">Show all {{ applications|length }}, not just the top 50</button>
+{% endif %}
 {% else %}
 <p class="muted-note">{{ empty_message }}</p>
 {% endif %}
@@ -114,18 +124,31 @@
         Universities and nonprofit/government research orgs -- file year-round, no lottery. Highest-probability
         lane.
     </p>
-    {{ queue_table(tabs.cap_exempt, "Nothing here right now.") }}
+    {{ queue_table(tabs.cap_exempt, "Nothing here right now.", "cap-exempt") }}
 </section>
 
 <section class="variant-block">
     <h2>Tier A/B ({{ tabs.tier_ab|length }})</h2>
     <p class="muted-note">Proven sponsors, cap-subject.</p>
-    {{ queue_table(tabs.tier_ab, "Nothing here right now.") }}
+    {{ queue_table(tabs.tier_ab, "Nothing here right now.", "tier-ab") }}
 </section>
 
 <section class="variant-block">
     <h2>Everything Else ({{ tabs.everything_else|length }})</h2>
     <p class="muted-note">Tier C/X or unknown sponsorship history -- still worth reviewing, just lower-odds.</p>
-    {{ queue_table(tabs.everything_else, "Nothing here right now.") }}
+    {{ queue_table(tabs.everything_else, "Nothing here right now.", "everything-else") }}
 </section>
+
+{% block scripts %}
+<script>
+    document.querySelectorAll(".queue-show-all").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            document.querySelectorAll(".queue-overflow-row-" + btn.dataset.tableId).forEach(function (row) {
+                row.hidden = false;
+            });
+            btn.remove();
+        });
+    });
+</script>
+{% endblock %}
 {% endblock %}
