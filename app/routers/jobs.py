@@ -187,15 +187,32 @@ def _group_applications_by_stage(applications: list) -> dict:
 _TARGET_COMPANIES_PREVIEW_LIMIT = 50
 
 
+_KANBAN_AUTO_STATUSES = ("Ingested", "Tailored")
+
+
 def _load_active_applications(db: Session) -> list:
-    return (
-        db.query(JobApplication)
-        .join(JobPosting)
-        .options(joinedload(JobApplication.interview_preps))
-        .order_by(JobApplication.created_at.desc())
-        .limit(100)
-        .all()
-    )
+    """Real bug found live 2026-09-22, during a full UI audit: a single
+    `order_by(created_at.desc()).limit(100)` across EVERY status meant
+    real, still-open Approved/Needs Review/Pending Confirmation
+    applications silently fell out of the window entirely once 100
+    newer Ingested rows had been created since -- confirmed live, the
+    Kanban board showed "Approved 0" while 104 real Approved
+    applications existed. Ingested/Tailored are the automation's own,
+    high-churn, non-interactive columns (see KANBAN_COLUMNS) -- fine to
+    cap by recency, since a human never acts on them directly. Every
+    other status is what a human actually manages here; those are
+    fetched without that same recency cap so a week-old Approved
+    application stays visible instead of being crowded out by intake
+    volume. This is the one place both the Kanban board and the Jobs
+    list view load applications from -- fixed once, not per page."""
+    base_query = db.query(JobApplication).join(JobPosting).options(joinedload(JobApplication.interview_preps))
+    managed = base_query.filter(JobApplication.status.notin_(_KANBAN_AUTO_STATUSES)).order_by(
+        JobApplication.created_at.desc()
+    ).all()
+    auto = base_query.filter(JobApplication.status.in_(_KANBAN_AUTO_STATUSES)).order_by(
+        JobApplication.created_at.desc()
+    ).limit(100).all()
+    return managed + auto
 
 
 # Real, pipeline-order column set for the Kanban board (routers/jobs.py's
