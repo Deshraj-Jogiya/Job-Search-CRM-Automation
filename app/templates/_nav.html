@@ -1,0 +1,21 @@
+{#
+    Single, shared nav -- every authenticated page includes this instead of
+    maintaining its own copy. Real gap found live 2026-09-22: nav links were
+    duplicated independently across 8 different templates (ranging 4-7 links
+    each) and 5 more pages (application detail, both mock-interview pages,
+    profile, review) had NO nav at all -- no way back to anything except the
+    browser's back button. One file now, so every page stays consistent by
+    construction instead of by remembering to update N templates every time
+    a page gets added or renamed.
+#}
+{% if is_authenticated %}
+<a href="/jobs">Jobs</a>
+<a href="/jobs/ready-to-apply">Ready to Apply</a>
+<a href="/jobs/review">Review Queue</a>
+<a href="/jobs/kanban">Kanban</a>
+<a href="/queue">Queue</a>
+<a href="/analytics">Analytics</a>
+<a href="/metrics">Metrics</a>
+<a href="/profile">Profile</a>
+<a href="/adaptation">Adaptation</a>
+{% endif %}

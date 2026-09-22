@@ -41,7 +41,7 @@
     <header class="topbar">
         <h1>{% block header_title %}<a href="/" class="plain-link">Career Pilot</a>{% endblock %}</h1>
         <nav class="topnav">
-            {% block nav %}{% endblock %}
+            {% block nav %}{% include "_nav.html" %}{% endblock %}
             {% if is_authenticated %}
             <form method="post" action="/logout" class="inline-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
