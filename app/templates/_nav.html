@@ -9,11 +9,23 @@
     a page gets added or renamed.
 #}
 {% if is_authenticated %}
+<!--
+    Ordered to match the real pipeline, not alphabetically -- a posting
+    is found (Jobs shows everything), you decide what's worth pursuing
+    (Daily Triage), you clear what's flagged or waiting (Review Queue),
+    you go submit what's Approved (Ready to Apply), then Kanban/
+    Analytics/Metrics/Profile/Adaptation are secondary views, not steps.
+    "Queue" was renamed to "Daily Triage" 2026-09-22 -- confirmed live
+    it sitting right next to "Review Queue" in the nav, despite being a
+    genuinely different thing (a score/sponsorship-sorted view across
+    every non-finished application, not a pipeline stage), was a real,
+    direct source of confusion.
+-->
 <a href="/jobs">Jobs</a>
-<a href="/jobs/ready-to-apply">Ready to Apply</a>
+<a href="/queue">Daily Triage</a>
 <a href="/jobs/review">Review Queue</a>
+<a href="/jobs/ready-to-apply">Ready to Apply</a>
 <a href="/jobs/kanban">Kanban</a>
-<a href="/queue">Queue</a>
 <a href="/analytics">Analytics</a>
 <a href="/metrics">Metrics</a>
 <a href="/profile">Profile</a>

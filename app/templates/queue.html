@@ -1,10 +1,15 @@
 {% extends "_base.html" %}
 
-{% block title %}Career Pilot -- Queue{% endblock %}
+{% block title %}Career Pilot -- Daily Triage{% endblock %}
 
-{% block header_title %}<a href="/" class="plain-link">Career Pilot</a> / Queue{% endblock %}
+{% block header_title %}<a href="/" class="plain-link">Career Pilot</a> / Daily Triage{% endblock %}
 
 {% block content %}
+<p class="muted-note">
+    Every application that isn't finished yet, sorted by score and grouped by sponsorship likelihood -- this cuts
+    across the pipeline to help you decide what's worth pursuing, it isn't a step in it. Approve/reject flow lives
+    on the <a href="/jobs/review">Review Queue</a> instead.
+</p>
 {% if message %}
 <div class="flash flash-ok" role="status">{{ message }}</div>
 {% endif %}
