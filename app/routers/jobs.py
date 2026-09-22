@@ -612,6 +612,42 @@ def kanban_page(request: Request, db: Session = Depends(get_db)):
     )
 
 
+@router.get("/ready-to-apply", response_class=HTMLResponse)
+def ready_to_apply_page(request: Request, db: Session = Depends(get_db)):
+    """Real gap found live 2026-09-22: every Approved application has a
+    real posting URL, but there was no single page that just lists them
+    with that link front and center -- finding one meant digging through
+    the full Jobs list or opening each detail page individually. Built
+    after retiring the VM's Playwright-based autofill (killed by real,
+    repeated failures: bot-detection flags, a hard-coded selector that
+    missed a whole Greenhouse layout, a shared VNC screen with no
+    taskbar) in favor of the browser extension, which needs a human to
+    actually open each real posting themselves -- this page is that
+    human's one stop to find them, freshest posting first so a stale,
+    likely-closed listing never gets worked before a fresh one.
+
+    Registered BEFORE the /{application_id} catch-all -- Starlette
+    matches routes in registration order, not by specificity, and this
+    project has hit that exact shadowing bug once already (the Kanban
+    board's own route, see its own history)."""
+    rows = (
+        db.query(JobApplication, JobPosting)
+        .join(JobPosting, JobApplication.posting_id == JobPosting.id)
+        .filter(JobApplication.status == "Approved")
+        .order_by(JobPosting.first_seen_at.desc())
+        .all()
+    )
+    return render(
+        request,
+        "ready_to_apply.html",
+        {
+            "rows": rows,
+            "message": request.query_params.get("message"),
+            "error": request.query_params.get("error"),
+        },
+    )
+
+
 @router.get("/{application_id}", response_class=HTMLResponse)
 def application_detail(application_id: int, request: Request, db: Session = Depends(get_db)):
     context = _build_detail_context(application_id, request, db)

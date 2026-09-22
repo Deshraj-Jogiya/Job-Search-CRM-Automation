@@ -1249,3 +1249,76 @@ html.light-theme .flag-warning {
         gap: 6px;
     }
 }
+
+/* Ready to Apply page (2026-09-22) -- a flat, real-URL-first list, no
+   automation of its own, matching the plan-classes.md convention of
+   reusing existing tokens (--bg-dark, --card-border, --radius-md, etc.)
+   rather than inventing new colors. */
+.ready-to-apply-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.ready-to-apply-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    background: var(--bg-dark);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+    flex-wrap: wrap;
+}
+
+.ready-to-apply-main {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    flex: 1 1 320px;
+}
+
+.ready-to-apply-title {
+    font-weight: 600;
+    font-size: 1.02rem;
+}
+
+.ready-to-apply-title a {
+    color: var(--text-primary);
+    text-decoration: none;
+}
+
+.ready-to-apply-title a:hover {
+    text-decoration: underline;
+}
+
+.ready-to-apply-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.ready-to-apply-attention {
+    font-style: italic;
+}
+
+.ready-to-apply-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+    .ready-to-apply-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .ready-to-apply-actions {
+        justify-content: space-between;
+    }
+}
