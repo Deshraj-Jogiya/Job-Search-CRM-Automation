@@ -22,7 +22,7 @@ one misclick away.
 import io
 import json
 import threading
-from urllib.parse import quote, urlencode
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -55,7 +55,6 @@ from ..services import (
     matching_service,
     outreach_service,
     page_fit_service,
-    queue_service,
     tailoring_service,
     wage_level_service,
 )
@@ -244,18 +243,6 @@ KANBAN_COLUMNS = (
 
 @router.get("", response_class=HTMLResponse)
 def jobs_page(request: Request, db: Session = Depends(get_db)):
-    """The single, unified hub page (2026-09-22) -- List / Daily Triage /
-    Review Queue / Ready to Apply as client-side-switched tabs on one
-    page, not four separate pages the user has to hunt through the nav
-    for. Real, direct user feedback: 'why give it separate nav buttons
-    instead put it in a toggle... let user choose'. Each tab's own
-    route (/jobs/review, /jobs/ready-to-apply, /queue) still exists and
-    still works -- they redirect here with the right tab pre-selected
-    (see their own docstrings) so old links/bookmarks don't break.
-    Kanban is deliberately NOT folded in here -- a real drag-and-drop
-    board is a different interaction than a list, not just another
-    filter/sort of the same one, and merging it in was real risk for
-    little gain."""
     applications = _load_active_applications(db)
     sources = db.query(JobSource).order_by(JobSource.name).all()
     keywords = db.query(SearchKeyword).order_by(SearchKeyword.keyword).all()
@@ -277,34 +264,6 @@ def jobs_page(request: Request, db: Session = Depends(get_db)):
     )
     settings = get_or_create_settings(db)
 
-    # Daily Triage tab's own dataset -- exact same call queue_page uses.
-    triage_tabs = queue_service.build_queue(db)
-
-    # Review Queue tab's own dataset -- exact same queries review_page uses.
-    pending = (
-        db.query(JobApplication)
-        .join(JobPosting)
-        .filter(JobApplication.status == "Pending Confirmation")
-        .order_by(JobApplication.confirmation_deadline.asc())
-        .all()
-    )
-    needs_review = (
-        db.query(JobApplication)
-        .join(JobPosting)
-        .filter(JobApplication.status == "Needs Review")
-        .order_by(JobApplication.created_at.desc())
-        .all()
-    )
-
-    # Ready to Apply tab's own dataset -- exact same query ready_to_apply_page uses.
-    ready_to_apply_rows = (
-        db.query(JobApplication, JobPosting)
-        .join(JobPosting, JobApplication.posting_id == JobPosting.id)
-        .filter(JobApplication.status == "Approved")
-        .order_by(JobPosting.first_seen_at.desc())
-        .all()
-    )
-
     return render(
         request,
         "jobs.html",
@@ -318,12 +277,6 @@ def jobs_page(request: Request, db: Session = Depends(get_db)):
             "target_companies": target_companies[:_TARGET_COMPANIES_PREVIEW_LIMIT],
             "target_companies_total": len(target_companies),
             "automation_enabled": settings.automation_enabled,
-            "triage_tabs": triage_tabs,
-            "skip_reasons": queue_service.SKIP_REASONS,
-            "pending": pending,
-            "needs_review": needs_review,
-            "ready_to_apply_rows": ready_to_apply_rows,
-            "active_tab": request.query_params.get("tab", "list"),
             "message": request.query_params.get("message"),
             "error": request.query_params.get("error"),
         },
@@ -514,16 +467,38 @@ def reactivate_location_exclusion(exclusion_id: int = Form(...), db: Session = D
     return _redirect(message=f"Re-added location exclusion '{ex.term}'.")
 
 
-@router.get("/review")
-def review_page(request: Request):
-    """Folded into the unified /jobs hub (2026-09-22) as the Review Queue
-    tab -- redirects there instead of rendering its own page now, so old
-    links/bookmarks still work, they just land pre-selected on the right
-    tab. Query params (message/error from the bulk approve/reject
-    actions below) are forwarded through."""
-    params = dict(request.query_params)
-    params["tab"] = "review"
-    return RedirectResponse(url=f"/jobs?{urlencode(params)}", status_code=303)
+@router.get("/review", response_class=HTMLResponse)
+def review_page(request: Request, db: Session = Depends(get_db)):
+    """Bulk review: the primary surface for processing volume. Pending
+    Confirmation (clean, safe to bulk) and Needs Review (flagged) are
+    kept in structurally separate sections/forms -- not just visually --
+    so a "select all" in one section can never sweep up a flagged item
+    that specifically needs individual judgment."""
+    pending = (
+        db.query(JobApplication)
+        .join(JobPosting)
+        .filter(JobApplication.status == "Pending Confirmation")
+        .order_by(JobApplication.confirmation_deadline.asc())
+        .all()
+    )
+    needs_review = (
+        db.query(JobApplication)
+        .join(JobPosting)
+        .filter(JobApplication.status == "Needs Review")
+        .order_by(JobApplication.created_at.desc())
+        .all()
+    )
+
+    return render(
+        request,
+        "review.html",
+        {
+            "pending": pending,
+            "needs_review": needs_review,
+            "message": request.query_params.get("message"),
+            "error": request.query_params.get("error"),
+        },
+    )
 
 
 def _bulk_process(db: Session, application_ids: list[int], action) -> tuple[int, list[str]]:
@@ -654,18 +629,40 @@ def kanban_page(request: Request, db: Session = Depends(get_db)):
     )
 
 
-@router.get("/ready-to-apply")
-def ready_to_apply_page(request: Request):
-    """Folded into the unified /jobs hub (2026-09-22) as the Ready to
-    Apply tab -- redirects there instead of rendering its own page now.
+@router.get("/ready-to-apply", response_class=HTMLResponse)
+def ready_to_apply_page(request: Request, db: Session = Depends(get_db)):
+    """Real gap found live 2026-09-22: every Approved application has a
+    real posting URL, but there was no single page that just lists them
+    with that link front and center -- finding one meant digging through
+    the full Jobs list or opening each detail page individually. Built
+    after retiring the VM's Playwright-based autofill (killed by real,
+    repeated failures: bot-detection flags, a hard-coded selector that
+    missed a whole Greenhouse layout, a shared VNC screen with no
+    taskbar) in favor of the browser extension, which needs a human to
+    actually open each real posting themselves -- this page is that
+    human's one stop to find them, freshest posting first so a stale,
+    likely-closed listing never gets worked before a fresh one.
+
     Registered BEFORE the /{application_id} catch-all -- Starlette
     matches routes in registration order, not by specificity, and this
     project has hit that exact shadowing bug once already (the Kanban
-    board's own route, see its own history), so this redirect route
-    stays even though it now does almost nothing itself."""
-    params = dict(request.query_params)
-    params["tab"] = "ready-to-apply"
-    return RedirectResponse(url=f"/jobs?{urlencode(params)}", status_code=303)
+    board's own route, see its own history)."""
+    rows = (
+        db.query(JobApplication, JobPosting)
+        .join(JobPosting, JobApplication.posting_id == JobPosting.id)
+        .filter(JobApplication.status == "Approved")
+        .order_by(JobPosting.first_seen_at.desc())
+        .all()
+    )
+    return render(
+        request,
+        "ready_to_apply.html",
+        {
+            "rows": rows,
+            "message": request.query_params.get("message"),
+            "error": request.query_params.get("error"),
+        },
+    )
 
 
 @router.get("/{application_id}", response_class=HTMLResponse)

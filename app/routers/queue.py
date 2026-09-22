@@ -7,27 +7,32 @@ link to the existing per-application detail page
 the real score/tailor/autofill/approve flow, no reason to duplicate it.
 """
 
-from urllib.parse import quote, urlencode
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..services import queue_service
+from ..templating import render
 
 router = APIRouter(prefix="/queue", tags=["queue"])
 
 
-@router.get("")
-def queue_page(request: Request):
-    """Folded into the unified /jobs hub (2026-09-22) as the Daily
-    Triage tab -- redirects there instead of rendering its own page
-    now, so old links/bookmarks still work, they just land
-    pre-selected on the right tab."""
-    params = dict(request.query_params)
-    params["tab"] = "triage"
-    return RedirectResponse(url=f"/jobs?{urlencode(params)}", status_code=303)
+@router.get("", response_class=HTMLResponse)
+def queue_page(request: Request, db: Session = Depends(get_db)):
+    tabs = queue_service.build_queue(db)
+    return render(
+        request,
+        "queue.html",
+        {
+            "tabs": tabs,
+            "skip_reasons": queue_service.SKIP_REASONS,
+            "message": request.query_params.get("message"),
+            "error": request.query_params.get("error"),
+        },
+    )
 
 
 @router.post("/{application_id}/skip")

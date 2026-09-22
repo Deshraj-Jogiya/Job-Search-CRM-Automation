@@ -14,18 +14,10 @@ env = Environment(loader=FileSystemLoader("app/templates"))
 
 
 def _base_context(**extra):
-    # 2026-09-22: jobs.html is now the unified hub (List/Daily Triage/
-    # Review Queue/Ready to Apply as one page's tabs, see the template's
-    # own docstring) -- these three extra keys are real context every
-    # render now needs, defaulted empty here so existing tests that only
-    # care about the List tab don't have to know about the other three.
     context = {
         "sources": [], "keywords": [], "seniority_exclusions": [], "location_exclusions": [],
         "target_companies": [], "target_companies_total": 0,
         "automation_enabled": True,
-        "triage_tabs": {"cap_exempt": [], "tier_ab": [], "everything_else": []},
-        "skip_reasons": [],
-        "pending": [], "needs_review": [], "ready_to_apply_rows": [],
         "message": None, "error": None,
         "csrf_token": "test-token", "static_version": "0", "is_authenticated": False,
     }
