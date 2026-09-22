@@ -133,13 +133,71 @@ def _upload_via_file_chooser(page: Page | Frame, attach_button_selector: str, fi
         return False
 
 
+def _label_file_input_by_ancestor_text(page: Page, input_index: int) -> str | None:
+    """Real bug found live 2026-09-22: the old selector-based upload path
+    below (`[aria-labelledby="upload-label-resume"] button:has-text
+    ("Attach")`) only matches ONE specific Greenhouse markup variant --
+    confirmed live it silently found zero matches on a real Checkr
+    posting (0 files attached, no exception raised, so nothing ever
+    flagged it). This mirrors a real gap the browser extension's own
+    content.js already hit and fixed independently (findFileInputLabelText,
+    walking up a bounded number of ancestors since a file input's own
+    label is often just the generic "Attach" button text, not the real
+    "Resume/CV" identifier) -- that fix was never backported to this,
+    the VM's separate Playwright-based autofill. Ported here: walk up
+    from the real <input type="file"> itself looking for ancestor text
+    that unambiguously names resume vs cover letter, stopping (returning
+    None, no guess) the moment an ancestor's text matches both -- same
+    conservative, never-guess posture as every other field-matcher in
+    this codebase."""
+    return page.locator('input[type="file"]').nth(input_index).evaluate(
+        """
+        el => {
+            let node = el;
+            for (let i = 0; i < 6 && node; i++) {
+                node = node.parentElement;
+                if (!node) break;
+                const t = (node.innerText || '').toLowerCase();
+                const hasResume = /resume|\\bcv\\b/.test(t);
+                const hasCoverLetter = /cover\\s*letter/.test(t);
+                if (hasResume && hasCoverLetter) return null;
+                if (hasResume) return 'resume';
+                if (hasCoverLetter) return 'cover_letter';
+            }
+            return null;
+        }
+        """
+    )
+
+
 def _upload_files(page: Page, resume_path: str, cover_letter_path: str | None) -> list[str]:
     uploaded = []
-    if _upload_via_file_chooser(
+    # Primary path: find the real <input type="file"> directly and set
+    # its files via Playwright's set_input_files (no click/file-chooser
+    # dance needed -- works even on a visually-hidden native input, the
+    # same real technique the extension's DataTransfer approach relies
+    # on, minus needing to build a File object by hand since Playwright
+    # has this natively).
+    try:
+        file_inputs = page.locator('input[type="file"]')
+        for i in range(file_inputs.count()):
+            kind = _label_file_input_by_ancestor_text(page, i)
+            if kind == "resume" and "resume" not in uploaded:
+                file_inputs.nth(i).set_input_files(resume_path)
+                uploaded.append("resume")
+            elif kind == "cover_letter" and cover_letter_path and "cover_letter" not in uploaded:
+                file_inputs.nth(i).set_input_files(cover_letter_path)
+                uploaded.append("cover_letter")
+    except Exception:
+        pass  # falls through to the legacy selector path below
+    # Fallback: the older, narrower markup pattern this originally only
+    # supported -- kept as a second attempt, not replaced, since it's a
+    # real pattern that still occurs on some postings.
+    if "resume" not in uploaded and _upload_via_file_chooser(
         page, '[aria-labelledby="upload-label-resume"] button:has-text("Attach")', resume_path
     ):
         uploaded.append("resume")
-    if cover_letter_path and _upload_via_file_chooser(
+    if cover_letter_path and "cover_letter" not in uploaded and _upload_via_file_chooser(
         page, '[aria-labelledby="upload-label-cover_letter"] button:has-text("Attach")', cover_letter_path
     ):
         uploaded.append("cover_letter")
