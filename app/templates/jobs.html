@@ -306,51 +306,54 @@
     </section>
 </details>
 
+{#
+    Real gap found live 2026-09-22, right after deploying the fix that
+    removed a 100-row recency cap so real Approved/Needs-Review
+    applications stopped silently disappearing (see _load_active_
+    applications's own docstring): that same fix let these four groups
+    grow unbounded -- confirmed live, "Needs Attention" rendered 251
+    full cards, "In Progress" 203. Same cap-at-50-plus-show-all pattern
+    already used on the Review/Daily-Triage tabs, factored into one
+    macro instead of repeating it four times.
+#}
+{% macro job_group(applications, group_id, empty_message) %}
+{% if applications %}
+<ul class="job-list">
+    {% for app in applications %}
+    {% if loop.index <= 50 %}{{ job_card(app) }}
+    {% else %}<li hidden class="job-group-overflow-{{ group_id }}">{{ job_card(app) }}</li>
+    {% endif %}
+    {% endfor %}
+</ul>
+{% if applications|length > 50 %}
+<button type="button" class="btn-link job-group-show-all" data-group-id="{{ group_id }}">Show all {{ applications|length }}, not just the first 50</button>
+{% endif %}
+{% else %}
+<p class="muted-note">{{ empty_message }}</p>
+{% endif %}
+{% endmacro %}
+
 <section class="variant-block">
     <h2>Job Postings ({{ applications_total }})</h2>
 
     <details class="sub-panel" open>
         <summary>Needs Attention -- {{ application_groups.needs_attention|length }}</summary>
-        {% if application_groups.needs_attention %}
-        <ul class="job-list">
-            {% for app in application_groups.needs_attention %}{{ job_card(app) }}{% endfor %}
-        </ul>
-        {% else %}
-        <p class="muted-note">Nothing waiting on you right now.</p>
-        {% endif %}
+        {{ job_group(application_groups.needs_attention, "needs-attention", "Nothing waiting on you right now.") }}
     </details>
 
     <details class="sub-panel" open>
         <summary>In Progress -- {{ application_groups.in_progress|length }}</summary>
-        {% if application_groups.in_progress %}
-        <ul class="job-list">
-            {% for app in application_groups.in_progress %}{{ job_card(app) }}{% endfor %}
-        </ul>
-        {% else %}
-        <p class="muted-note">Nothing currently being scored or tailored.</p>
-        {% endif %}
+        {{ job_group(application_groups.in_progress, "in-progress", "Nothing currently being scored or tailored.") }}
     </details>
 
     <details class="sub-panel" open>
         <summary>Applied &amp; Waiting -- {{ application_groups.applied|length }}</summary>
-        {% if application_groups.applied %}
-        <ul class="job-list">
-            {% for app in application_groups.applied %}{{ job_card(app) }}{% endfor %}
-        </ul>
-        {% else %}
-        <p class="muted-note">Nothing submitted yet.</p>
-        {% endif %}
+        {{ job_group(application_groups.applied, "applied", "Nothing submitted yet.") }}
     </details>
 
     <details class="sub-panel">
         <summary>Closed -- {{ application_groups.closed|length }}</summary>
-        {% if application_groups.closed %}
-        <ul class="job-list">
-            {% for app in application_groups.closed %}{{ job_card(app) }}{% endfor %}
-        </ul>
-        {% else %}
-        <p class="muted-note">Nothing closed out yet.</p>
-        {% endif %}
+        {{ job_group(application_groups.closed, "closed", "Nothing closed out yet.") }}
     </details>
 
     {% if applications_total == 0 %}
@@ -658,6 +661,14 @@
     document.querySelectorAll(".queue-show-all").forEach(function (btn) {
         btn.addEventListener("click", function () {
             document.querySelectorAll(".queue-overflow-row-" + btn.dataset.tableId).forEach(function (row) {
+                row.hidden = false;
+            });
+            btn.remove();
+        });
+    });
+    document.querySelectorAll(".job-group-show-all").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            document.querySelectorAll(".job-group-overflow-" + btn.dataset.groupId).forEach(function (row) {
                 row.hidden = false;
             });
             btn.remove();
