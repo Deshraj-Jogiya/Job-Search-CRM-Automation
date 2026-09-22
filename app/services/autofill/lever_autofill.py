@@ -171,29 +171,38 @@ def _draft_custom_answers(questions: list[dict], profile: dict, jd_text: str, co
             lines.append(f"{i + 1}. {q['label']}")
 
     llm = get_llm_provider()
-    raw = llm.complete_json(
-        system=(
-            "You are a careful, honest job-application assistant filling out a real application on a "
-            "real candidate's behalf. You return only raw JSON."
-        ),
-        prompt=(
-            "Draft a short, honest answer to each screening question below, grounded ONLY in the "
-            "candidate's real profile. Never invent experience, credentials, dates, or facts not present "
-            "in the profile. If a question offers a fixed list of choices, answer with the text of exactly "
-            "one of those choices, as close to verbatim as possible. If a question genuinely can't be "
-            "answered honestly from the profile, answer with exactly '[REVIEW NEEDED]' instead of "
-            "guessing.\n\n"
-            f"Candidate profile:\n{json.dumps(profile, indent=2)}\n\n"
-            f"Target company: {company_name}\n"
-            f"Job description:\n{jd_text[:3000]}\n\n"
-            f"Questions (answer in this exact order):\n"
-            + "\n".join(lines)
-            + "\n\n"
-            'Respond with EXACTLY this JSON shape: {"answers": ["answer 1", "answer 2", ...]}\n'
-            "Do not wrap the output in markdown code fences."
-        ),
-        temperature=0.4,
-    )
+    try:
+        # Same real gap fixed 2026-09-22 in greenhouse_autofill.py's
+        # sibling function -- the call itself wasn't guarded, only the
+        # JSON-parsing after it. A real API-level failure (confirmed
+        # live: exhausted metered-API credit balance) must degrade to
+        # "leave these fields unanswered", not kill an otherwise-working
+        # autofill session over one LLM call.
+        raw = llm.complete_json(
+            system=(
+                "You are a careful, honest job-application assistant filling out a real application on a "
+                "real candidate's behalf. You return only raw JSON."
+            ),
+            prompt=(
+                "Draft a short, honest answer to each screening question below, grounded ONLY in the "
+                "candidate's real profile. Never invent experience, credentials, dates, or facts not present "
+                "in the profile. If a question offers a fixed list of choices, answer with the text of exactly "
+                "one of those choices, as close to verbatim as possible. If a question genuinely can't be "
+                "answered honestly from the profile, answer with exactly '[REVIEW NEEDED]' instead of "
+                "guessing.\n\n"
+                f"Candidate profile:\n{json.dumps(profile, indent=2)}\n\n"
+                f"Target company: {company_name}\n"
+                f"Job description:\n{jd_text[:3000]}\n\n"
+                f"Questions (answer in this exact order):\n"
+                + "\n".join(lines)
+                + "\n\n"
+                'Respond with EXACTLY this JSON shape: {"answers": ["answer 1", "answer 2", ...]}\n'
+                "Do not wrap the output in markdown code fences."
+            ),
+            temperature=0.4,
+        )
+    except Exception:
+        return {}
     try:
         parsed = parse_json_response(raw)
     except (json.JSONDecodeError, AttributeError):

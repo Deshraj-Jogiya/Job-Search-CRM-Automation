@@ -180,28 +180,42 @@ def _draft_custom_answers(questions: list[dict], profile: dict, jd_text: str, co
         return {}
 
     llm = get_llm_provider()
-    raw = llm.complete_json(
-        system=(
-            "You are a careful, honest job-application assistant filling out a real application on a "
-            "real candidate's behalf. You return only raw JSON."
-        ),
-        prompt=(
-            "Draft a short, honest answer to each screening question below, grounded ONLY in the "
-            "candidate's real profile. Never invent experience, credentials, dates, or facts not present "
-            "in the profile. If a question genuinely can't be answered honestly from the profile (e.g. a "
-            "yes/no about something the profile doesn't state), answer with exactly '[REVIEW NEEDED]' "
-            "instead of guessing.\n\n"
-            f"Candidate profile:\n{json.dumps(profile, indent=2)}\n\n"
-            f"Target company: {company_name}\n"
-            f"Job description:\n{jd_text[:3000]}\n\n"
-            f"Questions (answer in this exact order):\n"
-            + "\n".join(f"{i + 1}. {q['label']}" for i, q in enumerate(questions))
-            + "\n\n"
-            'Respond with EXACTLY this JSON shape: {"answers": ["answer 1", "answer 2", ...]}\n'
-            "Do not wrap the output in markdown code fences."
-        ),
-        temperature=0.4,
-    )
+    try:
+        # Real bug found live 2026-09-22: this call itself wasn't
+        # guarded, only the JSON-parsing after it was -- a real API-level
+        # failure (confirmed live: the metered Anthropic key's credit
+        # balance exhausted, a plain 400 from the SDK) propagated
+        # uncaught all the way to _run_autofill_background's broad
+        # except, which kills the ENTIRE in-progress autofill session
+        # over ONE field, even though every other field (mechanical,
+        # no LLM needed) had already filled successfully. A transient
+        # LLM failure on the custom-question draft should degrade to
+        # "leave these particular fields unanswered for manual review",
+        # not blow up a real, working autofill run.
+        raw = llm.complete_json(
+            system=(
+                "You are a careful, honest job-application assistant filling out a real application on a "
+                "real candidate's behalf. You return only raw JSON."
+            ),
+            prompt=(
+                "Draft a short, honest answer to each screening question below, grounded ONLY in the "
+                "candidate's real profile. Never invent experience, credentials, dates, or facts not present "
+                "in the profile. If a question genuinely can't be answered honestly from the profile (e.g. a "
+                "yes/no about something the profile doesn't state), answer with exactly '[REVIEW NEEDED]' "
+                "instead of guessing.\n\n"
+                f"Candidate profile:\n{json.dumps(profile, indent=2)}\n\n"
+                f"Target company: {company_name}\n"
+                f"Job description:\n{jd_text[:3000]}\n\n"
+                f"Questions (answer in this exact order):\n"
+                + "\n".join(f"{i + 1}. {q['label']}" for i, q in enumerate(questions))
+                + "\n\n"
+                'Respond with EXACTLY this JSON shape: {"answers": ["answer 1", "answer 2", ...]}\n'
+                "Do not wrap the output in markdown code fences."
+            ),
+            temperature=0.4,
+        )
+    except Exception:
+        return {}
     try:
         parsed = parse_json_response(raw)
     except (json.JSONDecodeError, AttributeError):
