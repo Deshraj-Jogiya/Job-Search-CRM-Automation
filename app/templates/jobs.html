@@ -12,25 +12,6 @@
 <div class="flash flash-error" role="alert">{{ error }}</div>
 {% endif %}
 
-{#
-    Unified hub (2026-09-22), replacing 4 separate pages (List, Daily
-    Triage, Review Queue, Ready to Apply) with one page and a
-    client-side tab switcher, styled like the light/dark toggle --
-    real, direct user feedback: "why give it separate nav buttons
-    instead put it in a toggle... let user choose". Old routes
-    (/jobs/review, /jobs/ready-to-apply, /queue) still work, they
-    redirect here with the right tab pre-selected via ?tab=. Kanban
-    stays a separate page -- a drag-and-drop board is a different
-    interaction, not just another filter/sort of the same list.
-#}
-<div class="tab-bar" role="tablist" aria-label="Jobs view">
-    <button type="button" class="tab-btn" data-tab="list" role="tab">List</button>
-    <button type="button" class="tab-btn" data-tab="triage" role="tab">Daily Triage</button>
-    <button type="button" class="tab-btn" data-tab="review" role="tab">Review Queue</button>
-    <button type="button" class="tab-btn" data-tab="ready-to-apply" role="tab">Ready to Apply</button>
-</div>
-
-<div class="tab-panel" data-tab-panel="list">
 {% macro job_card(app) %}
 <li class="job-item">
     <div class="job-item-header">
@@ -154,98 +135,107 @@
             {% endfor %}
         </ul>
         {% else %}
-        <p class="muted-note" role="alert">No custom keywords configured -- search falls back to 5 generic default terms.</p>
+        <p class="muted-note" role="alert">No custom keywords configured -- search falls back to 5 generic default
+            titles rather than anything tailored to you. This should fill in automatically from your active profile
+            the next time a search runs; if it stays generic, set up a profile on the Profile page first.</p>
         {% endif %}
         {% if paused_keywords %}
-        <details class="sub-panel">
-            <summary>Paused ({{ paused_keywords|length }})</summary>
-            <form method="post" action="/jobs/keywords/reactivate" class="inline-form-row">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <label class="visually-hidden" for="reactivate-keyword-select">Reactivate a paused keyword</label>
-                <select id="reactivate-keyword-select" name="keyword_id">
-                    {% for kw in paused_keywords %}<option value="{{ kw.id }}">{{ kw.keyword }}</option>{% endfor %}
-                </select>
-                <button type="submit">Reactivate</button>
-            </form>
-        </details>
+        <form method="post" action="/jobs/keywords/reactivate" class="inline-form-row">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label class="visually-hidden" for="paused-keyword-select">Paused keyword</label>
+            <select id="paused-keyword-select" name="keyword_id">
+                {% for kw in paused_keywords %}
+                <option value="{{ kw.id }}">{{ kw.keyword }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn-secondary">Re-add</button>
+        </form>
         {% endif %}
     </section>
 
     <section class="settings-panel">
         <h2>Seniority Exclusions</h2>
+        <p class="muted-note">Title-level terms to exclude from direct company job boards (Greenhouse/Lever/Ashby/Recruitee/Personio) --
+            a company's own board has no seniority filter, so this is what keeps a Staff/Director/VP-level posting
+            from ever reaching you if that's not the level you're targeting.</p>
         <form method="post" action="/jobs/seniority-exclusions" class="inline-form-row">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <label class="visually-hidden" for="seniority-input">Term to exclude, e.g. "Staff"</label>
-            <input type="text" id="seniority-input" name="term" placeholder='e.g. "Staff"' required>
+            <label class="visually-hidden" for="seniority-exclusion-input">Seniority exclusion term</label>
+            <input type="text" id="seniority-exclusion-input" name="term" placeholder="e.g. Staff" required>
             <button type="submit">Add</button>
         </form>
         {% set active_seniority = seniority_exclusions|selectattr('is_active')|list %}
         {% set paused_seniority = seniority_exclusions|rejectattr('is_active')|list %}
         {% if active_seniority %}
         <ul class="tag-chip-list">
-            {% for term in active_seniority %}
+            {% for ex in active_seniority %}
             <li class="tag-chip tag-chip-active">
-                <form method="post" action="/jobs/seniority-exclusions/{{ term.id }}/toggle">
+                <form method="post" action="/jobs/seniority-exclusions/{{ ex.id }}/toggle">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <button type="submit" class="tag-chip-label" title="Click to pause">{{ term.term }}</button>
+                    <button type="submit" class="tag-chip-label" title="Click to pause">{{ ex.term }}</button>
                 </form>
             </li>
             {% endfor %}
         </ul>
         {% else %}
-        <p class="muted-note">None configured -- nothing filtered on seniority yet.</p>
+        <p class="muted-note">No seniority exclusions configured -- these boards won't filter by level.
+            This should fill in automatically from your active profile the next time a search runs.</p>
         {% endif %}
         {% if paused_seniority %}
-        <details class="sub-panel">
-            <summary>Paused ({{ paused_seniority|length }})</summary>
-            <form method="post" action="/jobs/seniority-exclusions/reactivate" class="inline-form-row">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <label class="visually-hidden" for="reactivate-seniority-select">Reactivate a paused exclusion</label>
-                <select id="reactivate-seniority-select" name="exclusion_id">
-                    {% for term in paused_seniority %}<option value="{{ term.id }}">{{ term.term }}</option>{% endfor %}
-                </select>
-                <button type="submit">Reactivate</button>
-            </form>
-        </details>
+        <form method="post" action="/jobs/seniority-exclusions/reactivate" class="inline-form-row">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label class="visually-hidden" for="paused-seniority-select">Paused seniority exclusion</label>
+            <select id="paused-seniority-select" name="exclusion_id">
+                {% for ex in paused_seniority %}
+                <option value="{{ ex.id }}">{{ ex.term }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn-secondary">Re-add</button>
+        </form>
         {% endif %}
     </section>
 
     <section class="settings-panel">
         <h2>Location Exclusions</h2>
+        <p class="muted-note">Location terms (countries/regions) to exclude everywhere, across every source -- a
+            company's own direct job board (Greenhouse/Lever/Ashby/Recruitee/Personio) has no location filter at all,
+            so without this, roles open only in another country can reach scoring/tailoring even though you're not
+            eligible for them. The base search location for Adzuna/LinkedIn is set separately under Settings on the
+            dashboard.</p>
         <form method="post" action="/jobs/location-exclusions" class="inline-form-row">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <label class="visually-hidden" for="location-input">Location to exclude</label>
-            <input type="text" id="location-input" name="term" placeholder="e.g. India" required>
+            <label class="visually-hidden" for="location-exclusion-input">Location exclusion term</label>
+            <input type="text" id="location-exclusion-input" name="term" placeholder="e.g. India" required>
             <button type="submit">Add</button>
         </form>
         {% set active_location = location_exclusions|selectattr('is_active')|list %}
         {% set paused_location = location_exclusions|rejectattr('is_active')|list %}
         {% if active_location %}
         <ul class="tag-chip-list">
-            {% for term in active_location %}
+            {% for ex in active_location %}
             <li class="tag-chip tag-chip-active">
-                <form method="post" action="/jobs/location-exclusions/{{ term.id }}/toggle">
+                <form method="post" action="/jobs/location-exclusions/{{ ex.id }}/toggle">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <button type="submit" class="tag-chip-label" title="Click to pause">{{ term.term }}</button>
+                    <button type="submit" class="tag-chip-label" title="Click to pause">{{ ex.term }}</button>
                 </form>
             </li>
             {% endfor %}
         </ul>
         {% else %}
-        <p class="muted-note">None configured -- nothing filtered on location yet.</p>
+        <p class="muted-note">No location exclusions configured -- search will not filter by country. This should
+            fill in with a default non-US list the next time a search runs.</p>
         {% endif %}
         {% if paused_location %}
-        <details class="sub-panel">
-            <summary>Paused ({{ paused_location|length }})</summary>
-            <form method="post" action="/jobs/location-exclusions/reactivate" class="inline-form-row">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <label class="visually-hidden" for="reactivate-location-select">Reactivate a paused exclusion</label>
-                <select id="reactivate-location-select" name="exclusion_id">
-                    {% for term in paused_location %}<option value="{{ term.id }}">{{ term.term }}</option>{% endfor %}
-                </select>
-                <button type="submit">Reactivate</button>
-            </form>
-        </details>
+        <form method="post" action="/jobs/location-exclusions/reactivate" class="inline-form-row">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label class="visually-hidden" for="paused-location-select">Paused location exclusion</label>
+            <select id="paused-location-select" name="exclusion_id">
+                {% for ex in paused_location %}
+                <option value="{{ ex.id }}">{{ ex.term }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn-secondary">Re-add</button>
+        </form>
         {% endif %}
     </section>
 </details>
@@ -306,373 +296,55 @@
     </section>
 </details>
 
-{#
-    Real gap found live 2026-09-22, right after deploying the fix that
-    removed a 100-row recency cap so real Approved/Needs-Review
-    applications stopped silently disappearing (see _load_active_
-    applications's own docstring): that same fix let these four groups
-    grow unbounded -- confirmed live, "Needs Attention" rendered 251
-    full cards, "In Progress" 203. Same cap-at-50-plus-show-all pattern
-    already used on the Review/Daily-Triage tabs, factored into one
-    macro instead of repeating it four times.
-#}
-{% macro job_group(applications, group_id, empty_message) %}
-{% if applications %}
-<ul class="job-list">
-    {% for app in applications %}
-    {% if loop.index <= 50 %}{{ job_card(app) }}
-    {% else %}<li hidden class="job-group-overflow-{{ group_id }}">{{ job_card(app) }}</li>
-    {% endif %}
-    {% endfor %}
-</ul>
-{% if applications|length > 50 %}
-<button type="button" class="btn-link job-group-show-all" data-group-id="{{ group_id }}">Show all {{ applications|length }}, not just the first 50</button>
-{% endif %}
-{% else %}
-<p class="muted-note">{{ empty_message }}</p>
-{% endif %}
-{% endmacro %}
-
 <section class="variant-block">
     <h2>Job Postings ({{ applications_total }})</h2>
 
     <details class="sub-panel" open>
         <summary>Needs Attention -- {{ application_groups.needs_attention|length }}</summary>
-        {{ job_group(application_groups.needs_attention, "needs-attention", "Nothing waiting on you right now.") }}
+        {% if application_groups.needs_attention %}
+        <ul class="job-list">
+            {% for app in application_groups.needs_attention %}{{ job_card(app) }}{% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted-note">Nothing waiting on you right now.</p>
+        {% endif %}
     </details>
 
     <details class="sub-panel" open>
         <summary>In Progress -- {{ application_groups.in_progress|length }}</summary>
-        {{ job_group(application_groups.in_progress, "in-progress", "Nothing currently being scored or tailored.") }}
+        {% if application_groups.in_progress %}
+        <ul class="job-list">
+            {% for app in application_groups.in_progress %}{{ job_card(app) }}{% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted-note">Nothing currently being scored or tailored.</p>
+        {% endif %}
     </details>
 
     <details class="sub-panel" open>
         <summary>Applied &amp; Waiting -- {{ application_groups.applied|length }}</summary>
-        {{ job_group(application_groups.applied, "applied", "Nothing submitted yet.") }}
+        {% if application_groups.applied %}
+        <ul class="job-list">
+            {% for app in application_groups.applied %}{{ job_card(app) }}{% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted-note">Nothing submitted yet.</p>
+        {% endif %}
     </details>
 
     <details class="sub-panel">
         <summary>Closed -- {{ application_groups.closed|length }}</summary>
-        {{ job_group(application_groups.closed, "closed", "Nothing closed out yet.") }}
+        {% if application_groups.closed %}
+        <ul class="job-list">
+            {% for app in application_groups.closed %}{{ job_card(app) }}{% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted-note">Nothing closed out yet.</p>
+        {% endif %}
     </details>
 
     {% if applications_total == 0 %}
     <p class="muted-note">No postings found yet -- click "Search Now" above to start, or wait for the next scheduled search.</p>
     {% endif %}
 </section>
-</div>
-
-<div class="tab-panel" data-tab-panel="triage">
-    <p class="muted-note">
-        Every application that isn't finished yet, sorted by score and grouped by sponsorship likelihood -- this
-        cuts across the pipeline to help you decide what's worth pursuing, it isn't a step in it. Approve/reject
-        flow lives on the Review Queue tab instead.
-    </p>
-
-    {% set component_labels = {
-        "ai_profile_fit": "AI Profile Fit",
-        "sponsorship_history": "Sponsorship History",
-        "wage_level_fit": "Wage-Level Fit",
-        "role_title_match": "Role/Title Match",
-        "worksite_clarity": "Worksite Clarity",
-        "posting_recency": "Posting Recency",
-        "sponsorship_signal_bonus": "Sponsorship Signal",
-    } %}
-
-    {% macro queue_table(applications, empty_message, table_id) %}
-    {% if applications %}
-    <div class="table-scroll">
-        <table class="review-table">
-            <thead>
-                <tr>
-                    <th>Title</th>
-                    <th>Company</th>
-                    <th>Tier</th>
-                    <th>Wage Level</th>
-                    <th>Score</th>
-                    <th>Posted</th>
-                    <th>Signals</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for app in applications %}
-                <tr{% if loop.index > 50 %} hidden class="queue-overflow-row-{{ table_id }}"{% endif %}>
-                    <td><a href="/jobs/{{ app.id }}">{{ app.posting.job_title }}</a></td>
-                    <td>{{ app.posting.company_name_raw }}</td>
-                    <td>
-                        {% if app.posting.company %}
-                        <span class="badge{{ ' badge-active' if app.posting.company.tier in ('A', 'B') else '' }}">
-                            {{ app.posting.company.tier or 'unknown' }}{{ ' (cap-exempt)' if app.posting.company.is_cap_exempt else '' }}
-                        </span>
-                        {% else %}
-                        <span class="badge">unknown</span>
-                        {% endif %}
-                    </td>
-                    <td>{{ app.posting.company.max_wage_level_15xx if app.posting.company else '--' }}</td>
-                    <td>
-                        {% if app.score_breakdown and app.score_breakdown.components %}
-                        <details class="score-breakdown">
-                            <summary>{{ app.score_breakdown.total }}</summary>
-                            <table class="score-breakdown-table">
-                                {% for key, c in app.score_breakdown.components.items() %}
-                                <tr>
-                                    <td>{{ component_labels.get(key, key) }}</td>
-                                    <td>{{ c.raw if c.raw is not none else '--' }}</td>
-                                    <td>{{ c.contribution }}/{{ c.weight }}</td>
-                                </tr>
-                                {% endfor %}
-                            </table>
-                        </details>
-                        {% else %}
-                        {{ app.match_score }}
-                        {% endif %}
-                    </td>
-                    <td>{{ app.posting.first_seen_at.strftime("%Y-%m-%d") if app.posting.first_seen_at else "--" }}</td>
-                    <td>
-                        {% if app.posting.sponsorship_signal %}<span class="badge badge-active">sponsors</span>{% endif %}
-                        {% if app.posting.worksite_ambiguous %}<span class="badge">worksite ambiguous</span>{% endif %}
-                    </td>
-                    <td class="inline-form-row">
-                        <a href="/jobs/{{ app.id }}" class="btn-secondary">Apply</a>
-                        <form method="post" action="/queue/{{ app.id }}/skip" class="inline-form">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <select name="reason" aria-label="Skip reason">
-                                {% for r in skip_reasons %}<option value="{{ r }}">{{ r.replace('_', ' ') }}</option>{% endfor %}
-                            </select>
-                            <button type="submit" class="btn-secondary">Skip</button>
-                        </form>
-                        <form method="post" action="/queue/{{ app.id }}/not-a-fit" class="inline-form">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <select name="reason" aria-label="Not a fit reason">
-                                {% for r in skip_reasons %}<option value="{{ r }}">{{ r.replace('_', ' ') }}</option>{% endfor %}
-                            </select>
-                            <button type="submit" class="btn-danger">Not a Fit</button>
-                        </form>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    {% if applications|length > 50 %}
-    <button type="button" class="btn-link queue-show-all" data-table-id="{{ table_id }}">Show all {{ applications|length }}, not just the top 50</button>
-    {% endif %}
-    {% else %}
-    <p class="muted-note">{{ empty_message }}</p>
-    {% endif %}
-    {% endmacro %}
-
-    <section class="variant-block">
-        <h2>Cap-Exempt ({{ triage_tabs.cap_exempt|length }})</h2>
-        <p class="muted-note">
-            Universities and nonprofit/government research orgs -- file year-round, no lottery. Highest-probability
-            lane.
-        </p>
-        {{ queue_table(triage_tabs.cap_exempt, "Nothing here right now.", "cap-exempt") }}
-    </section>
-
-    <section class="variant-block">
-        <h2>Tier A/B ({{ triage_tabs.tier_ab|length }})</h2>
-        <p class="muted-note">Proven sponsors, cap-subject.</p>
-        {{ queue_table(triage_tabs.tier_ab, "Nothing here right now.", "tier-ab") }}
-    </section>
-
-    <section class="variant-block">
-        <h2>Everything Else ({{ triage_tabs.everything_else|length }})</h2>
-        <p class="muted-note">Tier C/X or unknown sponsorship history -- still worth reviewing, just lower-odds.</p>
-        {{ queue_table(triage_tabs.everything_else, "Nothing here right now.", "everything-else") }}
-    </section>
-</div>
-
-<div class="tab-panel" data-tab-panel="review">
-    <section class="variant-block">
-        <h2>Ready for Bulk Review ({{ pending|length }})</h2>
-        <p class="muted-note">Clean matches -- safe to select-all and process together.</p>
-        {% if pending %}
-        <form method="post">
-            <div class="table-scroll">
-                <table class="review-table">
-                    <thead>
-                        <tr>
-                            <th><input type="checkbox" onclick="toggleAll('pending-cb', this.checked)" aria-label="Select all ready-for-review applications"></th>
-                            <th>Company</th>
-                            <th>Title</th>
-                            <th>Score</th>
-                            <th>Auto-proceeds</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for app in pending %}
-                        <tr>
-                            <td><input type="checkbox" class="pending-cb" name="application_ids" value="{{ app.id }}" aria-label="Select {{ app.posting.job_title }} at {{ app.posting.company_name_raw }}"></td>
-                            <td>{{ app.posting.company_name_raw }}</td>
-                            <td><a href="/jobs/{{ app.id }}">{{ app.posting.job_title }}</a></td>
-                            <td>{{ app.match_score }}%</td>
-                            <td>{{ app.confirmation_deadline.strftime("%Y-%m-%d %H:%M") if app.confirmation_deadline else "--" }} UTC</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <div class="pending-actions">
-                <button type="submit" formaction="/jobs/review/approve">Approve Selected</button>
-                <button type="submit" formaction="/jobs/review/reject" class="btn-danger">Reject Selected</button>
-            </div>
-        </form>
-        {% else %}
-        <p class="muted-note">Nothing waiting here right now.</p>
-        {% endif %}
-    </section>
-
-    <section class="variant-block">
-        <h2>Needs Review -- Flagged ({{ needs_review|length }})</h2>
-        <p class="muted-note">
-            These were flagged (tailoring fabrication warning, or a scam-pattern match) and have no timeout --
-            deliberately kept separate from bulk selection above so a habit of "select all" can't wave through
-            something that needs individual judgment. Open each one to see why before deciding.
-        </p>
-        {% if needs_review %}
-        <form method="post">
-            <div class="table-scroll">
-                <table class="review-table">
-                    <thead>
-                        <tr>
-                            <th><input type="checkbox" onclick="toggleAll('review-cb', this.checked)" aria-label="Select all flagged applications"></th>
-                            <th>Company</th>
-                            <th>Title</th>
-                            <th>Flag</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for app in needs_review %}
-                        <tr{% if loop.index > 50 %} hidden class="needs-review-overflow-row"{% endif %}>
-                            <td><input type="checkbox" class="review-cb" name="application_ids" value="{{ app.id }}" aria-label="Select {{ app.posting.job_title }} at {{ app.posting.company_name_raw }}"></td>
-                            <td>{{ app.posting.company_name_raw }}</td>
-                            <td><a href="/jobs/{{ app.id }}">{{ app.posting.job_title }}</a></td>
-                            <td class="flash-error-inline">{{ app.attention_reason or (app.posting.scam_flag_reason if app.posting else "") }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% if needs_review|length > 50 %}
-            <button type="button" class="btn-link" id="needs-review-show-all">Show all {{ needs_review|length }}, not just the newest 50</button>
-            {% endif %}
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <div class="pending-actions">
-                <button type="submit" formaction="/jobs/review/approve">Approve Selected</button>
-                <button type="submit" formaction="/jobs/review/reject" class="btn-danger">Reject Selected</button>
-            </div>
-        </form>
-        {% else %}
-        <p class="muted-note">Nothing flagged right now.</p>
-        {% endif %}
-    </section>
-</div>
-
-<div class="tab-panel" data-tab-panel="ready-to-apply">
-    <p class="muted-note">
-        Every Approved application, freshest posting first. Open the real posting yourself and let the
-        Career Pilot browser extension fill it, this page doesn't run any automation itself. Mark it applied here
-        once you've submitted, so it drops off this list.
-    </p>
-
-    <div class="ready-to-apply-list">
-        {% for application, posting in ready_to_apply_rows %}
-        <div class="ready-to-apply-row" data-application-id="{{ application.id }}">
-            <div class="ready-to-apply-main">
-                <div class="ready-to-apply-title">
-                    <a href="/jobs/{{ application.id }}">{{ posting.job_title }}</a>
-                    <span class="muted-note">at {{ posting.company_name_raw }}</span>
-                </div>
-                <div class="ready-to-apply-meta">
-                    {% if application.match_score %}<span class="badge badge-active">{{ application.match_score }}% match</span>{% endif %}
-                    <span class="badge">{{ posting.source }}</span>
-                    <span class="muted-note">first seen {{ posting.first_seen_at.strftime("%Y-%m-%d") }}</span>
-                    {% if application.attention_reason %}
-                    <span class="flag-warning" title="{{ application.attention_reason }}">needs a look before you open it</span>
-                    {% endif %}
-                </div>
-                {% if application.attention_reason %}
-                <div class="muted-note ready-to-apply-attention">{{ application.attention_reason }}</div>
-                {% endif %}
-            </div>
-            <div class="ready-to-apply-actions">
-                {% if posting.job_url %}
-                <a href="{{ posting.job_url }}" target="_blank" rel="noopener" class="btn-primary">Open real posting ↗</a>
-                {% else %}
-                <span class="muted-note">no posting URL on file</span>
-                {% endif %}
-                <form method="post" action="/jobs/{{ application.id }}/mark-applied" class="inline-form">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <button type="submit" class="btn-secondary">Mark Applied</button>
-                </form>
-            </div>
-        </div>
-        {% else %}
-        <p class="muted-note">Nothing Approved right now.</p>
-        {% endfor %}
-    </div>
-</div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-    // Tab switching -- client-side only, no reload, same persistence
-    // pattern as theme.js's light/dark toggle (localStorage, restored
-    // on load). ?tab= in the URL (used by the redirects from the old
-    // /jobs/review, /jobs/ready-to-apply, /queue routes) wins over a
-    // saved preference, so a bookmark/link always lands where it says.
-    (function () {
-        var tabBtns = document.querySelectorAll(".tab-btn");
-        var panels = document.querySelectorAll(".tab-panel");
-        function activate(tab) {
-            tabBtns.forEach(function (btn) {
-                btn.classList.toggle("tab-btn-active", btn.dataset.tab === tab);
-            });
-            panels.forEach(function (panel) {
-                panel.hidden = panel.dataset.tabPanel !== tab;
-            });
-            try { localStorage.setItem("jobsActiveTab", tab); } catch (e) { /* unavailable -- just won't persist */ }
-        }
-        var urlTab = new URLSearchParams(window.location.search).get("tab");
-        var saved = null;
-        try { saved = localStorage.getItem("jobsActiveTab"); } catch (e) { /* unavailable */ }
-        activate(urlTab || saved || "list");
-        tabBtns.forEach(function (btn) {
-            btn.addEventListener("click", function () { activate(btn.dataset.tab); });
-        });
-    })();
-
-    function toggleAll(className, checked) {
-        document.querySelectorAll("." + className).forEach(function (cb) { cb.checked = checked; });
-    }
-    var showAllBtn = document.getElementById("needs-review-show-all");
-    if (showAllBtn) {
-        showAllBtn.addEventListener("click", function () {
-            document.querySelectorAll(".needs-review-overflow-row").forEach(function (row) {
-                row.hidden = false;
-            });
-            showAllBtn.remove();
-        });
-    }
-    document.querySelectorAll(".queue-show-all").forEach(function (btn) {
-        btn.addEventListener("click", function () {
-            document.querySelectorAll(".queue-overflow-row-" + btn.dataset.tableId).forEach(function (row) {
-                row.hidden = false;
-            });
-            btn.remove();
-        });
-    });
-    document.querySelectorAll(".job-group-show-all").forEach(function (btn) {
-        btn.addEventListener("click", function () {
-            document.querySelectorAll(".job-group-overflow-" + btn.dataset.groupId).forEach(function (row) {
-                row.hidden = false;
-            });
-            btn.remove();
-        });
-    });
-</script>
 {% endblock %}

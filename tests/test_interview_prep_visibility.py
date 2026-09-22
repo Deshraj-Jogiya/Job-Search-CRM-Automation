@@ -128,14 +128,6 @@ def test_jobs_list_shows_interview_prep_ready_badge(db):
         target_companies=[],
         target_companies_total=0,
         automation_enabled=False,
-        # 2026-09-22: jobs.html is now the unified hub -- these three are
-        # real context every render needs, see test_jobs_page_template.py's
-        # _base_context for the fuller explanation.
-        triage_tabs={"cap_exempt": [], "tier_ab": [], "everything_else": []},
-        skip_reasons=[],
-        pending=[],
-        needs_review=[],
-        ready_to_apply_rows=[],
         message=None,
         error=None,
         csrf_token="test-token",
