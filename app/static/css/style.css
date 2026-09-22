@@ -1351,6 +1351,14 @@ html.light-theme .flag-warning {
         flex-direction: column;
         align-items: stretch;
     }
+    /* Real bug found live: .ready-to-apply-main's `flex: 1 1 320px`
+       sets a minimum WIDTH in the row layout above, but once this query
+       switches the container to flex-direction: column, that same
+       320px basis applies to HEIGHT instead -- forcing a 320px-tall box
+       around three lines of text. Reset to content-sized here. */
+    .ready-to-apply-main {
+        flex: none;
+    }
     .ready-to-apply-actions {
         justify-content: space-between;
     }
