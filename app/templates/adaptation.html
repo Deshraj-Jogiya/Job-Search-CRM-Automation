@@ -152,6 +152,9 @@
     </form>
 
     {% if log_entries %}
+    {% if log_entries_total > log_entries|length %}
+    <p class="muted-note">Showing the newest {{ log_entries|length }} of {{ log_entries_total }} real entries.</p>
+    {% endif %}
     <div class="table-scroll">
         <table class="review-table">
             <thead><tr><th>When</th><th>Tier</th><th>Subsystem</th><th>Parameter</th><th>Old &rarr; New</th><th>Status</th><th></th></tr></thead>
