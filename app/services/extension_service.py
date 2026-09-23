@@ -62,6 +62,14 @@ def _hostname(url: str) -> str | None:
         return None
 
 
+def _first_path_segment(url: str) -> str:
+    try:
+        parts = [p for p in urlparse(url).path.split("/") if p]
+        return parts[0].lower() if parts else ""
+    except ValueError:
+        return ""
+
+
 def find_fillable_application(db: Session, current_url: str) -> JobApplication | None:
     """Matches the page the user is actually looking at to a real,
     ready-to-submit application -- "Approved" is the same real state the
@@ -71,10 +79,28 @@ def find_fillable_application(db: Session, current_url: str) -> JobApplication |
     link is very often a slightly different path than the one the
     posting's API originally returned (e.g. a real application sub-page
     vs. the listing page), but it's always the same real employer
-    domain."""
+    domain.
+
+    Real, serious bug found live 2026-09-23: hostname ALONE isn't enough
+    -- job-boards.greenhouse.io (and jobs.ashbyhq.com, jobs.lever.co,
+    apply.workable.com) is a SHARED multi-tenant domain across every
+    employer on that ATS, not one employer's own. With more than one
+    real Approved application on the same ATS (confirmed live: Checkr
+    and CHAOS Industries, both on job-boards.greenhouse.io), this
+    silently matched whichever candidate the query happened to return
+    first, and the extension attached a completely different company's
+    tailored resume/cover letter to the real, live application form --
+    a genuinely dangerous class of bug for exactly the kind of tool this
+    is. Fixed by also requiring the first real path segment (the
+    employer's own slug in every one of these ATS URL shapes --
+    /checkr/jobs/..., /quantum/..., /hack-the-box-ltd/...) to match, not
+    just the shared domain. Recruitee-style per-company subdomains
+    (already hostname-distinct) are unaffected since their hostname
+    alone already disambiguated correctly."""
     target_host = _hostname(current_url)
     if not target_host:
         return None
+    target_segment = _first_path_segment(current_url)
     candidates = (
         db.query(JobApplication)
         .join(JobPosting)
@@ -82,8 +108,12 @@ def find_fillable_application(db: Session, current_url: str) -> JobApplication |
         .all()
     )
     for application in candidates:
-        if _hostname(application.posting.job_url) == target_host:
-            return application
+        posting_url = application.posting.job_url
+        if _hostname(posting_url) != target_host:
+            continue
+        if _first_path_segment(posting_url) != target_segment:
+            continue
+        return application
     return None
 
 

@@ -75,6 +75,28 @@ def test_find_fillable_application_returns_none_for_an_unrelated_site(db, settin
     assert found is None
 
 
+def test_find_fillable_application_disambiguates_two_employers_on_one_shared_ats_host(db, settings):
+    """Real, serious bug found live 2026-09-23: job-boards.greenhouse.io
+    (and jobs.ashbyhq.com, jobs.lever.co, apply.workable.com) is a
+    shared, multi-tenant domain across every employer on that ATS, not
+    one employer's own -- hostname alone matched whichever Approved
+    application the query happened to return first, and attached a
+    completely different company's tailored resume to a real, live
+    application form (confirmed live: Checkr and CHAOS Industries, both
+    on job-boards.greenhouse.io). The employer's own slug is always the
+    first real path segment on every ATS this project supports."""
+    company_a = make_company(db, name="Checkr")
+    company_b = make_company(db, name="CHAOS Industries")
+    posting_a = make_posting(db, company_a, job_url="https://job-boards.greenhouse.io/checkr/jobs/8188741")
+    posting_b = make_posting(db, company_b, job_url="https://job-boards.greenhouse.io/chaosindustries/jobs/999")
+    application_a = make_application(db, posting_a, status="Approved")
+    make_application(db, posting_b, status="Approved")
+
+    found = extension_service.find_fillable_application(db, "https://job-boards.greenhouse.io/checkr/jobs/8188741")
+
+    assert found.id == application_a.id
+
+
 def test_resolve_field_answers_fills_contact_fields_from_the_real_profile(db, settings):
     _set_profile(db, _profile())
     company = make_company(db)
