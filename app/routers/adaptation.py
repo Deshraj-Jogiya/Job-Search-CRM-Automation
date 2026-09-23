@@ -53,6 +53,14 @@ def adaptation_page(request: Request, db: Session = Depends(get_db)):
         {"type": ct, "label": _COMPARISON_LABELS[ct], **adaptation_service.evaluate_comparison(db, ct)}
         for ct in _COMPARISON_TYPES
     ]
+    # Real gap found live 2026-09-23, during a full UI audit: this table
+    # was already correctly capped at 100 rows (unlike the 3 other
+    # unbounded-list bugs found earlier this same audit), but silently --
+    # 178 real rows existed, and nothing on the page said so. A page
+    # whose whole stated purpose is "nothing here ever applies itself...
+    # never a silent change" quietly truncating its own audit trail with
+    # no count is the same class of honesty gap, just smaller.
+    log_entries_total = db.query(AdaptationLog).count()
     log_entries = db.query(AdaptationLog).order_by(AdaptationLog.created_at.desc()).limit(100).all()
     trend_proposals = [
         {"entry": entry, "label": trend_research_service.TREND_CATEGORIES[entry.parameter].label}
@@ -65,6 +73,7 @@ def adaptation_page(request: Request, db: Session = Depends(get_db)):
         {
             "comparisons": comparisons,
             "log_entries": log_entries,
+            "log_entries_total": log_entries_total,
             "trend_proposals": trend_proposals,
             "trend_categories": trend_research_service.TREND_CATEGORIES,
             "message": request.query_params.get("message"),
