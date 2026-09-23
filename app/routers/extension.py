@@ -36,8 +36,8 @@ from sqlalchemy.orm import Session
 
 from ..database import SessionLocal, get_db
 from ..models import JobApplication
-from ..services import auth_service, extension_service
-from ..services.activity_logger import log_exception
+from ..services import auth_service, confirmation_service, extension_service
+from ..services.activity_logger import log_activity, log_exception
 
 router = APIRouter(prefix="/api/extension", tags=["extension"])
 
@@ -185,4 +185,45 @@ def tailor_existing_application(
     if not application:
         raise HTTPException(status_code=404, detail="Application not found")
     threading.Thread(target=_tailor_existing_in_background, args=(application_id,), daemon=True).start()
+    return {"ok": True}
+
+
+@router.post("/applications/{application_id}/mark-applied")
+def mark_applied_from_extension(
+    application_id: int, db: Session = Depends(get_db), _account_id: int = Depends(require_extension_session)
+):
+    """Real gap closed 2026-09-23: the VM's old Playwright autofill had
+    a real submission-confirmation watcher (see autofill_service.py's
+    _watch_for_submission_and_close) that auto-called mark_applied() the
+    moment a real post-submit page appeared -- because it had direct
+    server-side access to the browser tab it launched. The extension has
+    no equivalent (confirmed live: a real Checkr submission through it
+    stayed 'Approved', applied_at stayed empty, nothing ever marked it).
+    content.js runs a client-side mirror of the exact same URL-keyword/
+    text-phrase check autofill_service.py already uses (see its own
+    comment for why that's duplicated rather than round-tripped to the
+    server on every poll: it's a handful of stable literal strings, not
+    real business logic, and keeping the user's real page text off the
+    network on every 4s poll is the more privacy-respecting choice) --
+    this route is what it calls once it recognizes one, reusing
+    confirmation_service.mark_applied exactly like the dashboard's own
+    manual button and the old Playwright watcher both already do."""
+    application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+    try:
+        confirmation_service.mark_applied(db, application_id)
+    except confirmation_service.ConfirmationServiceError as e:
+        # Not a real error worth surfacing to the extension -- e.g. the
+        # human already clicked "Mark as Applied" manually while this
+        # was still polling, or clicked it on a different application
+        # entirely. Same posture as the old Playwright watcher's own
+        # handling of this exact race.
+        return {"ok": True, "already_handled": str(e)}
+    log_activity(
+        db,
+        f"[Auto-detected via extension] Marked '{application.posting.job_title}' at "
+        f"{application.posting.company_name_raw} as Applied.",
+        "INFO",
+    )
     return {"ok": True}

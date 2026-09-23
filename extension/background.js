@@ -121,6 +121,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     callApi("/api/extension/applications/" + message.applicationId + "/tailor", {}).then(sendResponse);
     return true;
   }
+  if (message.type === "markApplied") {
+    // content.js's own client-side submission watcher (mirroring
+    // autofill_service.py's Python one) calls this the moment it
+    // recognizes a real post-submit confirmation page -- see
+    // content.js's SUBMISSION_URL_KEYWORDS/SUBMISSION_TEXT_PHRASES.
+    callApi("/api/extension/applications/" + message.applicationId + "/mark-applied", {}).then(sendResponse);
+    return true;
+  }
   if (message.type === "broadcastFill") {
     // A content script can only ever message the background, never a
     // sibling frame directly -- this relays a confirmed match to every
