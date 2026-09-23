@@ -1108,7 +1108,16 @@
   // directly -- background.js then broadcasts via chrome.tabs.sendMessage
   // (which reaches every frame when no frameId is given).
   function notifyFrames(applicationId) {
-    return chrome.runtime.sendMessage({ type: "broadcastFill", applicationId });
+    // Real, confirmed-live gap: none of this file's fire-and-forget
+    // chrome.runtime.sendMessage calls (this one, markApplied,
+    // reportSubFrameResult) had a .catch() -- chrome.runtime.sendMessage
+    // always returns a Promise even with no explicit .then(), so a real
+    // page navigation or frame teardown mid-broadcast (e.g. a genuine
+    // form submission redirecting away right as this fires) surfaces as
+    // an "Uncaught (in promise)" console error over a response nothing
+    // here actually reads. Harmless to swallow -- the response was
+    // never used.
+    return chrome.runtime.sendMessage({ type: "broadcastFill", applicationId }).catch(() => {});
   }
 
   // Real bug found live 2026-09-16, root-caused by actually re-reading
@@ -1219,7 +1228,7 @@
     if (!looksLikeSubmissionConfirmation(current, baseline)) return;
     stopSubmissionWatch();
     try { await chrome.storage.local.remove(SUBMISSION_WATCH_STORAGE_KEY); } catch (e) { /* best-effort */ }
-    chrome.runtime.sendMessage({ type: "markApplied", applicationId }); // fire-and-forget -- nothing in the UI depends on this response
+    chrome.runtime.sendMessage({ type: "markApplied", applicationId }).catch(() => {}); // fire-and-forget -- nothing in the UI depends on this response
   }
 
   async function startSubmissionWatch(applicationId) {
@@ -1418,9 +1427,18 @@
           // frame owns the one visible badge and has no way to see this
           // frame's own DOM, so report a real result back through the
           // background relay instead of it just vanishing here.
-          chrome.runtime.sendMessage({ type: "reportSubFrameResult", filled: fillResult.filled, total: fillResult.total });
+          chrome.runtime.sendMessage({ type: "reportSubFrameResult", filled: fillResult.filled, total: fillResult.total }).catch(() => {});
         }
-        sendResponse(fillResult);
+        // fillThisFrame's own promise chain (file attachment fetches,
+        // react-select's up-to-500ms-per-attempt option-harvest polling)
+        // can genuinely take seconds -- if the page navigates away or
+        // this frame is torn down before it resolves (e.g. a real form
+        // submission redirecting mid-fill), the sender's message port is
+        // already gone by the time this runs, and sendResponse itself
+        // throws. Nothing here depends on the caller ever receiving
+        // this, so swallow it rather than let it surface as an uncaught
+        // error over a response nobody's still listening for.
+        try { sendResponse(fillResult); } catch (e) { /* port already closed -- fine, nothing awaited it */ }
       });
       return true;
     }
