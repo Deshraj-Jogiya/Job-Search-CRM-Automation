@@ -285,3 +285,45 @@ class TestTailorExistingApplicationRoute:
             extension_router.tailor_existing_application(999999, db=db, _account_id=1)
 
         assert exc_info.value.status_code == 404
+
+
+class TestMarkAppliedFromExtensionRoute:
+    """Real gap closed 2026-09-23: the VM's old Playwright autofill had a
+    real submission-confirmation watcher with direct server-side access
+    to the browser tab it launched; the extension had no equivalent --
+    confirmed live, a real Checkr submission through it stayed
+    'Approved' forever, applied_at never set. content.js's own client-
+    side watcher calls this route the moment it recognizes a real
+    post-submit confirmation page."""
+
+    def test_marks_a_real_approved_application_applied(self, db, settings):
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Approved")
+
+        result = extension_router.mark_applied_from_extension(application.id, db=db, _account_id=1)
+
+        assert result == {"ok": True}
+        db.refresh(application)
+        assert application.status == "Applied"
+        assert application.applied_at is not None
+
+    def test_404_for_an_application_that_does_not_exist(self, db, settings):
+        with pytest.raises(HTTPException) as exc_info:
+            extension_router.mark_applied_from_extension(999999, db=db, _account_id=1)
+
+        assert exc_info.value.status_code == 404
+
+    def test_already_applied_is_a_real_success_not_an_error(self, db, settings):
+        # Real race this guards against: the human clicks "Mark as
+        # Applied" manually while the client-side watcher is still
+        # polling the same page -- both paths call the same
+        # confirmation_service.mark_applied, which correctly refuses a
+        # second transition. That must not surface as a scary error to
+        # the extension over something that already succeeded.
+        company = make_company(db)
+        application = make_application(db, make_posting(db, company), status="Applied")
+
+        result = extension_router.mark_applied_from_extension(application.id, db=db, _account_id=1)
+
+        assert result["ok"] is True
+        assert "already_handled" in result

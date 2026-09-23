@@ -1160,6 +1160,108 @@
     }
   }
 
+  // Real gap closed 2026-09-23: the VM's old Playwright autofill had a
+  // real submission-confirmation watcher with direct server-side access
+  // to the browser tab it launched (autofill_service.py's
+  // _watch_for_submission_and_close) -- it auto-called mark_applied()
+  // the moment a real post-submit page appeared. The extension had no
+  // equivalent (confirmed live: a real Checkr submission through it
+  // stayed "Approved" forever). This mirrors that Python watcher's exact
+  // keyword/phrase lists client-side -- a handful of stable literal
+  // strings, not real business logic, so duplicating them here (rather
+  // than round-tripping the user's real page text to the server on
+  // every poll) is the more privacy-respecting choice, and keeps this
+  // working even if the confirmation page is reached via a full
+  // navigation that tears down this script instance (chrome.storage.
+  // local persists across that; an in-memory baseline wouldn't).
+  // Keep in sync with autofill_service.py's _CONFIRMATION_URL_KEYWORDS/
+  // _CONFIRMATION_TEXT_PHRASES if either list ever changes.
+  const SUBMISSION_URL_KEYWORDS = ["thank-you", "thankyou", "thanks", "confirmation", "submitted"];
+  const SUBMISSION_TEXT_PHRASES = [
+    "thank you for applying", "thanks for applying",
+    "application has been submitted", "application was submitted",
+    "successfully submitted your application",
+    "we've received your application", "we have received your application",
+    "your application has been received", "your application has been submitted",
+  ];
+  const SUBMISSION_WATCH_STORAGE_KEY = "careerPilotSubmissionWatch";
+  const SUBMISSION_POLL_INTERVAL_MS = 4000;
+  const SUBMISSION_WATCH_MAX_MS = 20 * 60 * 1000; // 20 min -- comfortably above any real review-then-submit pace, then gives up rather than polling forever
+  let submissionWatchTimer = null;
+
+  function pageSnapshot() {
+    return { url: location.href, text: (document.body ? document.body.innerText : "").toLowerCase() };
+  }
+
+  function looksLikeSubmissionConfirmation(current, baseline) {
+    if (!current.url && !current.text) return false;
+    if (current.url !== baseline.url) {
+      const path = (() => { try { return new URL(current.url).pathname.toLowerCase(); } catch (e) { return ""; } })();
+      if (SUBMISSION_URL_KEYWORDS.some((k) => path.includes(k))) return true;
+    }
+    return SUBMISSION_TEXT_PHRASES.some((p) => current.text.includes(p) && !baseline.text.includes(p));
+  }
+
+  function stopSubmissionWatch() {
+    if (submissionWatchTimer) {
+      clearInterval(submissionWatchTimer);
+      submissionWatchTimer = null;
+    }
+  }
+
+  async function checkSubmissionOnce(applicationId, baseline, startedAt) {
+    if (Date.now() - startedAt > SUBMISSION_WATCH_MAX_MS) {
+      stopSubmissionWatch();
+      try { await chrome.storage.local.remove(SUBMISSION_WATCH_STORAGE_KEY); } catch (e) { /* best-effort */ }
+      return;
+    }
+    const current = pageSnapshot();
+    if (!looksLikeSubmissionConfirmation(current, baseline)) return;
+    stopSubmissionWatch();
+    try { await chrome.storage.local.remove(SUBMISSION_WATCH_STORAGE_KEY); } catch (e) { /* best-effort */ }
+    chrome.runtime.sendMessage({ type: "markApplied", applicationId }); // fire-and-forget -- nothing in the UI depends on this response
+  }
+
+  async function startSubmissionWatch(applicationId) {
+    const baseline = pageSnapshot();
+    const startedAt = Date.now();
+    try {
+      await chrome.storage.local.set({ [SUBMISSION_WATCH_STORAGE_KEY]: { applicationId, baseline, startedAt } });
+    } catch (e) { /* storage unavailable -- the in-memory timer below still covers the same-page (no full navigation) case */ }
+    stopSubmissionWatch();
+    submissionWatchTimer = setInterval(() => checkSubmissionOnce(applicationId, baseline, startedAt), SUBMISSION_POLL_INTERVAL_MS);
+  }
+
+  // Covers the case this script instance is a FRESH one on a page that
+  // navigated away from where the fill happened (a full page reload
+  // tears down the old instance and its in-memory baseline with it) --
+  // chrome.storage.local survives that. Runs once per page load; if a
+  // real watch is still pending, checks THIS page against the ORIGINAL
+  // pre-submit baseline immediately (a real confirmation page reached
+  // via full navigation needs exactly one check, not a resumed poll,
+  // since it's very often the final page anyway) and keeps a short poll
+  // running after in case it's not quite there yet (e.g. a redirect
+  // chain).
+  async function resumeSubmissionWatchIfAny() {
+    let stored;
+    try {
+      stored = (await chrome.storage.local.get(SUBMISSION_WATCH_STORAGE_KEY))[SUBMISSION_WATCH_STORAGE_KEY];
+    } catch (e) {
+      return;
+    }
+    if (!stored) return;
+    const { applicationId, baseline, startedAt } = stored;
+    await checkSubmissionOnce(applicationId, baseline, startedAt);
+    // Still pending (checkSubmissionOnce only clears storage on a real
+    // match or real timeout) -- keep watching from this new page too.
+    try {
+      if ((await chrome.storage.local.get(SUBMISSION_WATCH_STORAGE_KEY))[SUBMISSION_WATCH_STORAGE_KEY]) {
+        stopSubmissionWatch();
+        submissionWatchTimer = setInterval(() => checkSubmissionOnce(applicationId, baseline, startedAt), SUBMISSION_POLL_INTERVAL_MS);
+      }
+    } catch (e) { /* best-effort */ }
+  }
+
   function scheduleRematchPolling() {
     stopRematchPolling(); // never run two overlapping loops on the same frame
     let attempts = 0;
@@ -1189,6 +1291,11 @@
     // clobbering the result just set above.
     notifyFrames(matchData.application_id);
     pollForNewFields(matchData.application_id);
+    // Main-frame only -- a real post-submit confirmation is a top-level
+    // page concern (the whole tab navigates or re-renders to it), not
+    // something a sub-frame (e.g. an embedded ATS iframe) would ever see
+    // on its own.
+    if (isMainFrame) startSubmissionWatch(matchData.application_id);
   }
 
   async function mainFrameCheckAndFill() {
@@ -1361,5 +1468,6 @@
 
   if (isMainFrame) {
     mainFrameCheckAndFill();
+    resumeSubmissionWatchIfAny();
   }
 })();
