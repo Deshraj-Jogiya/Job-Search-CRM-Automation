@@ -6,12 +6,6 @@ the code itself. For current build status and the full phase-by-phase
 history, see [`ARCHITECTURE.md`](./ARCHITECTURE.md). For setup, see
 [`README.md`](./README.md).
 
-(The author also keeps a much more detailed, personal working-notes file
-locally, used with my own tooling during development — it isn't part of
-this repo, since it includes real job-search activity specific to that
-one deployment. Nothing about running or extending the project depends
-on it.)
-
 ## Origin note
 
 This project replaced an earlier prototype that had grown organically

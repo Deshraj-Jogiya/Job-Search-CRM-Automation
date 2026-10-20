@@ -20,7 +20,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Baseline revision -- the live DB is stamped at this revision
-    without ever executing it (see ARCHITECTURE.md/the project notes), so this
+    without ever executing it (see ARCHITECTURE.md), so this
     intentionally has nothing to do: it exists only to give Alembic a
     starting point that matches the schema Base.metadata.create_all()
     already built. Real column/table additions from here on get their

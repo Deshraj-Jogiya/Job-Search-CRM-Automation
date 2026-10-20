@@ -8,8 +8,8 @@ since a given date.
 Snooze is deliberately NOT a durable action -- AdaptationLog.status's
 own CHECK constraint (see the migration) only allows applied/proposed/
 approved/rejected/reverted, and this pass's schema-change budget was
-already spent on adaptation_log/adaptive_parameter_values (see
-the project notes's migration-chain discipline: one new migration per pass).
+already spent on adaptation_log/adaptive_parameter_values (migration-chain
+discipline: one new migration per pass).
 Snoozing just dismisses the current page render; the same comparison
 re-evaluates fresh, from real current data, the next time this page
 loads -- honest given the constraint, not silently faked as persistent.

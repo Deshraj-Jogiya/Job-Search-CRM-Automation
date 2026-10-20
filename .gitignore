@@ -28,15 +28,11 @@ backups/
 # Environment configuration
 .env
 
-# Author's private working notes (used with my own tooling during
-# development) -- includes real job-search activity specific to the
-# author's own deployment. See CONTRIBUTING.md for the public-facing
-# replacement covering design principles and conventions.
-the project notes
-
-# Local my own tooling tooling config (preview launch config, scheduler
-# lock file) -- machine-specific, not part of the application
-.claude/
+# Local scratch work, research notes and reports -- personal, never part of the application
+scratch/
+reports/
+research_notes/
+supabase/.temp/
 
 # Raw USCIS/DOL government data files for app/ingest/ -- large (tens of
 # MB), publicly downloadable, not something to version. See SETUP.md.

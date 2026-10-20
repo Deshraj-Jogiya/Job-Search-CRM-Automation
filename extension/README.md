@@ -75,7 +75,7 @@ are real, deliberate requirements, not an oversight:
   this exists for.
 - It reads your Career Pilot login cookie (not any other site's) so you
   never have to generate or paste a separate token -- see the commit
-  history / the project notes for the full reasoning on why that's a reasonable
+  history for the full reasoning on why that's a reasonable
   trade for a single-user, self-authored, never-published extension like
   this one specifically.
 

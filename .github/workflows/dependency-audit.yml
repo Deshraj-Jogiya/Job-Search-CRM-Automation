@@ -18,9 +18,8 @@ jobs:
       - name: Install project dependencies
         run: pip install -r requirements-lock.txt
 
-      # pip-audit itself isn't a runtime dependency (see the project notes's
-      # Phase 21 note on why it was removed from requirements-lock.txt
-      # after the original manual audit) -- installed fresh here, in an
+      # pip-audit itself isn't a runtime dependency (it was removed
+      # from requirements-lock.txt after the original manual audit) -- installed fresh here, in an
       # isolated CI run, so it never pollutes the real lockfile.
       - name: Run pip-audit
         run: |
