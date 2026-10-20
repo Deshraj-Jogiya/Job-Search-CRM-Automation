@@ -23,10 +23,18 @@ class OpenAICompatibleProvider(LLMProvider):
         self.client = OpenAI(api_key=api_key, base_url=os.getenv("OPENAI_API_BASE") or None)
         self.model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
-    def _call(self, system: str, prompt: str, temperature: float, max_tokens: int, stop: list[str] | None = None) -> str:
+    def _call(
+        self, system: str, prompt: str, temperature: float, max_tokens: int, stop: list[str] | None = None,
+        cacheable_prefix: str | None = None,
+    ) -> str:
+        # No real prompt-caching support on this generic OpenAI-compatible
+        # path (unlike anthropic_provider.py's cache_control) -- a caller
+        # passing cacheable_prefix still gets correct output, just without
+        # the cost benefit, by simple concatenation back into one prompt.
+        full_prompt = f"{cacheable_prefix}\n\n{prompt}" if cacheable_prefix else prompt
         response = self.client.chat.completions.create(
             model=self.model,
-            messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}],
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": full_prompt}],
             temperature=temperature,
             max_tokens=max_tokens,
             **({"stop": stop} if stop else {}),
@@ -47,13 +55,19 @@ class OpenAICompatibleProvider(LLMProvider):
             )
         return response.choices[0].message.content.strip()
 
-    def complete_json(self, system: str, prompt: str, temperature: float = 0.3, max_tokens: int = None) -> str:
-        return self._call_with_retry(self._call, system, prompt, temperature, max_tokens=max_tokens or 2000)
+    def complete_json(
+        self, system: str, prompt: str, temperature: float = 0.3, max_tokens: int = None,
+        cacheable_prefix: str | None = None,
+    ) -> str:
+        return self._call_with_retry(
+            self._call, system, prompt, temperature, max_tokens=max_tokens or 2000, cacheable_prefix=cacheable_prefix,
+        )
 
     def complete_text(
         self, system: str, prompt: str, temperature: float = 0.4, max_tokens: int = None,
-        stop: list[str] | None = None,
+        stop: list[str] | None = None, cacheable_prefix: str | None = None,
     ) -> str:
         return self._call_with_retry(
             self._call, system, prompt, temperature, max_tokens=max_tokens or 1200, stop=stop,
+            cacheable_prefix=cacheable_prefix,
         )

@@ -114,10 +114,78 @@ def _score_and_maybe_tailor_one(application_id: int, min_score_for_auto_tailor: 
     single tick's real wall-clock budget without spamming the Anthropic
     API's own rate limit."""
     from ..database import SessionLocal
-    from . import matching_service, tailoring_service
+    from ..models import JobApplication, JobPosting
+    from . import llm_usage_service, matching_service, scoring_service, tailoring_service
+    from .sources.keyword_matching import location_eligible_for_scoring
 
     db = SessionLocal()
     try:
+        # Real gap found live 2026-09-24: ingestion-time location filtering
+        # is deny-list based and fails open on location strings with no
+        # recognized country token (e.g. "Coimbatore, Tamil Nadu"), so
+        # postings genuinely outside the US/Canada were reaching this real,
+        # paid/subscription LLM call. This is the allow-list gate (the
+        # inverse check) right at the point of spend, so it protects every
+        # caller of this function (CLI pipeline, the app's own scheduler
+        # tick, and the extension's real-time score_and_tailor path), not
+        # just one of them.
+        posting = (
+            db.query(JobPosting)
+            .join(JobApplication, JobApplication.posting_id == JobPosting.id)
+            .filter(JobApplication.id == application_id)
+            .first()
+        )
+        if posting is not None and location_eligible_for_scoring(posting.location) is False:
+            log_activity(
+                db,
+                f"Skipped scoring application {application_id}: location outside US/Canada "
+                f"eligibility ({posting.location!r}).",
+                "INFO",
+            )
+            return (application_id, "location_ineligible")
+
+        # Real incident, 2026-09-18: no dollar ceiling existed here at
+        # all -- $164.91 burned in 24h against an $18-30 estimate. Checked
+        # right before the next real, metered-API spend, not after.
+        if llm_usage_service.spend_cap_exceeded(db):
+            log_activity(
+                db,
+                f"Skipped scoring application {application_id}: daily LLM spend cap reached.",
+                "WARNING",
+            )
+            return (application_id, "spend_cap_reached")
+
+        application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+        if not application:
+            return (application_id, "unexpected_error")
+
+        # Real waste found live 2026-09-28: the LLM's match_score is only
+        # 30 of scoring_service's 100 points -- the other ~80 (sponsorship
+        # history, wage-level fit, role/title match, worksite clarity,
+        # posting recency, sponsorship-signal bonus) are 100% free,
+        # computed purely from data already on record (see
+        # scoring_service.compute_score_breakdown's own docstring: "pure
+        # and free -- no LLM, no network call"). Every application was
+        # still getting the paid LLM call FIRST, unconditionally, before
+        # that free breakdown was ever computed. Reordered: compute the
+        # free mechanical subtotal first (ai_profile_fit contributes 0
+        # when unscored, so this is exactly the "mechanical-only" score),
+        # and skip the paid call entirely when even a perfect 30/30 LLM
+        # score couldn't lift the total to the auto-tailor threshold --
+        # that posting was never going to be worth tailoring regardless
+        # of what the LLM said, so there's nothing lost by not asking it.
+        mechanical_breakdown = scoring_service.recompute_score_breakdown(db, application)
+        best_possible_score = min(100, mechanical_breakdown["total"] + scoring_service.AI_PROFILE_FIT_WEIGHT)
+        if has_hard_stop_flag(application) or best_possible_score < min_score_for_auto_tailor:
+            log_activity(
+                db,
+                f"Skipped scoring application {application_id}: mechanical pre-check "
+                f"(best possible score {best_possible_score}) already rules out auto-tailoring -- "
+                "no paid LLM call spent.",
+                "INFO",
+            )
+            return (application_id, "mechanical_prescreen_failed")
+
         try:
             application = matching_service.score_application(db, application_id)
         except Exception as e:
@@ -143,6 +211,17 @@ def _score_and_maybe_tailor_one(application_id: int, min_score_for_auto_tailor: 
         try:
             if application.match_score < min_score_for_auto_tailor:
                 return (application_id, "scored_only")
+
+            # Tailoring is the expensive multi-pass step -- re-check the
+            # cap here too, not just before scoring, since a whole batch
+            # can cross the cap mid-run.
+            if llm_usage_service.spend_cap_exceeded(db):
+                log_activity(
+                    db,
+                    f"Scored but not tailoring application {application_id}: daily LLM spend cap reached.",
+                    "WARNING",
+                )
+                return (application_id, "spend_cap_reached")
 
             tailoring_service.tailor_application(db, application_id)
             return (application_id, "tailored")

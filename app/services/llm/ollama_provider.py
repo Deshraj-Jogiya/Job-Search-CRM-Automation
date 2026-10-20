@@ -18,7 +18,15 @@ class OllamaProvider(LLMProvider):
         self.host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
         self.model = os.getenv("OLLAMA_MODEL", "llama3.1")
 
-    def _call(self, system: str, prompt: str, temperature: float, stop: list[str] | None = None) -> str:
+    def _call(
+        self, system: str, prompt: str, temperature: float, stop: list[str] | None = None,
+        cacheable_prefix: str | None = None,
+    ) -> str:
+        # No real prompt-caching mechanism on Ollama's local API -- a
+        # caller passing cacheable_prefix still gets correct output, just
+        # without any cost benefit (moot anyway, local inference is
+        # already free), by simple concatenation.
+        full_prompt = f"{cacheable_prefix}\n\n{prompt}" if cacheable_prefix else prompt
         options = {"temperature": temperature}
         if stop:
             options["stop"] = stop
@@ -26,7 +34,7 @@ class OllamaProvider(LLMProvider):
             f"{self.host}/api/chat",
             json={
                 "model": self.model,
-                "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
+                "messages": [{"role": "system", "content": system}, {"role": "user", "content": full_prompt}],
                 "stream": False,
                 "options": options,
             },
@@ -46,14 +54,17 @@ class OllamaProvider(LLMProvider):
             log_usage("ollama", self.model, body["prompt_eval_count"], body["eval_count"], 0.0)
         return body["message"]["content"].strip()
 
-    def complete_json(self, system: str, prompt: str, temperature: float = 0.3, max_tokens: int = None) -> str:
+    def complete_json(
+        self, system: str, prompt: str, temperature: float = 0.3, max_tokens: int = None,
+        cacheable_prefix: str | None = None,
+    ) -> str:
         # Ollama's local /api/chat endpoint isn't token-capped the same
         # way here -- max_tokens accepted for interface parity with the
         # other providers, not forwarded (matches complete_text below).
-        return self._call_with_retry(self._call, system, prompt, temperature)
+        return self._call_with_retry(self._call, system, prompt, temperature, cacheable_prefix=cacheable_prefix)
 
     def complete_text(
         self, system: str, prompt: str, temperature: float = 0.4, max_tokens: int = None,
-        stop: list[str] | None = None,
+        stop: list[str] | None = None, cacheable_prefix: str | None = None,
     ) -> str:
-        return self._call_with_retry(self._call, system, prompt, temperature, stop=stop)
+        return self._call_with_retry(self._call, system, prompt, temperature, stop=stop, cacheable_prefix=cacheable_prefix)

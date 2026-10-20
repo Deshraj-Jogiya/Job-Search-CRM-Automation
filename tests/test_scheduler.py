@@ -66,3 +66,35 @@ def test_progress_tick_does_nothing_when_automation_disabled(db, monkeypatch):
     scheduler._progress_tick()
 
     assert calls == []
+
+
+def test_trend_check_tick_runs_when_automation_enabled(db, monkeypatch):
+    # Real gap found live 2026-09-28: this job makes a real paid LLM call
+    # (Tavily research + an Anthropic call per trend category) but was
+    # deliberately reasoned about like backups/retention (not gated) --
+    # a category that only fits jobs with genuinely zero LLM cost. A user
+    # turning automation off should stop every real LLM-spend source, not
+    # just the obvious one.
+    calls = []
+    monkeypatch.setattr(scheduler.trend_research_service, "run_all_trend_checks", lambda db, year: calls.append(year))
+
+    settings = get_or_create_settings(db)
+    settings.automation_enabled = True
+    db.commit()
+
+    scheduler._trend_check_tick()
+
+    assert calls  # ran
+
+
+def test_trend_check_tick_does_nothing_when_automation_disabled(db, monkeypatch):
+    calls = []
+    monkeypatch.setattr(scheduler.trend_research_service, "run_all_trend_checks", lambda db, year: calls.append(year))
+
+    settings = get_or_create_settings(db)
+    settings.automation_enabled = False
+    db.commit()
+
+    scheduler._trend_check_tick()
+
+    assert calls == []

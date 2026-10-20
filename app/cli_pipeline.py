@@ -16,8 +16,8 @@ logic (_score_and_maybe_tailor_one) instead of a second copy of it --
 only adds two things on top: a real, free mechanical pre-filter (skips
 obviously unscoreable rows without spending a call) and a hard cap on
 LLM calls per run, since a subscription's usage allowance is shared with
-Deshraj's own live, interactive use of my own tooling and the desktop app --
-this must never be able to exhaust that for the rest of the day.
+the owner's own interactive use of the same subscription -- this must
+never be able to exhaust that for the rest of the day.
 """
 
 import os
@@ -59,8 +59,8 @@ MAX_CALLS_PER_RUN = int(os.getenv("CLI_PIPELINE_MAX_CALLS", "60"))
 # across several `claude` subprocess invocations. Raise this only after
 # confirming (via `free -h` on the VM) there's real memory headroom to
 # run more than one `claude` process at once -- this also shares the
-# same subscription usage pool Deshraj's own interactive my own tooling
-# session draws from, so a wide pool isn't free even where RAM allows it.
+# same subscription usage pool the owner's own interactive sessions
+# draw from, so a wide pool isn't free even where RAM allows it.
 CONCURRENCY = int(os.getenv("CLI_PIPELINE_CONCURRENCY", "1"))
 
 # Batch size pulled per pass -- kept small deliberately so the cap is
@@ -94,6 +94,7 @@ def _prefilter_mark_unscoreable(db) -> int:
     import json
     from .database import utcnow
     from .models import JobApplication, JobPosting
+    from .services.sources.keyword_matching import location_eligible_for_scoring
 
     candidates = (
         db.query(JobApplication, JobPosting)
@@ -108,6 +109,16 @@ def _prefilter_mark_unscoreable(db) -> int:
             reason = "prefilter_skip: job description too short to score"
         elif posting.staleness_flag:
             reason = "prefilter_skip: posting flagged stale"
+        elif location_eligible_for_scoring(posting.location) is False:
+            # Real gap found live 2026-09-24: ingestion-time location_allowed
+            # is deny-list based and fails open on unrecognized country
+            # strings (e.g. "Coimbatore, Tamil Nadu" -- India, but no
+            # country token), so postings genuinely outside the US/Canada
+            # were reaching this point and burning real subscription calls.
+            # location_eligible_for_scoring is the inverse (allow-list)
+            # check: a location must positively contain a US/Canada signal
+            # to proceed, so it catches what the deny-list missed, for $0.
+            reason = f"prefilter_skip: location outside US/Canada eligibility ({posting.location!r})"
         if reason:
             application.match_analysis_json = json.dumps({"skipped": True, "reason": reason})
             application.updated_at = utcnow()

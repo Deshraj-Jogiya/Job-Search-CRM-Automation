@@ -37,7 +37,10 @@ class LLMProvider(ABC):
         # caller's own JSON/text handling surfaces the real failure, same as before
 
     @abstractmethod
-    def complete_json(self, system: str, prompt: str, temperature: float = 0.3, max_tokens: int = None) -> str:
+    def complete_json(
+        self, system: str, prompt: str, temperature: float = 0.3, max_tokens: int = None,
+        cacheable_prefix: str | None = None,
+    ) -> str:
         """Send a prompt expecting a raw-JSON response back. Returns the
         raw text response (callers handle their own JSON parsing / code
         -fence stripping, since that's shared logic, not provider logic).
@@ -46,13 +49,27 @@ class LLMProvider(ABC):
         larger than usual (e.g. asking for multiple structured sections
         at once) -- a response cut off mid-string by the token limit
         fails JSON parsing outright, it doesn't just truncate content.
-        """
+
+        cacheable_prefix: real cost fix, 2026-09-28 -- a multi-pass
+        tailoring session resends the FULL candidate profile (often tens
+        of KB) as fresh input on every one of its 6-16 calls. Pass the
+        large, byte-identical-across-a-session block here (the profile
+        JSON) separately from `prompt` (the part that actually varies
+        per call, e.g. the JD text or this specific pass's instructions)
+        -- a provider that supports prompt caching (see
+        anthropic_provider.py) marks it as a cached block, so every call
+        after the first in that session reads it at a fraction of the
+        normal input-token cost instead of paying full price to resend
+        it every single time. A provider without real caching support
+        just concatenates it with `prompt` -- semantically identical
+        output either way, this parameter only ever affects cost, never
+        correctness. Optional and defaulting to None everywhere else."""
         raise NotImplementedError
 
     @abstractmethod
     def complete_text(
         self, system: str, prompt: str, temperature: float = 0.4, max_tokens: int = None,
-        stop: list[str] | None = None,
+        stop: list[str] | None = None, cacheable_prefix: str | None = None,
     ) -> str:
         """Send a prompt expecting free-form text back (cover letters,
         outreach notes, interview prep narrative).
@@ -67,5 +84,8 @@ class LLMProvider(ABC):
         real question, the true count was 1, the model free-ran straight
         to a self-invented "Observation: 7" and answered from that).
         Optional and defaulting to None (no stop sequences) everywhere
-        else, so every existing caller is unaffected."""
+        else, so every existing caller is unaffected.
+
+        cacheable_prefix: see complete_json's own docstring -- same
+        real cost mechanic, same optional/default-None contract."""
         raise NotImplementedError

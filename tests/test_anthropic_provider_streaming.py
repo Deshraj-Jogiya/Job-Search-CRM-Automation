@@ -124,6 +124,95 @@ class TestUsageLogging:
         assert row is not None
         assert row.estimated_cost_usd is None
 
+    def test_cache_creation_and_read_tokens_are_priced_at_their_own_real_rate(self, db):
+        """Real incident, 2026-09-28: once prompt caching is in use, the
+        Anthropic API reports cache_creation_input_tokens/cache_read_
+        input_tokens SEPARATELY from input_tokens -- pricing every input
+        token at the flat rate would silently misstate real cost. A
+        cache write is 1.25x, a cache read is 0.1x, of the model's own
+        input rate."""
+        from app.models import LlmUsageLog
+
+        provider = _make_provider()
+        provider.model = "claude-sonnet-4-6"  # $3.00/$15.00 per million tokens
+
+        fake_block = SimpleNamespace(type="text", text="ok")
+        fake_final_message = SimpleNamespace(
+            content=[fake_block],
+            usage=SimpleNamespace(
+                input_tokens=100_000, output_tokens=0,
+                cache_creation_input_tokens=200_000, cache_read_input_tokens=700_000,
+            ),
+        )
+        fake_stream = MagicMock()
+        fake_stream.get_final_message.return_value = fake_final_message
+        fake_stream_manager = MagicMock()
+        fake_stream_manager.__enter__.return_value = fake_stream
+        fake_stream_manager.__exit__.return_value = False
+        provider.client = MagicMock()
+        provider.client.messages.stream.return_value = fake_stream_manager
+
+        provider._call("sys", "prompt", 0.4, max_tokens=100)
+
+        row = db.query(LlmUsageLog).order_by(LlmUsageLog.id.desc()).first()
+        # 100k regular @ $3/M + 200k cache-write @ $3*1.25/M + 700k cache-read @ $3*0.1/M
+        expected = (100_000 / 1_000_000 * 3.00) + (200_000 / 1_000_000 * 3.00 * 1.25) + (700_000 / 1_000_000 * 3.00 * 0.1)
+        assert row.estimated_cost_usd == round(expected, 10) or abs(row.estimated_cost_usd - expected) < 1e-9
+        # input_tokens logged is the REAL total across all three categories,
+        # not just the non-cached portion -- accurate volume tracking.
+        assert row.input_tokens == 100_000 + 200_000 + 700_000
+
+    def test_a_call_with_no_cacheable_prefix_uses_the_original_flat_message_shape(self):
+        """Every existing caller that never passes cacheable_prefix must
+        get byte-identical message structure to before this feature
+        existed -- zero regression risk for the ~20 real LLM call sites
+        that don't opt in."""
+        provider = _make_provider()
+        fake_block = SimpleNamespace(type="text", text="ok")
+        fake_final_message = SimpleNamespace(content=[fake_block], usage=SimpleNamespace(input_tokens=10, output_tokens=5))
+        fake_stream = MagicMock()
+        fake_stream.get_final_message.return_value = fake_final_message
+        fake_stream_manager = MagicMock()
+        fake_stream_manager.__enter__.return_value = fake_stream
+        fake_stream_manager.__exit__.return_value = False
+        provider.client = MagicMock()
+        provider.client.messages.stream.return_value = fake_stream_manager
+
+        provider._call("sys", "the real prompt", 0.4, max_tokens=100)
+
+        _, kwargs = provider.client.messages.stream.call_args
+        assert kwargs["messages"] == [{"role": "user", "content": "the real prompt"}]
+
+    def test_a_call_with_cacheable_prefix_marks_it_as_a_separate_cached_block(self):
+        """Real cost fix, 2026-09-28: the large, session-repeated block
+        (candidate profile) gets its own content block with
+        cache_control, separate from the part that actually varies per
+        call -- confirmed against the exact message shape Anthropic's
+        own prompt-caching API expects."""
+        provider = _make_provider()
+        fake_block = SimpleNamespace(type="text", text="ok")
+        fake_final_message = SimpleNamespace(content=[fake_block], usage=SimpleNamespace(input_tokens=10, output_tokens=5))
+        fake_stream = MagicMock()
+        fake_stream.get_final_message.return_value = fake_final_message
+        fake_stream_manager = MagicMock()
+        fake_stream_manager.__enter__.return_value = fake_stream
+        fake_stream_manager.__exit__.return_value = False
+        provider.client = MagicMock()
+        provider.client.messages.stream.return_value = fake_stream_manager
+
+        provider._call("sys", "the JD-specific part", 0.4, max_tokens=100, cacheable_prefix="the huge profile JSON")
+
+        _, kwargs = provider.client.messages.stream.call_args
+        assert kwargs["messages"] == [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "the huge profile JSON", "cache_control": {"type": "ephemeral"}},
+                    {"type": "text", "text": "the JD-specific part"},
+                ],
+            }
+        ]
+
     def test_a_logging_failure_never_breaks_the_real_call(self, db, monkeypatch):
         # A broken DB write inside _log_usage (e.g. the DB is briefly
         # unreachable) must never take down the real LLM call it's

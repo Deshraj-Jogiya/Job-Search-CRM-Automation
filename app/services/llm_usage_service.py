@@ -11,7 +11,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..database import utcnow
-from ..models import LlmUsageLog
+from ..models import LlmUsageLog, get_or_create_settings
 
 
 def get_usage_summary(db: Session) -> dict:
@@ -50,3 +50,33 @@ def get_usage_summary(db: Session) -> dict:
         "all_time": _totals(db.query(LlmUsageLog)),
         "last_24h": _totals(db.query(LlmUsageLog).filter(LlmUsageLog.created_at >= since_24h)),
     }
+
+
+def last_24h_spend_usd(db: Session) -> float:
+    """Real spend, not an estimate of an estimate -- same rolling-24h
+    window get_usage_summary already shows on the dashboard, so this
+    check and what a human sees always agree. Unpriced calls (None
+    estimated_cost_usd) are excluded via coalesce, same as
+    get_usage_summary -- this can only ever undercount, never overcount,
+    so it's a real floor on spend, not an inflated one."""
+    total = (
+        db.query(func.coalesce(func.sum(LlmUsageLog.estimated_cost_usd), 0.0))
+        .filter(LlmUsageLog.created_at >= utcnow() - timedelta(hours=24))
+        .scalar()
+    )
+    return float(total or 0.0)
+
+
+def spend_cap_exceeded(db: Session) -> bool:
+    """Real incident, 2026-09-18: nothing checked a running spend total
+    against a limit before the next paid call -- $164.91 burned in 24h
+    against an $18-30 estimate. Checked at every real, metered-API call
+    site right before it would spend more money (confirmation_service's
+    scoring/tailoring loop, extension_service's real-time add-job path),
+    never after. GlobalSettings.daily_llm_spend_cap_usd is nullable --
+    None means no cap configured (an explicit opt-out, not a bug), so
+    this only ever blocks when a real, human-set limit is in place."""
+    settings = get_or_create_settings(db)
+    if settings.daily_llm_spend_cap_usd is None:
+        return False
+    return last_24h_spend_usd(db) >= settings.daily_llm_spend_cap_usd

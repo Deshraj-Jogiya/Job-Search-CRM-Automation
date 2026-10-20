@@ -372,15 +372,32 @@ def _generate_round_qa(
             f"draft_answer structure and pacing, not just as a note to the candidate): {answering_method_guidance}\n"
         )
 
+    # cacheable_prefix: this function runs once PER ROUND, in true
+    # parallel (see _generate_predicted_rounds), and the job description
+    # + candidate profile + confirmed-stories block are byte-identical
+    # across every one of those calls (publications_block/reputation_
+    # block/method_block are round-invariant too, EXCEPT publications_
+    # block which differs technical-vs-non-technical -- kept in `prompt`
+    # rather than the cached prefix for that reason). A real 4-round
+    # process means this exact large block gets sent 4 times in one
+    # generation; caching it means only the first call pays full price,
+    # the rest read it at ~10% cost. The concatenated text seen by the
+    # model is identical either way -- this only changes which message
+    # content block each piece lives in, never the actual wording or
+    # order presented.
+    cacheable_prefix = (
+        f"Job Description:\n{jd_text}\n\n"
+        f"Candidate's Real Profile:\n{json.dumps(profile_content, indent=2)}\n"
+        f"{stories_block}"
+    )
     raw = llm.complete_json(
         system="You are an expert interview coach. You return only raw JSON.",
+        cacheable_prefix=cacheable_prefix,
         prompt=(
             f"Draft full interview prep for ONE specific round of a {job_title} interview at {company_name}: "
             f"\"{round_info.get('round_name')}\" -- {round_info.get('what_it_tests')} "
             f"(likely run by: {round_info.get('likely_interviewer', 'unknown')}).\n\n"
-            f"Job Description:\n{jd_text}\n\n"
-            f"Candidate's Real Profile:\n{json.dumps(profile_content, indent=2)}\n"
-            f"{stories_block}{publications_block}{reputation_block}{method_block}\n"
+            f"{publications_block}{reputation_block}{method_block}\n"
             "Draft actual ready-to-say answers, not just topics to mention -- a candidate should be able "
             "to read a draft_answer aloud as a real response, then adapt it in their own words. Keep each "
             "draft_answer realistic spoken length -- what a person would actually say in 60-90 seconds "

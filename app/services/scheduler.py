@@ -20,13 +20,16 @@ printed to a console nobody's watching, since this is meant to run
 unattended.
 """
 
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from ..database import SessionLocal
 from ..models import get_or_create_settings
-from . import backup_service, confirmation_service, intake_service, notification_service, trend_research_service
+from . import (
+    backup_service, confirmation_service, intake_service, notification_service, profile_prep_service,
+    trend_research_service,
+)
 from .activity_logger import log_activity, sweep_activity_log_retention
 
 scheduler = BackgroundScheduler()
@@ -110,15 +113,28 @@ def _activity_log_retention_tick() -> None:
     _run_isolated("activity-log retention sweep", sweep_activity_log_retention)
 
 
+def _profile_prep_tick() -> None:
+    # Deliberately not gated by automation_enabled (the job-hunting kill switch): this is one small LLM
+    # call per profile change, switched by its own profile_prep_auto_refresh setting and bounded by the
+    # daily spend cap like every other call. It makes sure the profile-level interview prep exists for a
+    # profile that was already in place, and recovers after a restart or a failed attempt.
+    _run_isolated("profile interview prep catch-up", profile_prep_service.catch_up)
+
+
 def _trend_check_tick() -> None:
-    # Deliberately not gated by automation_enabled either, same reasoning
-    # as backups -- this keeps the RESUME-BUILDING RULES current, not the
-    # job search itself, so it should keep working even while automation
-    # is paused. run_all_trend_checks already no-ops safely if Tavily
-    # isn't configured, or if a proposal for a category is already
-    # pending review -- never spends budget re-checking something a
-    # human hasn't looked at yet.
-    _run_isolated("trend check", lambda db: trend_research_service.run_all_trend_checks(db, date.today().year))
+    # Real gap found live 2026-09-28, same class as the CLI-pipeline-
+    # timer incident: this was reasoned about like backups/retention
+    # (deliberately not gated, since it's not "the job search itself")
+    # but that reasoning missed that, unlike those two, this makes a
+    # REAL PAID LLM CALL (Tavily research + an Anthropic call per
+    # category). A user who turns automation_enabled off to stop LLM
+    # spend would reasonably expect that to actually stop every source
+    # of LLM spend, not just the obvious one -- this ran regardless,
+    # silently, on its 30-day interval. Now gated the same way
+    # score/tailor already is.
+    _run_if_automation_enabled(
+        "trend check", lambda db: trend_research_service.run_all_trend_checks(db, date.today().year)
+    )
 
 
 def start_scheduler() -> None:
@@ -137,6 +153,12 @@ def start_scheduler() -> None:
             _activity_log_retention_tick, trigger="interval", hours=_BACKUP_INTERVAL_HOURS, name="activity_log_retention",
         )
         scheduler.add_job(_trend_check_tick, trigger="interval", days=_TREND_CHECK_INTERVAL_DAYS, name="trend_check")
+        # First run shortly after startup (not an hour later), so a profile that already exists gets its
+        # initial interview prep right after a deploy.
+        scheduler.add_job(
+            _profile_prep_tick, trigger="interval", hours=1, name="profile_prep_catch_up", max_instances=1,
+            next_run_time=datetime.now() + timedelta(seconds=45),
+        )
         scheduler.start()
         print(
             f"Background scheduler started (intake tick every {_TICK_MINUTES}m, progress tick every "

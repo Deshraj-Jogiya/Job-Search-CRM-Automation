@@ -15,6 +15,7 @@ import json
 from sqlalchemy.orm import Session
 
 from ..models import JobApplication, ProfileVariant, ProfileVersion
+from . import resume_rules
 from .activity_logger import log_activity
 from .llm import get_llm_provider, parse_json_response
 from .scoring_service import recompute_score_breakdown
@@ -81,7 +82,7 @@ def evaluate_match(profile_content: dict, jd_text: str) -> dict:
         "experience": profile_content.get("experience", []),
         "projects": profile_content.get("projects", []),
         "education": profile_content.get("education", []),
-        "certifications": profile_content.get("certifications", []),
+        "certifications": [resume_rules.certification_display(c) for c in profile_content.get("certifications", [])],
     }
 
     llm = get_llm_provider()

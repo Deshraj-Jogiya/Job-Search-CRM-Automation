@@ -23,7 +23,7 @@ program (your own PC) -- NEVER point this at a shared server process
 under CLAUDE_CLI_PATH, since that would mean parking a personal
 subscription login on a machine other people can reach. There is no
 code-level way to enforce that; it's an operational rule, documented
-here and in the project notes.
+here.
 
 `total_cost_usd` in the CLI's own JSON output is a NOTIONAL
 API-equivalent cost (what the same call would have cost on the metered
@@ -90,7 +90,7 @@ class ClaudeCliProvider(LLMProvider):
         self.timeout_seconds = int(os.getenv("CLAUDE_CLI_TIMEOUT_SECONDS", "300"))
 
     def _call(self, system: str, prompt: str, temperature: float, max_tokens: int,
-              model_alias: str, stop: list[str] | None = None) -> str:
+              model_alias: str, stop: list[str] | None = None, cacheable_prefix: str | None = None) -> str:
         # temperature/max_tokens aren't exposed as CLI flags (the CLI is a
         # session tool, not a raw completion API) -- accepted for
         # interface compatibility with the other providers but unused
@@ -117,9 +117,16 @@ class ClaudeCliProvider(LLMProvider):
             "--system-prompt", system,
             "--tools", "",  # no tool use -- this is a pure text-completion call
         ]
+        # No explicit cache_control exposed through this raw-text CLI
+        # interface -- a caller passing cacheable_prefix still gets
+        # correct output via simple concatenation, just without the
+        # explicit-caching cost benefit (the CLI's own session may still
+        # cache identical prefixes on its own; see cache_creation/
+        # cache_read handling below either way).
+        full_prompt = f"{cacheable_prefix}\n\n{prompt}" if cacheable_prefix else prompt
         try:
             result = subprocess.run(
-                args, input=prompt, capture_output=True, text=True, encoding="utf-8",
+                args, input=full_prompt, capture_output=True, text=True, encoding="utf-8",
                 timeout=self.timeout_seconds,
             )
         except FileNotFoundError as exc:
@@ -161,13 +168,19 @@ class ClaudeCliProvider(LLMProvider):
 
         return (payload.get("result") or "").strip()
 
-    def complete_json(self, system: str, prompt: str, temperature: float = 0.3, max_tokens: int = None) -> str:
-        return self._call_with_retry(self._call, system, prompt, temperature, max_tokens, self.scoring_model)
+    def complete_json(
+        self, system: str, prompt: str, temperature: float = 0.3, max_tokens: int = None,
+        cacheable_prefix: str | None = None,
+    ) -> str:
+        return self._call_with_retry(
+            self._call, system, prompt, temperature, max_tokens, self.scoring_model, cacheable_prefix=cacheable_prefix,
+        )
 
     def complete_text(
         self, system: str, prompt: str, temperature: float = 0.4, max_tokens: int = None,
-        stop: list[str] | None = None,
+        stop: list[str] | None = None, cacheable_prefix: str | None = None,
     ) -> str:
         return self._call_with_retry(
             self._call, system, prompt, temperature, max_tokens, self.tailoring_model, stop=stop,
+            cacheable_prefix=cacheable_prefix,
         )

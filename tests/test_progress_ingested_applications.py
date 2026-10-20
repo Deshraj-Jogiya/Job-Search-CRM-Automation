@@ -20,7 +20,7 @@ other real concurrent-writer scenario."""
 
 from conftest import make_application, make_company, make_posting
 
-from app.models import GlobalSettings, JobApplication
+from app.models import GlobalSettings, JobApplication, LlmUsageLog
 from app.services import confirmation_service, matching_service, tailoring_service
 
 
@@ -89,7 +89,12 @@ def test_does_not_tailor_a_low_scoring_application(db, settings, monkeypatch):
 
 
 def test_respects_the_batch_size_and_processes_oldest_first(db, settings, monkeypatch):
-    _settings(db, auto_score_batch_size=2, min_score_for_auto_tailor=100)  # 100 = never tailor, just checking batching
+    # 1, not 100 -- this test is about batching, not tailoring; the
+    # mechanical prescreen (see test_mechanical_prescreen_* above) also
+    # gates on this same threshold before scoring even happens now, so
+    # a "never tailor" sentinel here has to stay low enough to still
+    # clear that free prescreen and reach the (mocked) paid score call.
+    _settings(db, auto_score_batch_size=2, min_score_for_auto_tailor=1)
     company = make_company(db)
 
     app_ids = []
@@ -116,7 +121,10 @@ def test_respects_the_batch_size_and_processes_oldest_first(db, settings, monkey
 
 
 def test_one_failing_application_does_not_stop_the_rest_of_the_batch(db, settings, monkeypatch):
-    _settings(db, auto_score_batch_size=10, min_score_for_auto_tailor=100)
+    # 1, not 100 -- see the comment in test_respects_the_batch_size_and_
+    # processes_oldest_first above; this test is about error isolation,
+    # not real tailoring behavior.
+    _settings(db, auto_score_batch_size=10, min_score_for_auto_tailor=1)
     company = make_company(db)
 
     posting1 = make_posting(db, company, job_url="https://example.com/job/a")
@@ -212,6 +220,95 @@ def test_a_low_scoring_application_is_never_reselected_on_a_later_call(db, setti
 
     assert score_calls == [application_id]  # only ever scored once, not every call
     assert _reload(db, application_id).status == "Ingested"  # correctly still not tailored
+
+
+def test_mechanical_prescreen_skips_the_paid_llm_call_when_it_cannot_possibly_clear_the_bar(db, settings, monkeypatch):
+    """Real waste found live 2026-09-28: the LLM match_score is only 30
+    of scoring_service's 100 points -- the free ~80 mechanical points
+    were only ever computed AFTER the paid call. A min_score this high
+    can never be cleared even by a perfect 30/30 LLM score on top of a
+    fresh company/posting's real mechanical subtotal, so the paid call
+    must never happen at all."""
+    _settings(db, auto_score_batch_size=10, min_score_for_auto_tailor=99)
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application_id = make_application(db, posting, status="Ingested").id
+
+    score_calls = []
+    monkeypatch.setattr(matching_service, "score_application", lambda db, aid: score_calls.append(aid))
+    monkeypatch.setattr(tailoring_service, "tailor_application", lambda db, aid: None)
+
+    confirmation_service.progress_ingested_applications(db)
+
+    assert score_calls == []  # no paid call spent
+    assert _reload(db, application_id).status == "Ingested"
+
+
+def test_mechanical_prescreen_skips_the_paid_llm_call_on_a_hard_stop_flag(db, settings, monkeypatch):
+    """A posting already flagged at intake (scam pattern, eligibility
+    requirement) is a known hard-stop before any LLM is ever asked --
+    no reason to spend a paid call on something that will land in Needs
+    Review regardless of what the LLM says."""
+    _settings(db, auto_score_batch_size=10, min_score_for_auto_tailor=50)
+    company = make_company(db)
+    posting = make_posting(db, company, scam_flag_reason="Real scam pattern detected at intake")
+    application_id = make_application(db, posting, status="Ingested").id
+
+    score_calls = []
+    monkeypatch.setattr(matching_service, "score_application", lambda db, aid: score_calls.append(aid))
+    monkeypatch.setattr(tailoring_service, "tailor_application", lambda db, aid: None)
+
+    confirmation_service.progress_ingested_applications(db)
+
+    assert score_calls == []
+
+
+def test_spend_cap_blocks_the_paid_scoring_call(db, settings, monkeypatch):
+    """Real incident, 2026-09-18: $164.91 burned in 24h with nothing
+    checking a running total against a limit. A cap already exceeded by
+    real logged spend must block the next paid call before it happens."""
+    _settings(db, auto_score_batch_size=10, min_score_for_auto_tailor=50, daily_llm_spend_cap_usd=1.0)
+    db.add(LlmUsageLog(provider="anthropic", model="claude-test", input_tokens=1000, output_tokens=1000, estimated_cost_usd=5.0))
+    db.commit()
+
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application_id = make_application(db, posting, status="Ingested").id
+
+    score_calls = []
+    monkeypatch.setattr(matching_service, "score_application", lambda db, aid: score_calls.append(aid))
+    monkeypatch.setattr(tailoring_service, "tailor_application", lambda db, aid: None)
+
+    confirmation_service.progress_ingested_applications(db)
+
+    assert score_calls == []
+    assert _reload(db, application_id).status == "Ingested"
+
+
+def test_spend_cap_none_means_no_cap(db, settings, monkeypatch):
+    """Nullable daily_llm_spend_cap_usd -- None is an explicit opt-out,
+    real logged spend above any normal threshold must not block anything
+    when no cap is configured."""
+    _settings(db, auto_score_batch_size=10, min_score_for_auto_tailor=50, daily_llm_spend_cap_usd=None)
+    db.add(LlmUsageLog(provider="anthropic", model="claude-test", input_tokens=1000, output_tokens=1000, estimated_cost_usd=500.0))
+    db.commit()
+
+    company = make_company(db)
+    posting = make_posting(db, company)
+    application_id = make_application(db, posting, status="Ingested").id
+
+    def fake_score(db, application_id):
+        app = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+        app.match_score = 70
+        db.commit()
+        return app
+
+    monkeypatch.setattr(matching_service, "score_application", fake_score)
+    monkeypatch.setattr(tailoring_service, "tailor_application", lambda db, aid: None)
+
+    confirmation_service.progress_ingested_applications(db)
+
+    assert _reload(db, application_id).match_score == 70
 
 
 def test_a_high_scoring_application_stuck_after_a_tailoring_failure_gets_retried(db, settings, monkeypatch):

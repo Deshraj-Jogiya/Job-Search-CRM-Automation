@@ -57,7 +57,7 @@ _ROLE_TITLE_MATCH_WEIGHT = 12
 _WORKSITE_CLARITY_WEIGHT = 6
 _POSTING_RECENCY_WEIGHT = 2
 _SPONSORSHIP_SIGNAL_BONUS_WEIGHT = 10
-_AI_PROFILE_FIT_WEIGHT = 30  # the folded-in original match_score, see module docstring
+AI_PROFILE_FIT_WEIGHT = 30  # the folded-in original match_score, see module docstring
 # Base components (ai_profile_fit + sponsorship_history + wage_level_fit +
 # role_title_match + worksite_clarity + posting_recency) sum to 100 --
 # sponsorship_signal_bonus is a genuine +10 on top, clamped at 100 total.
@@ -246,9 +246,9 @@ def _ai_profile_fit_component(application: JobApplication) -> dict:
         # together with a real match_score) is the actual "has this
         # been scored" signal, same distinction analytics_service.py
         # already relies on.
-        return {"raw": None, "weight": _AI_PROFILE_FIT_WEIGHT, "contribution": 0}
-    contribution = round(application.match_score / 100 * _AI_PROFILE_FIT_WEIGHT)
-    return {"raw": application.match_score, "weight": _AI_PROFILE_FIT_WEIGHT, "contribution": contribution}
+        return {"raw": None, "weight": AI_PROFILE_FIT_WEIGHT, "contribution": 0}
+    contribution = round(application.match_score / 100 * AI_PROFILE_FIT_WEIGHT)
+    return {"raw": application.match_score, "weight": AI_PROFILE_FIT_WEIGHT, "contribution": contribution}
 
 
 def compute_score_breakdown(
