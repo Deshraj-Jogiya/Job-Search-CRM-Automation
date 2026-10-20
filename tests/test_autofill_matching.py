@@ -147,6 +147,77 @@ class TestDraftCustomAnswersDegradesGracefully:
         assert result == {"q1": "Because I love the mission."}
 
 
+class TestDraftCustomAnswersSavedAnswerCache:
+    """Real feature request from 2026-08-23 ("record how I answer, reuse
+    automatically in rotation") -- these need the real `saved_answers`
+    table, unlike TestDraftCustomAnswersDegradesGracefully above which
+    deliberately tests WITHOUT it."""
+
+    _sponsorship_q = {"field_path": "q1", "name": "q1", "id": "q1", "field_type": "text", "label": "Do you require visa sponsorship?"}
+
+    def test_greenhouse_reuses_a_cached_answer_without_calling_the_llm(self, db):
+        from app.services import saved_answer_service
+
+        saved_answer_service.record_answer(db, "Do you require visa sponsorship?", "Yes, in the future.")
+
+        fake_llm = MagicMock()
+        with patch("app.services.autofill.greenhouse_autofill.get_llm_provider", return_value=fake_llm):
+            result = greenhouse_autofill._draft_custom_answers([self._sponsorship_q], {}, "jd text", "Acme")
+
+        assert result == {"q1": "Yes, in the future."}
+        fake_llm.complete_json.assert_not_called()  # the whole point -- no paid call spent
+
+    def test_greenhouse_a_fresh_llm_answer_gets_saved_for_next_time(self, db):
+        from app.models import SavedAnswer
+
+        clean = '{"answers": ["Yes, in the future."]}'
+        with patch(
+            "app.services.autofill.greenhouse_autofill.get_llm_provider",
+            return_value=self._fake_llm(clean),
+        ):
+            greenhouse_autofill._draft_custom_answers([self._sponsorship_q], {}, "jd text", "Acme")
+
+        saved = db.query(SavedAnswer).filter(SavedAnswer.question_normalized == "do you require visa sponsorship").first()
+        assert saved is not None
+        assert saved.answer_text == "Yes, in the future."
+
+    def _fake_llm(self, raw_response):
+        provider = MagicMock()
+        provider.complete_json.return_value = raw_response
+        return provider
+
+    def test_lever_never_caches_a_select_question(self, db):
+        """Employer-specific option wording -- see lever_autofill.py's
+        own docstring for why select/checkbox_group are excluded."""
+        from app.models import SavedAnswer
+
+        select_q = {
+            "field_path": "q1", "name": "q1", "field_type": "select",
+            "label": "Do you require visa sponsorship?", "options": ["Yes", "No"],
+        }
+        clean = '{"answers": ["Yes"]}'
+        with patch("app.services.autofill.lever_autofill.get_llm_provider", return_value=self._fake_llm(clean)):
+            lever_autofill._draft_custom_answers([select_q], {}, "jd text", "Acme")
+
+        assert db.query(SavedAnswer).count() == 0
+
+    def test_ashby_caches_a_yesno_question_but_not_a_radio_question(self, db):
+        from app.models import SavedAnswer
+
+        yesno_q = {"field_path": "q1", "field_type": "yesno", "label": "Are you willing to relocate?"}
+        radio_q = {
+            "field_path": "q2", "field_type": "radio",
+            "label": "How did you hear about us?", "options": ["LinkedIn", "Referral"],
+        }
+        clean = '{"answers": ["Yes", "LinkedIn"]}'
+        with patch("app.services.autofill.ashby_autofill.get_llm_provider", return_value=self._fake_llm(clean)):
+            ashby_autofill._draft_custom_answers([yesno_q, radio_q], {}, "jd text", "Acme")
+
+        saved_questions = {s.question_normalized for s in db.query(SavedAnswer).all()}
+        assert "are you willing to relocate" in saved_questions
+        assert "how did you hear about us" not in saved_questions
+
+
 class FakeFrame:
     """Stands in for a Playwright Frame -- just enough surface
     (.url, .page) to test _resolve_fill_scope/_owning_page without a

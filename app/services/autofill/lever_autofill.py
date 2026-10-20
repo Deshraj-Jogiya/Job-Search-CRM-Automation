@@ -157,61 +157,106 @@ def _draft_custom_answers(questions: list[dict], profile: dict, jd_text: str, co
     """Same honest-only-from-profile contract as Greenhouse's drafting
     call. For select/checkbox_group questions the prompt supplies the
     real option list and the answer is matched (not trusted verbatim)
-    against it at fill time -- see `_match_option`."""
+    against it at fill time -- see `_match_option`.
+
+    Plain text questions are checked against the saved-answer cache
+    first (see saved_answer_service.py, real feature request from
+    2026-08-23) -- most recurring questions (visa sponsorship, work
+    authorization, desired salary) get answered for $0 after the first
+    time they're seen on ANY employer's form. Deliberately NOT applied
+    to select/checkbox_group questions: a cached free-text answer was
+    matched against a DIFFERENT employer's own option wording, so
+    reusing it here risks _match_option finding no match (harmless, just
+    wasted) or a looser match than intended (not worth the risk on a
+    real application when a fresh, this-employer-grounded LLM draft
+    costs little for the smaller set of select-type questions alone)."""
     if not questions:
         return {}
 
-    lines = []
-    for i, q in enumerate(questions):
-        if q["field_type"] in ("select", "checkbox_group") and q.get("options"):
-            real_opts = [o for o in q["options"] if o.strip().lower() not in ("select...", "")]
-            opts = "; ".join(real_opts)
-            lines.append(f"{i + 1}. {q['label']} (choose exactly one of: {opts})")
-        else:
-            lines.append(f"{i + 1}. {q['label']}")
+    from ...database import SessionLocal
+    from .. import saved_answer_service
 
-    llm = get_llm_provider()
+    db = SessionLocal()
     try:
-        # Same real gap fixed 2026-09-22 in greenhouse_autofill.py's
-        # sibling function -- the call itself wasn't guarded, only the
-        # JSON-parsing after it. A real API-level failure (confirmed
-        # live: exhausted metered-API credit balance) must degrade to
-        # "leave these fields unanswered", not kill an otherwise-working
-        # autofill session over one LLM call.
-        raw = llm.complete_json(
-            system=(
-                "You are a careful, honest job-application assistant filling out a real application on a "
-                "real candidate's behalf. You return only raw JSON."
-            ),
-            prompt=(
-                "Draft a short, honest answer to each screening question below, grounded ONLY in the "
-                "candidate's real profile. Never invent experience, credentials, dates, or facts not present "
-                "in the profile. If a question offers a fixed list of choices, answer with the text of exactly "
-                "one of those choices, as close to verbatim as possible. If a question genuinely can't be "
-                "answered honestly from the profile, answer with exactly '[REVIEW NEEDED]' instead of "
-                "guessing.\n\n"
-                f"Candidate profile:\n{json.dumps(profile, indent=2)}\n\n"
-                f"Target company: {company_name}\n"
-                f"Job description:\n{jd_text[:3000]}\n\n"
-                f"Questions (answer in this exact order):\n"
-                + "\n".join(lines)
-                + "\n\n"
-                'Respond with EXACTLY this JSON shape: {"answers": ["answer 1", "answer 2", ...]}\n'
-                "Do not wrap the output in markdown code fences."
-            ),
-            temperature=0.4,
-        )
-    except Exception:
-        return {}
-    try:
-        parsed = parse_json_response(raw)
-    except (json.JSONDecodeError, AttributeError):
-        # See ashby_autofill.py's _draft_custom_answers for why this is
-        # a graceful skip, not a raise -- a malformed LLM response here
-        # previously took down the whole in-progress autofill session.
-        return {}
-    answers = parsed.get("answers", [])
-    return {q["name"]: answers[i] for i, q in enumerate(questions) if i < len(answers) and answers[i]}
+        resolved: dict = {}
+        unresolved: list[dict] = list(questions)
+        try:
+            unresolved = []
+            for q in questions:
+                if q["field_type"] not in ("select", "checkbox_group"):
+                    cached = saved_answer_service.find_saved_answer(db, q["label"])
+                    if cached:
+                        resolved[q["name"]] = cached
+                        continue
+                unresolved.append(q)
+        except Exception:
+            unresolved = list(questions)
+            resolved = {}
+
+        if not unresolved:
+            return resolved
+
+        lines = []
+        for i, q in enumerate(unresolved):
+            if q["field_type"] in ("select", "checkbox_group") and q.get("options"):
+                real_opts = [o for o in q["options"] if o.strip().lower() not in ("select...", "")]
+                opts = "; ".join(real_opts)
+                lines.append(f"{i + 1}. {q['label']} (choose exactly one of: {opts})")
+            else:
+                lines.append(f"{i + 1}. {q['label']}")
+
+        llm = get_llm_provider()
+        try:
+            # Same real gap fixed 2026-09-22 in greenhouse_autofill.py's
+            # sibling function -- the call itself wasn't guarded, only the
+            # JSON-parsing after it. A real API-level failure (confirmed
+            # live: exhausted metered-API credit balance) must degrade to
+            # "leave these fields unanswered", not kill an otherwise-working
+            # autofill session over one LLM call.
+            raw = llm.complete_json(
+                system=(
+                    "You are a careful, honest job-application assistant filling out a real application on a "
+                    "real candidate's behalf. You return only raw JSON."
+                ),
+                prompt=(
+                    "Draft a short, honest answer to each screening question below, grounded ONLY in the "
+                    "candidate's real profile. Never invent experience, credentials, dates, or facts not present "
+                    "in the profile. If a question offers a fixed list of choices, answer with the text of exactly "
+                    "one of those choices, as close to verbatim as possible. If a question genuinely can't be "
+                    "answered honestly from the profile, answer with exactly '[REVIEW NEEDED]' instead of "
+                    "guessing.\n\n"
+                    f"Candidate profile:\n{json.dumps(profile, indent=2)}\n\n"
+                    f"Target company: {company_name}\n"
+                    f"Job description:\n{jd_text[:3000]}\n\n"
+                    f"Questions (answer in this exact order):\n"
+                    + "\n".join(lines)
+                    + "\n\n"
+                    'Respond with EXACTLY this JSON shape: {"answers": ["answer 1", "answer 2", ...]}\n'
+                    "Do not wrap the output in markdown code fences."
+                ),
+                temperature=0.4,
+            )
+        except Exception:
+            return resolved
+        try:
+            parsed = parse_json_response(raw)
+        except (json.JSONDecodeError, AttributeError):
+            # See ashby_autofill.py's _draft_custom_answers for why this is
+            # a graceful skip, not a raise -- a malformed LLM response here
+            # previously took down the whole in-progress autofill session.
+            return resolved
+        answers = parsed.get("answers", [])
+        for i, q in enumerate(unresolved):
+            if i < len(answers) and answers[i]:
+                resolved[q["name"]] = answers[i]
+                if q["field_type"] not in ("select", "checkbox_group"):
+                    try:
+                        saved_answer_service.record_answer(db, q["label"], answers[i])
+                    except Exception:
+                        pass
+        return resolved
+    finally:
+        db.close()
 
 
 def _match_option(value: str, options: list[str]) -> int | None:

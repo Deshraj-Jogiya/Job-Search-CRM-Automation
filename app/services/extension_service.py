@@ -695,7 +695,6 @@ def render_document_for_attachment(db: Session, application_id: int, document_ty
             pdf_bytes = page_fit_service.render_resume_pdf_with_fit(db, doc.content)["pdf_bytes"]
         except page_fit_service.PageFitExhaustedError as e:
             raise ExtensionServiceError(str(e)) from e
-        name_part = "resume"
     else:
         resume_doc = (
             db.query(TailoredDocument)
@@ -704,9 +703,16 @@ def render_document_for_attachment(db: Session, application_id: int, document_ty
         )
         candidate_name = json.loads(resume_doc.content).get("name", "") if resume_doc else ""
         pdf_bytes = document_render_service.render_cover_letter_pdf(doc.content, candidate_name)
-        name_part = "cover-letter"
 
-    filename = f"{name_part}-{application.posting.company_name_raw}-{application.posting.job_title}.pdf".replace(" ", "-")
+    resume_doc_for_name = (
+        db.query(TailoredDocument)
+        .filter(TailoredDocument.application_id == application_id, TailoredDocument.document_type == "resume")
+        .first()
+    )
+    candidate_name = json.loads(resume_doc_for_name.content).get("name", "") if resume_doc_for_name else ""
+    filename = document_render_service.standard_document_filename(
+        document_type, candidate_name, application.posting.company_name_raw
+    )
     return pdf_bytes, filename
 
 
@@ -788,8 +794,19 @@ def score_and_tailor_new_application(db: Session, application_id: int) -> None:
     every other source -- this never bypasses that safety net, only the
     asynchronous-specific confirmation window a manually-added,
     already-attended posting was never really subject to."""
-    from . import matching_service, tailoring_service
+    from . import llm_usage_service, matching_service, tailoring_service
     from .confirmation_service import approve_application
+
+    # Same real, metered-API spend this cap protects everywhere else
+    # (see confirmation_service._score_and_maybe_tailor_one) -- this is
+    # the real-time path, so a raised error (not a silent skip) is
+    # correct here: a human is actively watching this popup and needs to
+    # know why nothing happened, not have it fail invisibly.
+    if llm_usage_service.spend_cap_exceeded(db):
+        raise ExtensionServiceError(
+            "Daily LLM spend cap reached -- scoring/tailoring paused until it resets. "
+            "Raise or disable the cap in Settings if this was expected."
+        )
 
     matching_service.score_application(db, application_id)
     tailoring_service.tailor_application(db, application_id)

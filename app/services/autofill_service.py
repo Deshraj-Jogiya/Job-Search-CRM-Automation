@@ -36,7 +36,7 @@ from .autofill.ashby_autofill import autofill_ashby_application
 from .autofill.greenhouse_autofill import autofill_greenhouse_application
 from .autofill.lever_autofill import autofill_lever_application
 from . import page_fit_service
-from .document_render_service import render_cover_letter_pdf
+from .document_render_service import render_cover_letter_pdf, standard_document_filename
 from .matching_service import get_profile_content_for_application
 
 _AUTOFILL_FUNCTIONS = {
@@ -290,9 +290,8 @@ def run_autofill(db: Session, application_id: int) -> None:
     # than a generic "resume.pdf" that gives the reviewer no signal
     # which candidate it belongs to.
     candidate_name = resume_content.get("name") or profile_content.get("name") or "Candidate"
-    safe_name = "_".join(candidate_name.split())
     tmp_dir = tempfile.mkdtemp(prefix="career_pilot_autofill_")
-    resume_pdf_path = os.path.join(tmp_dir, f"{safe_name}_resume.pdf")
+    resume_pdf_path = os.path.join(tmp_dir, standard_document_filename("resume", candidate_name, posting.company_name_raw))
     try:
         resume_pdf_bytes = page_fit_service.render_resume_pdf_with_fit(db, resume_content)["pdf_bytes"]
     except page_fit_service.PageFitExhaustedError as e:
@@ -302,7 +301,7 @@ def run_autofill(db: Session, application_id: int) -> None:
 
     cover_letter_pdf_path = None
     if cl_doc:
-        cover_letter_pdf_path = os.path.join(tmp_dir, f"{safe_name}_cover_letter.pdf")
+        cover_letter_pdf_path = os.path.join(tmp_dir, standard_document_filename("cover_letter", candidate_name, posting.company_name_raw))
         with open(cover_letter_pdf_path, "wb") as f:
             f.write(render_cover_letter_pdf(cl_doc.content, resume_content.get("name", "")))
 

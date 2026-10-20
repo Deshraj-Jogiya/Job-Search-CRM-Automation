@@ -231,58 +231,98 @@ def _detect_custom_questions(page: Page) -> list[dict]:
 
 
 def _draft_custom_answers(questions: list[dict], profile: dict, jd_text: str, company_name: str) -> dict:
-    """One real LLM call drafting an honest answer to every detected
-    custom question, grounded only in the real profile -- never
-    fabricated. Returns {question_id: draft_answer_text}."""
+    """Drafts an honest answer to every detected custom question NOT
+    already resolved from the saved-answer cache (see
+    saved_answer_service.py, real feature request from 2026-08-23:
+    "record how I answer, reuse automatically in rotation"). Most
+    recurring questions (visa sponsorship, work authorization, desired
+    salary) get answered for $0 after the first time they're seen on
+    ANY employer's form, not just this one -- only genuinely unresolved
+    questions still spend a real LLM call. Grounded only in the real
+    profile -- never fabricated. Returns {question_id: draft_answer_text}."""
     if not questions:
         return {}
 
-    llm = get_llm_provider()
+    from ...database import SessionLocal
+    from .. import saved_answer_service
+
+    db = SessionLocal()
     try:
-        # Real bug found live 2026-09-22: this call itself wasn't
-        # guarded, only the JSON-parsing after it was -- a real API-level
-        # failure (confirmed live: the metered Anthropic key's credit
-        # balance exhausted, a plain 400 from the SDK) propagated
-        # uncaught all the way to _run_autofill_background's broad
-        # except, which kills the ENTIRE in-progress autofill session
-        # over ONE field, even though every other field (mechanical,
-        # no LLM needed) had already filled successfully. A transient
-        # LLM failure on the custom-question draft should degrade to
-        # "leave these particular fields unanswered for manual review",
-        # not blow up a real, working autofill run.
-        raw = llm.complete_json(
-            system=(
-                "You are a careful, honest job-application assistant filling out a real application on a "
-                "real candidate's behalf. You return only raw JSON."
-            ),
-            prompt=(
-                "Draft a short, honest answer to each screening question below, grounded ONLY in the "
-                "candidate's real profile. Never invent experience, credentials, dates, or facts not present "
-                "in the profile. If a question genuinely can't be answered honestly from the profile (e.g. a "
-                "yes/no about something the profile doesn't state), answer with exactly '[REVIEW NEEDED]' "
-                "instead of guessing.\n\n"
-                f"Candidate profile:\n{json.dumps(profile, indent=2)}\n\n"
-                f"Target company: {company_name}\n"
-                f"Job description:\n{jd_text[:3000]}\n\n"
-                f"Questions (answer in this exact order):\n"
-                + "\n".join(f"{i + 1}. {q['label']}" for i, q in enumerate(questions))
-                + "\n\n"
-                'Respond with EXACTLY this JSON shape: {"answers": ["answer 1", "answer 2", ...]}\n'
-                "Do not wrap the output in markdown code fences."
-            ),
-            temperature=0.4,
-        )
-    except Exception:
-        return {}
-    try:
-        parsed = parse_json_response(raw)
-    except (json.JSONDecodeError, AttributeError):
-        # See ashby_autofill.py's _draft_custom_answers for why this is
-        # a graceful skip, not a raise -- a malformed LLM response here
-        # previously took down the whole in-progress autofill session.
-        return {}
-    answers = parsed.get("answers", [])
-    return {q["id"]: answers[i] for i, q in enumerate(questions) if i < len(answers) and answers[i]}
+        resolved: dict = {}
+        unresolved: list[dict] = list(questions)
+        try:
+            unresolved = []
+            for q in questions:
+                cached = saved_answer_service.find_saved_answer(db, q["label"])
+                if cached:
+                    resolved[q["id"]] = cached
+                else:
+                    unresolved.append(q)
+        except Exception:
+            # Same "never let this step take down a working autofill
+            # session" posture as the LLM call below -- a saved-answer
+            # lookup problem degrades to "just ask the LLM for
+            # everything", not a crash.
+            unresolved = list(questions)
+
+        if not unresolved:
+            return resolved
+
+        llm = get_llm_provider()
+        try:
+            # Real bug found live 2026-09-22: this call itself wasn't
+            # guarded, only the JSON-parsing after it was -- a real API-level
+            # failure (confirmed live: the metered Anthropic key's credit
+            # balance exhausted, a plain 400 from the SDK) propagated
+            # uncaught all the way to _run_autofill_background's broad
+            # except, which kills the ENTIRE in-progress autofill session
+            # over ONE field, even though every other field (mechanical,
+            # no LLM needed) had already filled successfully. A transient
+            # LLM failure on the custom-question draft should degrade to
+            # "leave these particular fields unanswered for manual review",
+            # not blow up a real, working autofill run.
+            raw = llm.complete_json(
+                system=(
+                    "You are a careful, honest job-application assistant filling out a real application on a "
+                    "real candidate's behalf. You return only raw JSON."
+                ),
+                prompt=(
+                    "Draft a short, honest answer to each screening question below, grounded ONLY in the "
+                    "candidate's real profile. Never invent experience, credentials, dates, or facts not present "
+                    "in the profile. If a question genuinely can't be answered honestly from the profile (e.g. a "
+                    "yes/no about something the profile doesn't state), answer with exactly '[REVIEW NEEDED]' "
+                    "instead of guessing.\n\n"
+                    f"Candidate profile:\n{json.dumps(profile, indent=2)}\n\n"
+                    f"Target company: {company_name}\n"
+                    f"Job description:\n{jd_text[:3000]}\n\n"
+                    f"Questions (answer in this exact order):\n"
+                    + "\n".join(f"{i + 1}. {q['label']}" for i, q in enumerate(unresolved))
+                    + "\n\n"
+                    'Respond with EXACTLY this JSON shape: {"answers": ["answer 1", "answer 2", ...]}\n'
+                    "Do not wrap the output in markdown code fences."
+                ),
+                temperature=0.4,
+            )
+        except Exception:
+            return resolved  # still return whatever the free cache already resolved
+        try:
+            parsed = parse_json_response(raw)
+        except (json.JSONDecodeError, AttributeError):
+            # See ashby_autofill.py's _draft_custom_answers for why this is
+            # a graceful skip, not a raise -- a malformed LLM response here
+            # previously took down the whole in-progress autofill session.
+            return resolved
+        answers = parsed.get("answers", [])
+        for i, q in enumerate(unresolved):
+            if i < len(answers) and answers[i]:
+                resolved[q["id"]] = answers[i]
+                try:
+                    saved_answer_service.record_answer(db, q["label"], answers[i])
+                except Exception:
+                    pass  # caching is a bonus, never worth losing a real drafted answer over
+        return resolved
+    finally:
+        db.close()
 
 
 def _fill_text_fields_with_reconciliation(page: Page, values: dict) -> list[str]:

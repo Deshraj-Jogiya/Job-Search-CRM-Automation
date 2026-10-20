@@ -987,3 +987,32 @@ class TestScoreAndTailorNewApplication:
 
         db.refresh(application)
         assert application.status == "Needs Review"  # never auto-approved past a real safety flag
+
+    def test_spend_cap_reached_raises_instead_of_silently_skipping(self, db, settings):
+        """Real-time path -- a human is actively watching this popup, so
+        a raised, visible error is correct here, unlike the background
+        scheduler path (confirmation_service) which just logs and moves
+        on to the next application."""
+        import pytest
+        from unittest.mock import patch
+
+        from app.models import GlobalSettings, LlmUsageLog
+
+        settings_row = db.query(GlobalSettings).first()
+        settings_row.daily_llm_spend_cap_usd = 1.0
+        db.add(LlmUsageLog(provider="anthropic", model="claude-test", input_tokens=100, output_tokens=100, estimated_cost_usd=5.0))
+        db.commit()
+
+        application = extension_service.add_job_from_page(
+            db, "https://example.com/careers/123", "Data Engineer", "Acme Analytics", "A" * 60
+        )
+
+        with (
+            patch("app.services.matching_service.score_application") as mock_score,
+            patch("app.services.tailoring_service.tailor_application") as mock_tailor,
+        ):
+            with pytest.raises(extension_service.ExtensionServiceError):
+                extension_service.score_and_tailor_new_application(db, application.id)
+
+        mock_score.assert_not_called()
+        mock_tailor.assert_not_called()
