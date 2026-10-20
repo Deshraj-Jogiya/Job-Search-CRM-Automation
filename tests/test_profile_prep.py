@@ -72,7 +72,7 @@ def test_reference_sections_come_straight_from_the_profile_and_hide_confidential
     assert {"label": "Salary negotiable", "value": "Yes"} in ref["preferences"]
     assert {"label": "Notice period", "value": "2 weeks"} in ref["preferences"]
     assert [s.title for s in ref["stories"]] == ["confirmed story"]
-    assert ref["skills"] == {"data_engineering": ["SQL", "dbt"]}
+    assert ref["skills"] == [{"name": "Data engineering", "tools": ["SQL", "dbt"]}]
 
 
 def test_no_profile_raises_a_user_facing_error(db):
@@ -170,10 +170,10 @@ def test_page_renders_reference_and_drafted_sections(db):
 
     html = env.get_template("profile_prep.html").render(**_ctx(setup_error=None, reference=ref, prep=prep, drafted=drafted))
 
-    assert "Acme LLC (Contract)" in html
+    assert "Acme LLC · Contract" in html
     assert "Public Project" in html and "Secret Team Project" not in html
     assert "Tell me about yourself." in html
-    assert "Refresh from latest profile" in html and "Up to date." in html
+    assert "Refresh answers" in html and "Up to date" in html
     assert 'href="/interview-prep"' in html  # shared nav link present
 
 
@@ -184,7 +184,7 @@ def test_page_before_generation_offers_the_generate_button(db):
 
     html = env.get_template("profile_prep.html").render(**_ctx(setup_error=None, reference=ref, prep=None, drafted=None))
 
-    assert "Refresh from latest profile" in html and "Nothing drafted yet." in html
+    assert "Refresh answers" in html and "Nothing drafted yet." in html
 
 
 def test_page_without_a_profile_points_to_the_profile_page():
@@ -368,10 +368,24 @@ def test_status_banner_shows_stale_generating_and_never_drafted_states(db):
     template = env.get_template("profile_prep.html")
 
     html = template.render(**{**base, "prep_status": stale})
-    assert "Out of date." in html and "now version 2" in html
+    assert "older than your profile" in html and "profile is now version 2" in html
     html = template.render(**{**base, "prep_status": {**stale, "generating": True}})
-    assert "Updating now." in html and "disabled" in html
+    assert "Updating now" in html and "disabled" in html
     html = template.render(**{**base, "prep_status": {**_STATUS, "state": "none", "built_from_version_id": None}})
-    assert "Not drafted yet." in html
-    html = template.render(**{**base, "prep_status": {**stale, "last_error": "credit balance is too low"}})
-    assert "credit balance is too low" in html
+    assert "Answers not drafted yet." in html
+    from app.services.profile_prep_service import friendly_error
+
+    raw = "credit balance is too low"
+    html = template.render(**{**base, "prep_status": {**stale, "last_error": raw, "last_error_text": friendly_error(raw)}})
+    assert "no credits left" in html and "credit balance is too low" not in html
+
+
+def test_page_helpers_make_the_reference_readable():
+    from app.services.profile_prep_service import _end_key, friendly_error, skill_group_name, split_bullet
+
+    assert skill_group_name("generative_ai_llms_agentic_frameworks") == "Generative AI, LLMs and agents"
+    assert split_bullet("Data Quality Testing: Wrote 15 dbt tests.") == {"label": "Data Quality Testing", "text": "Wrote 15 dbt tests."}
+    assert split_bullet("Wrote 15 dbt tests.") == {"label": "", "text": "Wrote 15 dbt tests."}
+    assert _end_key("Feb 2026 – Present") > _end_key("Sep 2026") > _end_key("Apr 2025 – Nov 2025")
+    assert "no credits left" in friendly_error("Error code: 400 ... Your credit balance is too low")
+    assert friendly_error(None) is None

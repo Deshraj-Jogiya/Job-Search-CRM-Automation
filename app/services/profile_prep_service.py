@@ -26,6 +26,7 @@ material is meant to be said out loud.
 """
 
 import json
+import re
 import os
 import threading
 import time
@@ -115,6 +116,55 @@ def load_profile(db: Session) -> tuple[dict, ProfileVariant]:
     return strip_confidential_projects(json.loads(version.content_json)), variant
 
 
+
+# Skill-group keys in the profile are snake_case; the page shows them as names a person would use.
+_SKILL_GROUP_NAMES = {
+    "generative_ai_llms_agentic_frameworks": "Generative AI, LLMs and agents",
+    "machine_learning_deep_learning": "Machine learning and deep learning",
+    "data_engineering_cloud_platforms": "Data engineering and cloud",
+    "full_stack_software_engineering": "Software engineering",
+    "devops_tooling_analytics": "DevOps, tooling and analytics",
+}
+FEATURED_PROJECTS = 6
+_LABEL_RE = re.compile(r"^([A-Z][A-Za-z0-9&/+.\- ]{2,45}):\s+(?=\S)")
+
+
+def skill_group_name(key: str) -> str:
+    return _SKILL_GROUP_NAMES.get(key) or key.replace("_", " ").capitalize()
+
+
+def split_bullet(text: str) -> dict:
+    """'Label: rest' bullets show the label in bold; others are plain."""
+    m = _LABEL_RE.match(text or "")
+    return {"label": m.group(1), "text": text[m.end():]} if m else {"label": "", "text": text or ""}
+
+
+def _end_key(date: str) -> tuple:
+    if re.search(r"present", date or "", re.I):
+        return (9999, 12)
+    months = {m: i for i, m in enumerate(("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"), 1)}
+    found = re.findall(r"([A-Za-z]{3})[a-z]*\.?\s+((?:19|20)\d\d)", date or "")
+    if found:
+        mon, year = found[-1]
+        return (int(year), months.get(mon.lower(), 0))
+    years = re.findall(r"(?:19|20)\d\d", date or "")
+    return (int(years[-1]), 0) if years else (0, 0)
+
+
+def friendly_error(error: str | None) -> str | None:
+    """A short sentence for the page; the raw provider error stays in the activity log."""
+    if not error:
+        return None
+    low = error.lower()
+    if "credit balance" in low or "billing" in low:
+        return "The AI account has no credits left, so the drafted answers cannot refresh until credits are added."
+    if "rate" in low and "limit" in low or "429" in low:
+        return "The AI service was busy (rate limited). It will try again on its own later."
+    if "spend cap" in low:
+        return "Today's AI spend cap is reached. It will try again tomorrow."
+    return "The last refresh failed. Details are in the activity log."
+
+
 def build_reference(db: Session, profile: dict, variant_id: int) -> dict:
     """Everything that can be shown straight from the profile, no LLM."""
     prefs = profile.get("application_preferences") or {}
@@ -131,19 +181,24 @@ def build_reference(db: Session, profile: dict, variant_id: int) -> dict:
         }
         for e in profile.get("experience", [])
     ]
-    projects = [
-        {"name": p.get("name", ""), "date": p.get("date", ""), "technologies": p.get("technologies", []),
-         "bullets": p.get("bullets", [])}
-        for p in profile.get("projects", [])
-    ]
+    projects = sorted(
+        (
+            {"name": p.get("name", ""), "date": p.get("date", ""), "technologies": p.get("technologies", []),
+             "bullets": [split_bullet(b) for b in p.get("bullets", [])]}
+            for p in profile.get("projects", [])
+        ),
+        key=lambda p: _end_key(p["date"]),
+        reverse=True,
+    )
     stories = behavioral_story_service.list_stories(db, variant_id, confirmed_only=True)
     return {
         "name": profile.get("name", ""),
         "summary": profile.get("summary", ""),
         "preferences": preferences,
         "timeline": timeline,
-        "projects": projects,
-        "skills": profile.get("skills", {}),
+        "projects": projects[:FEATURED_PROJECTS],
+        "more_projects": projects[FEATURED_PROJECTS:],
+        "skills": [{"name": skill_group_name(k), "tools": v} for k, v in (profile.get("skills") or {}).items() if v],
         "education": profile.get("education", []),
         "certifications": [resume_rules.certification_display(c) for c in profile.get("certifications", [])],
         "stories": stories,
@@ -306,6 +361,7 @@ def status(db: Session) -> dict:
         "state": state,
         "generating": _state["generating"],
         "last_error": _state["last_error"],
+        "last_error_text": friendly_error(_state["last_error"]),
         "current_version_id": current.id,
         "current_version_at": current.created_at,
         "built_from_version_id": prep.profile_version_id if prep else None,
