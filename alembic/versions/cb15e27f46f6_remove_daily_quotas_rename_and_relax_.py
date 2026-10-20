@@ -30,17 +30,19 @@ def upgrade() -> None:
     # row with the real Python-side defaults, same reasoning as every
     # other GlobalSettings column added this pass: outreach_hygiene.py
     # does direct arithmetic against these.
-    op.add_column('global_settings', sa.Column('outreach_per_person_lifetime', sa.Integer(), nullable=False, server_default='1'))
-    op.add_column('global_settings', sa.Column('outreach_per_company_max', sa.Integer(), nullable=False, server_default='10'))
-    op.add_column('global_settings', sa.Column('outreach_per_company_window_days', sa.Integer(), nullable=False, server_default='14'))
-
-    op.drop_column('global_settings', 'daily_application_target_min')
-    op.drop_column('global_settings', 'daily_application_target_max')
-    op.drop_column('global_settings', 'outreach_company_cap_count')
-    op.drop_column('global_settings', 'outreach_person_lifetime_cap')
-    op.drop_column('global_settings', 'daily_outreach_touch_target')
-    op.drop_column('global_settings', 'daily_outreach_cap')
-    op.drop_column('global_settings', 'outreach_company_cap_days')
+    #
+    # batch_alter_table: SQLite older than 3.35 has no DROP COLUMN, so on SQLite the table is rebuilt; on Postgres these are plain ALTERs.
+    # Columns that already exist are skipped, so a run interrupted half-way on SQLite (which cannot roll back DDL) can be re-run.
+    existing = {c["name"] for c in sa.inspect(op.get_bind()).get_columns("global_settings")}
+    with op.batch_alter_table("global_settings") as batch:
+        for name, default in (("outreach_per_person_lifetime", "1"), ("outreach_per_company_max", "10"),
+                              ("outreach_per_company_window_days", "14")):
+            if name not in existing:
+                batch.add_column(sa.Column(name, sa.Integer(), nullable=False, server_default=default))
+        for name in ("daily_application_target_min", "daily_application_target_max", "outreach_company_cap_count",
+                     "outreach_person_lifetime_cap", "daily_outreach_touch_target", "daily_outreach_cap", "outreach_company_cap_days"):
+            if name in existing:
+                batch.drop_column(name)
     # (autogenerate also proposed nullable=True alter_columns on 4
     # unrelated columns from earlier migrations -- cosmetic Alembic
     # drift, not this migration's concern, left untouched.)
