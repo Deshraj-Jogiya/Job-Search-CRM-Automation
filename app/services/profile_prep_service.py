@@ -133,8 +133,12 @@ def skill_group_name(key: str) -> str:
     return _SKILL_GROUP_NAMES.get(key) or key.replace("_", " ").capitalize()
 
 
+_FILLER_RE = re.compile(r"\b(?:real|genuine|actual)\b,? (?!-?time|world|estate)", re.IGNORECASE)
+
+
 def split_bullet(text: str) -> dict:
-    """'Label: rest' bullets show the label in bold; others are plain."""
+    """'Label: rest' bullets show the label in bold; others are plain. Filler words ("a real", "genuine") are dropped, as on the portfolio."""
+    text = re.sub(r"\s{2,}", " ", re.sub(r"\bactually\s+", "", _FILLER_RE.sub("", text or ""))).strip()
     m = _LABEL_RE.match(text or "")
     return {"label": m.group(1), "text": text[m.end():]} if m else {"label": "", "text": text or ""}
 

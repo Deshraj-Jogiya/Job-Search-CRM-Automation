@@ -389,3 +389,10 @@ def test_page_helpers_make_the_reference_readable():
     assert _end_key("Feb 2026 – Present") > _end_key("Sep 2026") > _end_key("Apr 2025 – Nov 2025")
     assert "no credits left" in friendly_error("Error code: 400 ... Your credit balance is too low")
     assert friendly_error(None) is None
+
+
+def test_filler_words_are_dropped_but_real_time_stays():
+    from app.services.profile_prep_service import split_bullet
+
+    out = split_bullet("Pipeline: Built a real PySpark job, real-time inference on real-world data, actually ran it")
+    assert out == {"label": "Pipeline", "text": "Built a PySpark job, real-time inference on real-world data, ran it"}

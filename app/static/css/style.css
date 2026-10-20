@@ -1526,3 +1526,13 @@ html.light-theme .flag-warning {
     .prep-answer { padding-left: 1rem; }
     .prep-star { grid-template-columns: 1fr; }
 }
+
+/* Chromium stops painting an element with backdrop-filter once it grows past its compositing size limit, so very tall cards
+   (the interview prep sections run several thousand pixels) rendered blank below the fold. Tall content panels use a solid
+   background instead of the blur. */
+.prep-section,
+.prep-intro {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: var(--bg-dark);
+}
