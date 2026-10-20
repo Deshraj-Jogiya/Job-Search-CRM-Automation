@@ -3,6 +3,7 @@ rendered and measured via reportlab (no mocking of the measurement
 itself) -- these tests exercise the real loop against deliberately
 small/oversized resumes, not a fake "page count" signal."""
 
+import re
 from datetime import date
 
 import pytest
@@ -115,6 +116,44 @@ class TestNeverTouchesProtectedContent:
         assert len(reduced["projects"]) == 2
         assert reduced["projects"][0]["name"] == "Project 0"
         assert reduced["projects"][1]["name"] == "Project 1"
+
+
+class TestPageFitOkMatchesTheRealRenderedPageCount:
+    """Real incident, 2026-09-24/28: render_resume_pdf_with_fit reported
+    page_fit_ok=True (0 reductions needed) for two different real resumes
+    whose actual rendered PDF was really 3 and 2 pages, each with a mostly
+    -empty final page -- the old continuous-single-frame height estimate
+    can't see a KeepTogether block jumping to a new page near a boundary,
+    since nothing ever "doesn't fit" in an arbitrarily tall single frame.
+    These tests check the real ground truth: the PDF's own /Count in its
+    Pages tree, not the estimator's own opinion of itself."""
+
+    @staticmethod
+    def _real_pdf_page_count(pdf_bytes: bytes) -> int:
+        match = re.search(rb"/Count (\d+)", pdf_bytes)
+        assert match, "PDF has no /Count in its Pages tree"
+        return int(match.group(1))
+
+    def test_small_content_real_page_count_matches_page_fit_ok(self, db):
+        result = page_fit_service.render_resume_pdf_with_fit(db, _content(num_roles=1, bullets_per_role=1))
+        assert result["page_fit_ok"] is True
+        assert self._real_pdf_page_count(result["pdf_bytes"]) <= page_fit_service.resume_rules.get_config()["page_fit"]["max_pages"]
+
+    def test_reduced_large_content_real_page_count_matches_page_fit_ok(self, db):
+        large = _content(num_roles=10, bullets_per_role=5, num_projects=3, summary_repeats=12)
+        result = page_fit_service.render_resume_pdf_with_fit(db, large)
+        assert result["page_fit_ok"] is True
+        assert self._real_pdf_page_count(result["pdf_bytes"]) <= page_fit_service.resume_rules.get_config()["page_fit"]["max_pages"]
+
+    def test_many_roles_each_with_a_keeptogether_entry_near_the_page_boundary(self, db):
+        # Enough distinct multi-bullet role entries that at least one is
+        # likely to land right at a page boundary -- exactly the shape
+        # that exposed the real bug (a whole entry jumping to the next
+        # page while the continuous-frame estimate reported it as fitting).
+        content = _content(num_roles=6, bullets_per_role=3, num_projects=2, summary_repeats=2)
+        result = page_fit_service.render_resume_pdf_with_fit(db, content)
+        assert result["page_fit_ok"] is True
+        assert self._real_pdf_page_count(result["pdf_bytes"]) <= page_fit_service.resume_rules.get_config()["page_fit"]["max_pages"]
 
 
 class TestFailsLoudlyWhenExhausted:

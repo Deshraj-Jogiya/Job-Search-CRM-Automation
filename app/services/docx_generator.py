@@ -34,7 +34,7 @@ from .document_render_service import _humanize_skill_category
 # low-level pattern for it. Real hyperlinks are normal, expected resume
 # content and don't affect ATS parsing (unlike tables/text boxes/images,
 # which this module's docstring above does deliberately avoid).
-_LINK_COLOR_HEX = "2563EB"
+_LINK_COLOR_HEX = "000000"  # links stay underlined but black: no stray colour on the page
 
 
 def _add_hyperlink(paragraph, url: str, text: str) -> None:
@@ -133,10 +133,7 @@ def _add_name_and_contact(doc: Document, resume_doc: dict) -> None:
         title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     contact = resume_doc.get("contact") or {}
-    contact_parts = [
-        contact.get(k) for k in ("email", "phone", "location", "linkedin", "github", "website")
-        if contact.get(k)
-    ]
+    contact_parts = resume_rules.contact_info_parts(contact) + resume_rules.contact_link_values(contact)
     if contact_parts:
         contact_p = doc.add_paragraph()
         contact_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -151,8 +148,17 @@ def _add_name_and_contact(doc: Document, resume_doc: dict) -> None:
 
 
 def _add_bullets(doc: Document, bullets: list[str]) -> None:
+    # Word breaks pages wherever it likes unless told otherwise, which split a job or project half on one page
+    # and half on the next (found 2026-10-10; the PDF already kept entries whole). Every bullet stays in one
+    # piece, and all but the last are kept with the paragraph after them, so with the role/title line also
+    # kept with its first bullet an entry moves to the next page as a block instead of splitting.
+    paragraphs = []
     for bullet in bullets:
-        doc.add_paragraph(bullet, style="List Bullet")
+        p = doc.add_paragraph(bullet, style="List Bullet")
+        p.paragraph_format.keep_together = True
+        paragraphs.append(p)
+    for p in paragraphs[:-1]:
+        p.paragraph_format.keep_with_next = True
 
 
 def _add_skills_section(doc: Document, resume_doc: dict, config: dict) -> None:
@@ -192,10 +198,7 @@ def _add_experience_section(doc: Document, resume_doc: dict, config: dict) -> No
             continue
         if classification == "EARLIER":
             suffix = " (concurrent)" if i in concurrent_idx else ""
-            earlier_lines.append(
-                f"Earlier: {entry.get('role', '')}, {entry.get('company', '')} "
-                f"({entry.get('location', '')}, {resume_rules.display_date_range(entry)}){suffix}"
-            )
+            earlier_lines.append(resume_rules.earlier_line(entry, suffix))
             continue
 
         if not wrote_heading:
@@ -203,11 +206,13 @@ def _add_experience_section(doc: Document, resume_doc: dict, config: dict) -> No
             wrote_heading = True
 
         role_p = doc.add_paragraph()
-        role_run = role_p.add_run(f"{entry.get('role', '')} — {entry.get('company', '')}")
+        role_run = role_p.add_run(f"{entry.get('role', '')} — {resume_rules.display_company(entry)}")
         role_run.bold = True
+        role_p.paragraph_format.keep_with_next = True
         suffix = " (concurrent)" if i in concurrent_idx else ""
         meta_bits = [b for b in (entry.get("location"), resume_rules.display_date_range(entry)) if b]
-        doc.add_paragraph(f"{' | '.join(meta_bits)}{suffix}")
+        meta_p = doc.add_paragraph(f"{' | '.join(meta_bits)}{suffix}")
+        meta_p.paragraph_format.keep_with_next = True
         _add_bullets(doc, entry.get("bullets", []))
 
     if earlier_lines:
@@ -217,6 +222,30 @@ def _add_experience_section(doc: Document, resume_doc: dict, config: dict) -> No
             doc.add_paragraph(line)
 
     resume_doc["_credential_entries"] = credential_entries  # handed off to certifications section
+
+
+def _add_additional_certificates_line(doc: Document, resume_doc: dict) -> None:
+    names = [a for a in (resume_doc.get("additional_certifications") or []) if a]
+    if names:
+        doc.add_paragraph("Additional certificates: " + "; ".join(names))
+
+
+def _add_certification_entries_section(doc: Document, resume_doc: dict) -> None:
+    """Optional per-job section after experience: credentials with their own pointers and an explicit status (Completed / In progress)."""
+    entries = resume_doc.get("certification_entries") or []
+    if not entries:
+        return
+    doc.add_heading(resume_doc.get("certification_entries_title") or "Certifications & Training", level=1)
+    for entry in entries:
+        name_p = doc.add_paragraph()
+        name_run = name_p.add_run(entry.get("name", ""))
+        name_run.bold = True
+        name_p.paragraph_format.keep_with_next = True
+        meta = " | ".join(b for b in (entry.get("issuer"), entry.get("status")) if b)
+        meta_p = doc.add_paragraph(meta)
+        meta_p.paragraph_format.keep_with_next = True
+        _add_bullets(doc, entry.get("bullets", []))
+    _add_additional_certificates_line(doc, resume_doc)
 
 
 def _add_projects_section(doc: Document, resume_doc: dict, config: dict) -> None:
@@ -229,6 +258,7 @@ def _add_projects_section(doc: Document, resume_doc: dict, config: dict) -> None
         name_p = doc.add_paragraph()
         name_run = name_p.add_run(project.get("name", ""))
         name_run.bold = True
+        name_p.paragraph_format.keep_with_next = True
         github_url = project.get("github_url")
         if github_url:
             name_p.add_run("  |  ")
@@ -248,7 +278,7 @@ def _add_education_section(doc: Document, resume_doc: dict) -> None:
 
 
 def _add_certifications_section(doc: Document, resume_doc: dict) -> None:
-    certifications = list(resume_doc.get("certifications") or [])
+    certifications = [] if resume_doc.get("certification_entries") else list(resume_doc.get("certifications") or [])
     credential_entries = resume_doc.pop("_credential_entries", [])
     if not certifications and not credential_entries:
         return
@@ -259,6 +289,8 @@ def _add_certifications_section(doc: Document, resume_doc: dict) -> None:
     for entry in credential_entries:
         bits = [b for b in (entry.get("role"), entry.get("company"), entry.get("date")) if b]
         doc.add_paragraph(" | ".join(bits))
+    if not resume_doc.get("certification_entries"):
+        _add_additional_certificates_line(doc, resume_doc)
 
 
 def _add_languages_section(doc: Document, resume_doc: dict) -> None:
@@ -293,12 +325,13 @@ def build_resume_docx(resume_doc: dict, config: dict | None = None) -> Document:
 
     _add_skills_section(doc, resume_doc, config)
     _add_experience_section(doc, resume_doc, config)
+    _add_certification_entries_section(doc, resume_doc)
     _add_projects_section(doc, resume_doc, config)
     _add_education_section(doc, resume_doc)
     _add_certifications_section(doc, resume_doc)
     _add_languages_section(doc, resume_doc)
 
-    work_auth = resume_rules.work_authorization_line(config)
+    work_auth = None if resume_doc.get("hide_work_authorization") else resume_rules.work_authorization_line(config)
     if work_auth:
         doc.add_paragraph(work_auth)
 

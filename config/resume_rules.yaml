@@ -103,9 +103,16 @@ metrics:
     - "-40%"
 
 projects_by_variant:
-  max_projects: 3
+  # Raised 3 -> 5 and 2 -> 4 on 2026-10-10: these were sized for the one-page resume. With max_pages: 2
+  # (see page_fit below) they left the second page mostly empty and gave every role only two bullets per
+  # project. The page-fit loop still trims whatever does not fit, so the caps only bound how much it may try.
+  max_projects: 5
   bullets_per_project_min: 1
-  bullets_per_project_max: 2
+  bullets_per_project_max: 4
+  # When true (default), projects are chosen by ranking every real project against the job description
+  # (resume_rules.select_projects_for_jd) and the variant lists below are only a fallback. Set false to
+  # go back to the fixed per-variant lists.
+  select_by_jd: true
   # Each slug is resume_rules._slugify() applied to the real project's
   # "name" field in the live profile (config/resume_rules.yaml has no
   # way to reference a project except by its own slugified title --
@@ -153,7 +160,9 @@ projects_by_variant:
 
 work_authorization:
   # Turned on 2026-09-14 at the candidate's explicit direction. The text
-  # is deliberately precise: F-1 STEM OPT means NO employer action is
+  # states the status plainly and neutrally (2026-10-14, at the candidate's
+  # direction: a resume states status, it does not tell the employer what to
+  # do). Original precision note: F-1 STEM OPT means NO employer action is
   # needed to hire right now (real EAD, works like any other employee) --
   # H-1B only becomes relevant later, to continue past OPT. Getting that
   # distinction stated accurately is the point; a vaguer line risks being
@@ -161,8 +170,8 @@ work_authorization:
   # reason. work_authorization_line() never infers this text -- it only
   # ever returns exactly what's written here, so this is the one place
   # that can ever change what the resume says about immigration status.
-  include_work_auth_line: true
-  work_auth_text: "Authorized to work in the U.S. now under F-1 STEM OPT (no employer action required to hire); will require H-1B sponsorship to continue beyond OPT."
+  include_work_auth_line: false   # 2026-10-14: dropped permanently at the candidate's direction (status is stated on application forms, not on the resume)
+  work_auth_text: "Authorized to work in the U.S. now on F-1 STEM OPT; future H-1B sponsorship needed."
 
 certifications:
   # Added 2026-09-14 at the candidate's explicit direction ("build the
@@ -174,6 +183,26 @@ certifications:
   # never invents or drops a real one outside this cap; a priority key
   # with nothing matching is just skipped.
   max_shown: 3
+  # Rule for EVERY resume (added 2026-10-12 at the candidate's direction): a Certifications & Training section right after Professional
+  # Experience, one entry per credential with its issuer, status (Completed / In progress) and pointers ranked for the job. When it is on,
+  # the plain list at the end is not printed (no duplicates). Pointers come only from the profile's own entries.
+  section:
+    enabled: true
+    title: "Certifications & Training"
+    max_entries: 4              # most credentials that get pointers on one resume
+    bullets_per_entry_max: 3
+    # Fit gate (2026-10-12, at the candidate's direction): strong experience and projects come first. Pointers appear only when the credentials add
+    # at least pointer_min_total_gain of the job's core terms that experience and projects do not show, and the resume covers less than
+    # strong_coverage of those core terms already. Otherwise credentials are listed without pointers (at most mention_max_entries, at the end).
+    core_terms: 15
+    min_item_gain: 0.03
+    pointer_min_total_gain: 0.10
+    strong_coverage: 0.60
+    mention_max_entries: 3
+    additional_min_relevance: 0.04   # an unrelated credential never fills the Additional line: its name/issuer must touch the job's core terms
+    additional_max_entries: 6    # credentials that did not make the section are named on one 'Additional certificates:' line; the page-fit step drops that line first
+    pointer_fill_relevance: 0.20  # once pointers are justified, credentials this relevant to the job fill the remaining slots
+    mention_min_relevance: 0.25   # share of the job's core weight a credential must touch to be listed beyond the configured highlights
   priority:
     - "Guinness World Record"    # genuinely rare, verifiable, memorable -- lead with it
     - "Tableau"                  # real, recognized credential body, directly relevant to data roles
@@ -236,3 +265,5 @@ page_fit:
       content_value_weight: 2
     - id: drop_third_project
       content_value_weight: 5
+    - id: trim_certification_pointers
+      content_value_weight: 3

@@ -1,6 +1,6 @@
 Jordan Rivera
 Data Engineer
-jordan.rivera.sample@example.com | 555-0100 | Austin, TX | https://www.linkedin.com/in/jordan-rivera-sample | https://github.com/jordan-rivera-sample
+Austin, TX | 555-0100 | jordan.rivera.sample@example.com | https://www.linkedin.com/in/jordan-rivera-sample | https://github.com/jordan-rivera-sample
 Summary
 Data engineer building batch and streaming pipelines, focused on reliability and cost-aware infrastructure.
 Technical Skills
@@ -26,7 +26,7 @@ Chicago, IL | Mar 2023 - Dec 2023
 Wrote Scala Spark jobs on GCP Dataproc to process point-of-sale data across 300+ stores.
 Built scikit-learn based anomaly detection for inventory counts, catching roughly 90% of known discrepancy cases in backtesting.
 Created Tableau dashboards summarizing weekly inventory drift for regional operations managers.
-Earlier: Data Engineering Intern, Fabrikam Labs (Denver, CO, May 2016 - Aug 2016)
+Earlier: Data Engineering Intern, Fabrikam Labs | Denver, CO | May 2016 - Aug 2016
 Selected Projects
 Pipeline Cost Monitor
 Built a Streamlit dashboard tracking daily Snowflake compute spend, flagging anomalies roughly 24 hours faster than manual review.
@@ -43,4 +43,3 @@ Certifications
 AWS Certified Data Analytics - Specialty
 Snowflake SnowPro Core Certification
 Data Engineering Fellow | Insight Data Bootcamp | Jan 2024 - Mar 2024
-Authorized to work in the U.S. now under F-1 STEM OPT (no employer action required to hire); will require H-1B sponsorship to continue beyond OPT.

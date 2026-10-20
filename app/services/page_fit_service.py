@@ -109,6 +109,44 @@ def _measure_flow_height_pt(resume_content: dict, params: _RenderParams) -> floa
     return tall_height - frame._y
 
 
+def _real_page_count(resume_content: dict, params: _RenderParams) -> int:
+    """Ground truth for whether a resume actually fits, unlike
+    _measure_flow_height_pt's continuous-single-frame estimate.
+    document_render_service.build_resume_flow wraps each experience/project
+    entry in KeepTogether(...), which makes reportlab jump a whole entry to
+    the next page rather than split it whenever it doesn't fit in the
+    remaining space on the current page -- a real, load-bearing behavior a
+    continuous-frame height measurement can't see, since nothing ever
+    "doesn't fit" in an arbitrarily tall single frame. Real incident,
+    2026-09-24/28: render_resume_pdf_with_fit reported page_fit_ok=True
+    (0 reductions needed) for two different real resumes whose actual
+    rendered PDF was really 3 and 2 pages respectively (confirmed via the
+    PDF's own /Count and pdfplumber per-page content bounds), each with a
+    mostly-empty final page -- exactly the shape a KeepTogether jump near a
+    page boundary produces. This function builds the flow against the
+    SAME real, paginated page geometry render_resume_pdf uses (not an
+    oversized single frame), so reportlab's own real pagination -- KeepTogether
+    jumps included -- determines the page count, the same pagination that
+    will actually be used when the PDF is rendered for real."""
+    content_width = letter[0] - 2 * params.margin_side_in * inch
+    left_margin, right_margin = params.margin_side_in * inch, params.margin_side_in * inch
+    top_margin, bottom_margin = params.margin_top_in * inch, params.margin_bottom_in * inch
+    page_w, page_h = letter
+    buf = io.BytesIO()
+    frame = Frame(
+        left_margin, bottom_margin,
+        page_w - left_margin - right_margin, page_h - top_margin - bottom_margin,
+        leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0, id="resume",
+    )
+    doc = BaseDocTemplate(buf, pagesize=letter, pageTemplates=[PageTemplate(id="resume", frames=[frame])])
+    flow = document_render_service.build_resume_flow(
+        resume_content, body_font_pt=params.body_font_pt, line_leading_pt=params.line_leading_pt,
+        content_width=content_width,
+    )
+    doc.build(flow)
+    return doc.page
+
+
 def _usable_page_height_pt(params: _RenderParams) -> float:
     page_h = letter[1]
     return page_h - (params.margin_top_in + params.margin_bottom_in) * inch
@@ -132,7 +170,7 @@ def _shorten_summary_text(summary: str, max_chars: int) -> str:
     return truncated.rstrip(".,;: ") + "."
 
 
-_CONTENT_REDUCTION_IDS = {"drop_weakest_bullet_per_role", "shorten_summary", "drop_third_project"}
+_CONTENT_REDUCTION_IDS = {"drop_weakest_bullet_per_role", "shorten_summary", "drop_third_project", "trim_certification_pointers"}
 _VISUAL_REDUCTION_IDS = {"tighten_line_spacing", "shrink_margins_one_step", "shrink_body_font_one_step"}
 
 
@@ -155,6 +193,10 @@ def _apply_content_reduction(resume_content: dict, reduction_id: str, config: di
         projects = content.get("projects", [])
         if len(projects) > 2:
             content["projects"] = projects[:2]
+    elif reduction_id == "trim_certification_pointers":
+        for entry in content.get("certification_entries", []):
+            if len(entry.get("bullets", [])) > 1:
+                entry["bullets"] = entry["bullets"][:-1]  # the lowest-ranked pointer for this job goes first; every entry keeps at least one
     return content
 
 
@@ -196,6 +238,8 @@ def _is_reduction_exhausted(reduction_id: str, resume_content: dict, params: _Re
         return params.applied_counts.get(reduction_id, 0) >= 1  # single-shot
     if reduction_id == "drop_third_project":
         return len(resume_content.get("projects", [])) <= 2
+    if reduction_id == "trim_certification_pointers":
+        return not any(len(e.get("bullets", [])) > 1 for e in resume_content.get("certification_entries", []))
     return True
 
 
@@ -257,10 +301,20 @@ def render_resume_pdf_with_fit(db, resume_content: dict, config: dict | None = N
     max_iterations = len(catalog) * 20  # generous cap -- guards against a logic error looping forever, not a real limit
 
     for _ in range(max_iterations):
+        # _real_page_count is the authoritative fit check (see its own
+        # docstring for why the continuous-frame estimate below can't be
+        # trusted for this decision) -- height_pt/overflow_pt are kept only
+        # as an approximate signal for ranking which reduction to try next.
+        if _real_page_count(content, params) <= pf["max_pages"]:
+            break
+        if content.get("additional_certifications"):
+            # The one-line "Additional certificates" mention is the least valuable content on the page: it goes before any other reduction.
+            content = copy.deepcopy(content)
+            content["additional_certifications"] = []
+            reductions_applied.append("drop_additional_certificates")
+            continue
         height_pt = _measure_flow_height_pt(content, params)
         overflow_pt = height_pt - _usable_page_height_pt(params) * pf["max_pages"]
-        if overflow_pt <= 0:
-            break
 
         candidates = [
             rid for rid in catalog_order

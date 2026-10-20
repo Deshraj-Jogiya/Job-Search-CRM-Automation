@@ -1,5 +1,7 @@
 from datetime import date
 
+from app.services import resume_rules
+
 from app.services.resume_rules import (
     check_ai_cliche_language,
     check_bare_percentage,
@@ -398,18 +400,9 @@ class TestWorkAuthorizationLine:
         config = {"work_authorization": {"include_work_auth_line": True, "work_auth_text": "Authorized to work in the U.S."}}
         assert work_authorization_line(config) == "Authorized to work in the U.S."
 
-    def test_real_config_is_enabled_with_accurate_stem_opt_text(self):
-        # Locks in the real, current product decision (2026-09-14, at the
-        # candidate's explicit direction): the line must be precise that
-        # OPT means no employer action is needed to hire NOW, and H-1B is
-        # only relevant to continue PAST OPT -- a vaguer line risks being
-        # misread as "needs sponsorship now" and screened out for the
-        # wrong reason.
-        line = work_authorization_line()
-        assert line is not None
-        assert "STEM OPT" in line
-        assert "H-1B" in line
-        assert "now" in line.lower()
+    def test_real_config_leaves_the_authorization_line_off(self):
+        # 2026-10-14, at the candidate's direction: the resume never carries a work-authorization line (application forms state it).
+        assert work_authorization_line() is None
 
 
 class TestSelectCertificationsForResume:
@@ -473,3 +466,93 @@ class TestSelectCertificationsForResume:
         assert "Guinness World Record" in result[0]
         assert "Tableau" in result[1]
         assert "Generative AI" in result[2]
+
+
+class TestFillerAndQuantifiedFirst:
+    def test_filler_adjectives_are_removed_but_real_time_is_kept(self):
+        from app.services import resume_rules
+
+        assert resume_rules.rewrite_ai_cliche_language("Built a real PySpark job and an actual pipeline") == "Built a PySpark job and an pipeline"
+        assert "real-time" in resume_rules.rewrite_ai_cliche_language("Built a real-time pipeline")
+        assert "real time" in resume_rules.rewrite_ai_cliche_language("Processed data in real time")
+
+    def test_quantified_bullets_come_first_without_changing_text(self):
+        from app.services import resume_rules
+
+        bullets = ["Built dashboards for leadership.", "Cut latency 65%.", "Wrote documentation."]
+
+        assert resume_rules.quantified_first(bullets) == [
+            "Cut latency 65%.", "Built dashboards for leadership.", "Wrote documentation.",
+        ]
+
+
+# ---------------------------------------------------------------------------
+# C6b -- project and bullet selection by job description
+# ---------------------------------------------------------------------------
+
+_JD_PROJECTS = [
+    {"name": "Warehouse Pipeline", "technologies": ["dbt", "Snowflake"],
+     "bullets": ["Built dbt models and Snowflake pipelines with data-quality tests."]},
+    {"name": "Dashboard Suite", "technologies": ["Tableau", "Power BI"],
+     "bullets": ["Built Tableau and Power BI dashboards tracking completion rates and learning metrics."]},
+    {"name": "Chat Agent", "technologies": ["LangChain"],
+     "bullets": ["Built a retrieval-augmented LLM agent with tool calling."]},
+]
+
+
+def test_projects_are_ranked_by_overlap_with_the_job_description():
+    jd = "Build Tableau and Power BI dashboards and reports on learning completion metrics."
+    ranked = resume_rules.rank_projects_for_jd(_JD_PROJECTS, jd)
+    assert ranked[0]["name"] == "Dashboard Suite"
+
+
+def test_a_different_job_description_picks_a_different_project():
+    jd = "Build LLM agents with retrieval-augmented generation and tool calling using LangChain."
+    ranked = resume_rules.rank_projects_for_jd(_JD_PROJECTS, jd)
+    assert ranked[0]["name"] == "Chat Agent"
+
+
+def test_ranking_never_invents_or_drops_a_project():
+    ranked = resume_rules.rank_projects_for_jd(_JD_PROJECTS, "anything at all")
+    assert sorted(p["name"] for p in ranked) == sorted(p["name"] for p in _JD_PROJECTS)
+    assert all(any(r is p for p in _JD_PROJECTS) for r in ranked)  # the real objects, not copies
+
+
+def test_with_no_overlap_the_profile_order_decides():
+    ranked = resume_rules.rank_projects_for_jd(_JD_PROJECTS, "zzz qqq")
+    assert [p["name"] for p in ranked] == [p["name"] for p in _JD_PROJECTS]
+
+
+def test_select_projects_for_jd_respects_the_cap():
+    config = {"projects_by_variant": {"max_projects": 2}}
+    assert len(resume_rules.select_projects_for_jd(_JD_PROJECTS, "dbt Snowflake", config)) == 2
+    assert len(resume_rules.select_projects_for_jd(_JD_PROJECTS, "dbt Snowflake", config, limit=1)) == 1
+
+
+def test_bullets_are_ranked_by_overlap_and_ties_keep_their_order():
+    bullets = ["Wrote documentation.", "Built Tableau dashboards for leadership.", "Reviewed pull requests."]
+    ranked = resume_rules.rank_bullets_for_jd(bullets, "Tableau dashboards for leadership reporting.")
+    assert ranked[0] == "Built Tableau dashboards for leadership."
+    assert resume_rules.rank_bullets_for_jd(bullets, "zzz")[:] == bullets
+
+
+class TestContactHeader:
+    def test_zip_sits_inside_the_location_before_any_parenthetical(self):
+        from app.services.resume_rules import contact_info_parts
+        c = {"location": "Tempe, Arizona (open to relocation)", "phone": "(480) 876-2863", "email": "a@b.com", "zip": "85281", "linkedin": "https://x"}
+        assert contact_info_parts(c) == ["Tempe, Arizona 85281 (open to relocation)", "(480) 876-2863", "a@b.com"]
+        assert contact_info_parts({"location": "Austin, TX 78701", "zip": "78701"}) == ["Austin, TX 78701"]
+        assert contact_info_parts({"location": "Austin, TX"}) == ["Austin, TX"]
+
+
+def test_resume_pdf_text_is_all_black():
+    import io
+    import json
+    import pdfplumber
+    from app.services.document_render_service import render_resume_pdf
+    content = {"name": "T P", "contact": {"location": "Tempe, AZ", "zip": "85281", "phone": "1", "email": "a@b.com", "github": "https://github.com/x"},
+               "summary": "s", "experience": [{"company": "Acme", "role": "Eng", "location": "Tempe, AZ", "start_date": "Jan 2024", "end_date": "Present", "bullets": ["Did a thing 10%."]}],
+               "projects": [{"name": "P", "github_url": "https://github.com/x/p", "technologies": ["Python"], "bullets": ["b 5%"]}]}
+    chars = [c for pg in pdfplumber.open(io.BytesIO(render_resume_pdf(json.dumps(content)))).pages for c in pg.chars]
+    shades = {tuple(round(v, 2) for v in (c.get("non_stroking_color") or (0,))) for c in chars}
+    assert all(len(set(s)) == 1 and s[0] <= 0.11 for s in shades), shades  # black or the near-black of the section headings, never grey or blue

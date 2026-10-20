@@ -84,6 +84,7 @@ def _config_with_test_project_slugs():
     from app.services import resume_rules
 
     config = copy.deepcopy(resume_rules.get_config())
+    config["projects_by_variant"]["select_by_jd"] = False  # these tests cover the per-variant fallback path
     config["projects_by_variant"]["variants"]["data_engineering"] = [
         "career_pilot", "talentvenue_eventintel", "ai_model_observability",
     ]

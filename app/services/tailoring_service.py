@@ -135,6 +135,12 @@ def _tailor_experience_and_projects_pass(experience: list, projects: list, jd_te
             "belongs in the selection because its real technologies or outcomes would matter to whoever "
             "reads this JD, not to hit a target number. Rewrite each selected project into 3 concise, "
             "metrics-driven bullets using the same real-evidence-only rules as experience above.\n\n"
+            "Write for an ATS resume checker. Every bullet should name a concrete result: keep each figure "
+            "(count, percentage, size, duration) that the source bullet already states, exactly as written, and "
+            "lead with the bullets that carry one. If a source bullet has no figure, you may use a number only "
+            "if it appears elsewhere in the provided experience or projects for that same work; otherwise leave "
+            "it unquantified or omit it. Never invent, estimate, or round a number. Avoid empty filler words: "
+            "'real', 'actual', 'genuine', 'various', 'successfully', 'leveraged', 'utilized'.\n\n"
             "Real resume density, not an essay: a 1-2 page resume is the market standard for this "
             "candidate's experience level, and that only works if bullets stay tight. Aim for roughly 3 "
             "concise, high-impact bullets per experience role (not 5+) -- pick the strongest evidence for "
@@ -553,14 +559,19 @@ def _tailor_summary_skills(profile_content: dict, jd_text: str) -> dict:
     it can participate in the same JD-keyword refine loop instead of a
     disconnected single-shot pass."""
     llm = get_llm_provider()
+    # cacheable_prefix: the profile is the exact same, often tens-of-KB
+    # block generate_cover_letter also sends within the same tailoring
+    # run -- see anthropic_provider.py's own docstring on this parameter
+    # for the real cost mechanic (a cache read costs ~10% of normal
+    # input price once the first call in a session writes it).
     raw = llm.complete_json(
         system="You are an expert resume writer. You return only raw JSON.",
+        cacheable_prefix=f"Candidate Profile:\n{json.dumps(profile_content, indent=2)}",
         prompt=(
             "Tailor this candidate's professional summary and skills grouping to align with the job "
             "description. Do not fabricate anything. Keep the summary to 3 concise sentences (roughly "
             "4-5 lines on a resume) -- a resume summary is a hook, not a full recap of the skills section "
             "that follows it.\n\n"
-            f"Candidate Profile:\n{json.dumps(profile_content, indent=2)}\n\n"
             f"Job Description:\n{jd_text}\n\n"
             "Respond with EXACTLY this JSON shape:\n"
             "{\n"
@@ -687,9 +698,15 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
     # back to the LLM's full candidate pool if the variant isn't
     # recognized in config at all, rather than silently tailoring zero
     # projects for an unmapped variant.
-    candidate_projects = resume_rules.select_projects_for_variant(
-        profile_content.get("projects", []), variant_slug, config
-    )
+    # C6b: by default the projects come from ranking every real project against THIS job description, not
+    # from a fixed per-variant list (which gave every role the same three projects). The variant list is
+    # still used when the config turns select_by_jd off or the posting has no text to rank against.
+    if config["projects_by_variant"].get("select_by_jd", True) and (jd_text or "").strip():
+        candidate_projects = resume_rules.select_projects_for_jd(profile_content.get("projects", []), jd_text, config)
+    else:
+        candidate_projects = resume_rules.select_projects_for_variant(
+            profile_content.get("projects", []), variant_slug, config
+        )
     if not candidate_projects:
         candidate_projects = profile_content.get("projects", [])[: config["projects_by_variant"]["max_projects"]]
 
@@ -815,15 +832,15 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
         raw_skills, tailored_experience, tailored_projects, final_summary, config
     )
     for entry in tailored_experience:
-        entry["bullets"] = [
+        entry["bullets"] = resume_rules.quantified_first([
             resume_rules.rewrite_ai_cliche_language(resume_rules.hedge_unverified_metrics(b, config))
             for b in entry.get("bullets", [])
-        ]
+        ])
     for project in tailored_projects:
-        project["bullets"] = [
+        project["bullets"] = resume_rules.quantified_first([
             resume_rules.rewrite_ai_cliche_language(resume_rules.hedge_unverified_metrics(b, config))
             for b in project.get("bullets", [])
-        ]
+        ])
 
     resume_doc = {
         "name": profile_content.get("name"),
@@ -838,6 +855,21 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
             profile_content.get("certifications", []), config
         ),
     }
+    cert_plan = resume_rules.plan_certification_section(
+        profile_content.get("certifications", []), posting.job_description or "", resume_doc, config, posting.company_name_raw or ""
+    )
+    if cert_plan["mode"] == "pointers":
+        resume_doc["certification_entries"] = cert_plan["entries"]
+        resume_doc["certification_entries_title"] = resume_rules.certification_section_config(config)["title"]
+        resume_doc["certifications"] = []  # shown in the section after experience instead of a second plain list
+    elif cert_plan["mode"] == "mention":
+        resume_doc["certifications"] = cert_plan["lines"]  # compact list at the end; projects keep the space
+    elif cert_plan["coverage"] is not None:
+        resume_doc["certifications"] = []  # the planner ran and no credential relates to this job: list none rather than fall back to unrelated ones
+    if cert_plan["mode"] != "none" or (cert_plan["coverage"] is not None and cert_plan["additional"]):
+        if cert_plan["additional"]:
+            resume_doc["additional_certifications"] = cert_plan["additional"]
+        resume_doc["certification_plan"] = {k: cert_plan[k] for k in ("mode", "coverage", "total_gain", "reason")}
     if dropped_skills:
         log_activity(
             db,

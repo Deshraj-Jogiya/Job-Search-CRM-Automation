@@ -32,6 +32,7 @@ identically either way; a hyphen extracts cleanly on every ATS parser
 instead of gambling on font-encoding support none of them need to have.
 """
 
+import re
 import io
 import json
 from xml.sax.saxutils import escape as _esc
@@ -68,7 +69,7 @@ _name_style = ParagraphStyle("NameStyle", parent=_styles["Title"], fontSize=16, 
 # is nothing left that can vary by which style happens to trail.
 _contact_style = ParagraphStyle(
     "ContactStyle", parent=_styles["Normal"], fontSize=8.3, leading=10,
-    textColor=colors.grey, spaceAfter=0, alignment=TA_CENTER,
+    textColor=colors.black, spaceAfter=0, alignment=TA_CENTER,
 )
 _section_style = ParagraphStyle(
     "SectionStyle", parent=_styles["Heading2"], fontSize=10, leading=12, spaceBefore=0, spaceAfter=0,
@@ -83,7 +84,7 @@ _role_italic_style = ParagraphStyle(
     fontName="Helvetica-Oblique", spaceBefore=0, spaceAfter=0,
 )
 _meta_style = ParagraphStyle(
-    "MetaStyle", parent=_styles["Normal"], fontSize=8.3, leading=11, textColor=colors.grey, spaceAfter=0,
+    "MetaStyle", parent=_styles["Normal"], fontSize=8.3, leading=11, textColor=colors.black, spaceAfter=0,
 )
 _meta_right_style = ParagraphStyle("MetaRightStyle", parent=_meta_style, alignment=TA_RIGHT)
 _body_style = ParagraphStyle("BodyStyle", parent=_styles["Normal"], fontSize=8.7, leading=10.3, spaceAfter=0)
@@ -146,7 +147,7 @@ def _two_col_row(left, right, left_style, right_style, left_link: str = None, co
     content_width = content_width if content_width is not None else _CONTENT_WIDTH
     left_text = _esc(left or "")
     if left_link:
-        left_text += f' &nbsp;|&nbsp; <a href="{_esc(left_link)}"><font color="#2563eb"><u>GitHub</u></font></a>'
+        left_text += f' &nbsp;|&nbsp; <a href="{_esc(left_link)}"><u>GitHub</u></a>'
     table = Table(
         [[Paragraph(left_text, left_style), Paragraph(_esc(right or ""), right_style)]],
         colWidths=[content_width * 0.65, content_width * 0.35],
@@ -195,15 +196,14 @@ def _contact_lines(contact: dict) -> list[str]:
     pattern as the per-project GitHub link below), not just visible text --
     a reader opening the PDF on screen can click straight through instead
     of having to copy/retype the URL."""
-    values = [str(v) for v in (contact or {}).values() if v]
-    info = [v for v in values if not v.startswith("http")]
-    links = [v for v in values if v.startswith("http")]
+    info = resume_rules.contact_info_parts(contact)
+    links = resume_rules.contact_link_values(contact)
     sep = " &nbsp;|&nbsp; "
     lines = [sep.join(_esc(v) for v in info)] if info else []
     if links:
         lines.append(
             sep.join(
-                f'<a href="{_esc(v)}"><font color="#2563eb"><u>{_esc(v)}</u></font></a>'
+                f'<a href="{_esc(v)}"><u>{_esc(v)}</u></a>'
                 for v in links
             )
         )
@@ -311,10 +311,7 @@ def build_resume_flow(
             continue
         if classification == "EARLIER":
             suffix = " (concurrent)" if i in _concurrent_idx else ""
-            earlier_lines.append(
-                f"Earlier: {job.get('role', '')}, {job.get('company', '')} "
-                f"({job.get('location', '')}, {resume_rules.display_date_range(job)}){suffix}"
-            )
+            earlier_lines.append(resume_rules.earlier_line(job, suffix))
             continue
         real_experience.append((i, job))
 
@@ -336,7 +333,7 @@ def build_resume_flow(
             # never part of it.
             suffix = " (concurrent)" if i in _concurrent_idx else ""
             entry_flow = [
-                _two_col_row(job.get("company"), job.get("location"), _role_style, _meta_right_style, content_width=content_width),
+                _two_col_row(resume_rules.display_company(job), job.get("location"), _role_style, _meta_right_style, content_width=content_width),
                 _two_col_row(
                     job.get("role"), f"{resume_rules.display_date_range(job)}{suffix}",
                     _role_italic_style, _meta_right_style, content_width=content_width,
@@ -346,14 +343,44 @@ def build_resume_flow(
                 if not is_first_bullet:
                     entry_flow.append(LINE_GAP)
                 entry_flow.append(Paragraph(_esc(bullet), bullet_style, bulletText="-"))
+            last_entry_flow = entry_flow
             flow.append(KeepTogether(entry_flow))
         if earlier_lines:
-            if real_experience:
-                flow.append(LINE_GAP)
+            earlier_flow = [LINE_GAP] if real_experience else []
             for is_first, line in _lines(earlier_lines):
                 if not is_first:
-                    flow.append(LINE_GAP)
-                flow.append(Paragraph(_esc(line), body_style))
+                    earlier_flow.append(LINE_GAP)
+                earlier_flow.append(Paragraph(_esc(line), body_style))
+            # Bound to the last real entry so an "Earlier:" line is never
+            # stranded alone at the top of the next page, away from the
+            # experience it belongs to.
+            if real_experience:
+                flow[-1] = KeepTogether(last_entry_flow + earlier_flow)
+            else:
+                flow.append(KeepTogether(earlier_flow))
+
+    # Optional per-job section placed right after experience: credentials worth reading before the projects, each with its own
+    # pointers (what the programme covered) and an explicit status, so in-progress work is never presented as finished.
+    cert_entries = resume_content.get("certification_entries") or []
+    additional_certs = [a for a in (resume_content.get("additional_certifications") or []) if a]
+    additional_line = ("Additional certificates: " + "; ".join(additional_certs)) if additional_certs else None
+    if cert_entries:
+        flow.append(SECTION_GAP)
+        flow += _section_header(resume_content.get("certification_entries_title") or "Certifications & Training")
+        for is_first, ce in _entries(cert_entries):
+            if not is_first:
+                flow.append(ENTRY_GAP)
+            ce_flow = [
+                _two_col_row(ce.get("name"), ce.get("status"), _role_style, _meta_right_style, content_width=content_width),
+                _two_col_row(ce.get("issuer"), "", _role_italic_style, _meta_right_style, content_width=content_width),
+            ]
+            for is_first_bullet, bullet in _lines(ce.get("bullets", [])):
+                if not is_first_bullet:
+                    ce_flow.append(LINE_GAP)
+                ce_flow.append(Paragraph(_esc(bullet), bullet_style, bulletText="-"))
+            if additional_line and ce is cert_entries[-1]:
+                ce_flow += [LINE_GAP, Paragraph(_esc(additional_line), body_style)]  # bound to the last entry, like the "Earlier:" lines under experience
+            flow.append(KeepTogether(ce_flow))
 
     projects = resume_content.get("projects") or []
     if projects:
@@ -387,10 +414,10 @@ def build_resume_flow(
                 _two_col_row(edu.get("degree"), edu.get("date"), _role_italic_style, _meta_right_style, content_width=content_width),
             ]))
 
-    certifications = list(resume_content.get("certifications") or [])
+    certifications = [] if cert_entries else list(resume_content.get("certifications") or [])
     if certifications or credential_entries:
         flow.append(SECTION_GAP)
-        flow += _section_header("Certifications")
+        cert_flow = _section_header("Certifications")
         cert_lines = [cert if isinstance(cert, str) else cert.get("name", "") for cert in certifications]
         cert_lines += [
             " | ".join(b for b in (entry.get("role"), entry.get("company"), entry.get("date")) if b)
@@ -398,8 +425,11 @@ def build_resume_flow(
         ]
         for is_first, line in _lines(cert_lines):
             if not is_first:
-                flow.append(LINE_GAP)
-            flow.append(Paragraph(_esc(line), bullet_style, bulletText="-"))
+                cert_flow.append(LINE_GAP)
+            cert_flow.append(Paragraph(_esc(line), bullet_style, bulletText="-"))
+        if additional_line and not cert_entries:
+            cert_flow += [LINE_GAP, Paragraph(_esc(additional_line), body_style)]
+        flow.append(KeepTogether(cert_flow))
 
     languages = resume_content.get("languages") or []
     if languages:
@@ -416,12 +446,36 @@ def build_resume_flow(
     # fixed earlier: a feature built once, wired into only one of the two
     # output formats. work_authorization_line() never infers/generates
     # this text itself, only ever returns exactly what config says.
-    work_auth = resume_rules.work_authorization_line()
+    work_auth = None if resume_content.get("hide_work_authorization") else resume_rules.work_authorization_line()
     if work_auth:
         flow.append(SECTION_GAP)
         flow.append(Paragraph(_esc(work_auth), body_style))
 
-    return flow
+    return _keep_headers_with_content(flow)
+
+
+def _keep_headers_with_content(flow: list) -> list:
+    """A section title and its rule must never sit alone at the bottom of
+    a page with their content on the next one: bind each header to the
+    flowable that follows it (flattening that flowable's own KeepTogether
+    so the whole first entry still moves as one block)."""
+    out = []
+    i = 0
+    while i < len(flow):
+        item = flow[i]
+        is_header = (
+            isinstance(item, Paragraph) and item.style is _section_style
+            and i + 1 < len(flow) and isinstance(flow[i + 1], HRFlowable)
+        )
+        if is_header and i + 2 < len(flow):
+            nxt = flow[i + 2]
+            content = list(nxt._content) if isinstance(nxt, KeepTogether) else [nxt]
+            out.append(KeepTogether([item, flow[i + 1], *content]))
+            i += 3
+            continue
+        out.append(item)
+        i += 1
+    return out
 
 
 def render_resume_pdf(
@@ -564,3 +618,23 @@ def render_cover_letter_pdf(cover_letter_text: str, candidate_name: str) -> byte
             flow.append(Spacer(1, 8))
     doc.build(flow)
     return buf.getvalue()
+
+
+_CORPORATE_SUFFIX_RE = re.compile(r"([,\s]+(inc|llc|ltd|corp|corporation|co|gmbh|plc)\.?|\.(ai|io|com))$", re.IGNORECASE)
+_NON_FILENAME_CHARS_RE = re.compile(r"[^A-Za-z0-9]+")
+
+
+def standard_document_filename(document_type: str, candidate_name: str, company_name: str) -> str:
+    """Resume: First_Last_Company_resume.pdf; cover letter:
+    First_Company_cover_letter.pdf. Used for every download, extension
+    attachment, and autofill upload so the file a recruiter receives
+    always carries the same recognizable name."""
+    def clean(text: str) -> str:
+        text = _CORPORATE_SUFFIX_RE.sub("", (text or "").strip())
+        return _NON_FILENAME_CHARS_RE.sub("_", text).strip("_")
+
+    name_parts = [clean(p) for p in (candidate_name or "Candidate").split() if clean(p)] or ["Candidate"]
+    company = clean(company_name) or "Company"
+    if document_type == "resume":
+        return f"{'_'.join(name_parts)}_{company}_resume.pdf"
+    return f"{name_parts[0]}_{company}_cover_letter.pdf"

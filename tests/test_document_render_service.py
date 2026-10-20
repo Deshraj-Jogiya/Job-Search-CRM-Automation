@@ -237,8 +237,14 @@ class TestWorkAuthorizationLineInPdf:
     built once (docx_generator.py) but never wired into the other output
     format. These lock in the fix."""
 
-    def test_real_config_line_appears_in_pdf_flow(self):
+    def test_real_config_has_no_line(self):
         flow = build_resume_flow(_FULL_CONTENT)
+        joined = "\n".join(f.text for f in flow if isinstance(f, Paragraph))
+        assert "STEM OPT" not in joined and "H-1B" not in joined
+
+    def test_enabled_config_line_appears_in_pdf_flow(self):
+        with patch.object(document_render_service.resume_rules, "work_authorization_line", return_value="Authorized to work in the U.S. now on F-1 STEM OPT; future H-1B sponsorship needed."):
+            flow = build_resume_flow(_FULL_CONTENT)
         texts = [f.text for f in flow if isinstance(f, Paragraph)]
         joined = "\n".join(texts)
         assert "STEM OPT" in joined
@@ -257,6 +263,22 @@ class TestWorkAuthorizationLineInPdf:
     def test_appears_after_languages_as_final_line(self):
         content = dict(_FULL_CONTENT)
         content["languages"] = [{"language": "English", "proficiency": "Native"}]
-        flow = build_resume_flow(content)
+        with patch.object(document_render_service.resume_rules, "work_authorization_line", return_value="Authorized to work in the U.S. now on F-1 STEM OPT; future H-1B sponsorship needed."):
+            flow = build_resume_flow(content)
         texts = [f.text for f in flow if isinstance(f, Paragraph)]
         assert "H-1B" in texts[-1]
+
+
+def test_pdf_resume_renders_certification_entries_between_experience_and_projects():
+    import io
+    import json
+    import pdfplumber
+    resume = {"name": "Test Person", "contact": {}, "summary": "s",
+              "experience": [{"company": "Acme", "role": "Analyst", "start_date": "2024-01", "end_date": "2025-01", "bullets": ["Did a thing."]}],
+              "projects": [{"name": "Project One", "bullets": ["Built it."]}],
+              "certification_entries": [{"name": "Cert A", "issuer": "Issuer A", "status": "Completed", "bullets": ["Covered X."]},
+                                        {"name": "Cert B", "issuer": "Issuer B", "status": "In progress", "bullets": ["Covers Y."]}]}
+    pdf = render_resume_pdf(json.dumps(resume))
+    text = "\n".join(p.extract_text() or "" for p in pdfplumber.open(io.BytesIO(pdf)).pages)
+    assert text.index("PROFESSIONAL EXPERIENCE") < text.index("CERTIFICATIONS & TRAINING") < text.index("KEY PROJECTS")
+    assert "Completed" in text and "In progress" in text and "Covers Y." in text

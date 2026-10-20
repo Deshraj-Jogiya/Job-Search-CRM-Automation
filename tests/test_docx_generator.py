@@ -155,15 +155,11 @@ class TestWorkAuthorizationNeverGenerated:
         text = "\n".join(p.text for p in doc.paragraphs)
         assert "should never appear" not in text
 
-    def test_real_config_now_includes_accurate_stem_opt_line(self):
-        # Real, current product decision (2026-09-14, at the candidate's
-        # explicit direction): the default config has this ON, with text
-        # precise about OPT needing no employer action to hire NOW vs.
-        # H-1B only being relevant to continue PAST OPT.
+    def test_real_config_leaves_the_authorization_line_off(self):
+        # 2026-10-14, at the candidate's direction.
         doc = build_resume_docx(_RESUME_DOC)
         text = "\n".join(p.text for p in doc.paragraphs)
-        assert "STEM OPT" in text
-        assert "H-1B" in text
+        assert "STEM OPT" not in text and "H-1B" not in text
 
     def test_config_supplied_text_is_used_verbatim_when_enabled(self):
         config = dict(get_config())
@@ -227,3 +223,22 @@ class TestHyperlinks:
         # Hyperlinks must not compromise the ATS-safety guarantee above.
         doc = build_resume_docx(self._RESUME_WITH_LINKS)
         assert len(doc.tables) == 0
+
+
+def test_certification_entries_section_sits_between_experience_and_projects_with_status_and_bullets():
+    resume = {"name": "Test Person", "contact": {}, "summary": "s",
+              "experience": [{"company": "Acme", "role": "Analyst", "start_date": "2024-01", "end_date": "2025-01", "bullets": ["Did a thing."]}],
+              "projects": [{"name": "P1", "bullets": ["Built it."]}],
+              "certification_entries": [
+                  {"name": "Cert A", "issuer": "Issuer A | 5 courses", "status": "Completed", "bullets": ["Covered X."]},
+                  {"name": "Cert B", "issuer": "Issuer B", "status": "In progress", "bullets": ["Covers Y."]}]}
+    doc = build_resume_docx(resume)
+    headings = [p.text for p in doc.paragraphs if p.style.name.startswith("Heading")]
+    assert headings.index("Professional Experience") < headings.index("Certifications & Training") < headings.index("Selected Projects")
+    text = "\n".join(p.text for p in doc.paragraphs)
+    assert "Issuer A | 5 courses | Completed" in text and "Issuer B | In progress" in text and "Covered X." in text and "Covers Y." in text
+
+
+def test_resume_without_certification_entries_is_unchanged():
+    doc = build_resume_docx({"name": "T", "contact": {}, "experience": [], "projects": []})
+    assert "Certifications & Training" not in [p.text for p in doc.paragraphs]
