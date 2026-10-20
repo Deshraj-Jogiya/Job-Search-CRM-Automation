@@ -615,6 +615,57 @@ class SeniorityExclusion(Base):
     is_active = Column(Boolean, default=True)
 
 
+class SavedAnswer(Base):
+    """Real feature request from 2026-08-23 ("record how I answer, reuse
+    automatically in rotation"), scoped then and never built -- most
+    "custom questions" a per-JD LLM call drafts across different
+    employers' ATS forms are the same handful of recurring questions
+    (visa sponsorship, work authorization, desired salary, notice
+    period) worded differently, not genuinely novel each time. Checked
+    BEFORE the LLM draft call in every ATS autofill module (see
+    saved_answer_service.find_saved_answer) -- an already-answered
+    question costs nothing the second time it's seen; only a genuinely
+    unmatched question still reaches the paid call, whose real answer is
+    then saved back here via saved_answer_service.record_answer for next
+    time. question_normalized is the real match key (lowercased,
+    punctuation-stripped, whitespace-collapsed) -- question_text keeps
+    the original wording for a human reviewing what's stored."""
+    __tablename__ = "saved_answers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    question_text = Column(Text, nullable=False)
+    question_normalized = Column(Text, nullable=False, index=True)
+    answer_text = Column(Text, nullable=False)
+    times_reused = Column(Integer, default=0)
+    created_at = Column(DateTime, default=utcnow)
+    last_used_at = Column(DateTime, nullable=True)
+
+
+class ProfileInterviewPrep(Base):
+    """Profile-level interview prep: the "whole profile" call-and-interview
+    prep that is NOT tied to any application, job description, or company.
+    InterviewPrep (above) is per application and grounded in that job; this
+    one is the general, always-applicable material -- a short pitch, drafted
+    answers to the questions nearly every interview asks, honest-gap answers
+    -- generated from the base profile and the confirmed behavioral stories
+    only. The reference sections shown beside it (timeline, project
+    walkthroughs, preferences answers) are built mechanically from the
+    profile on every page load and are not stored here. Versioned like
+    InterviewPrep: every generation is a new row, one is_active per variant."""
+    __tablename__ = "profile_interview_prep"
+
+    id = Column(Integer, primary_key=True, index=True)
+    variant_id = Column(Integer, ForeignKey("profile_variants.id"), nullable=False)
+    content_json = Column(Text, nullable=False)
+    is_active = Column(Boolean, default=True)
+    generated_at = Column(DateTime, default=utcnow)
+    # Which profile version this prep was built from. The page compares it with the
+    # variant's CURRENT active version to tell "up to date" from "profile changed
+    # since" -- without it nothing could say a prep had gone stale.
+    profile_version_id = Column(Integer, ForeignKey("profile_versions.id"), nullable=True)
+    trigger = Column(String, nullable=True)  # initial | profile_changed | manual
+
+
 class LocationExclusion(Base):
     """Location-text terms (country/region names, e.g. "Poland", "India")
     to exclude from intake -- a company's own Greenhouse/Lever/Ashby board
@@ -772,6 +823,19 @@ class GlobalSettings(Base):
     auto_score_batch_size = Column(Integer, default=16)
     min_score_for_auto_tailor = Column(Integer, default=50)
 
+    # Real incident, 2026-09-18: progress_ingested_applications ran with
+    # no dollar ceiling of its own and burned $164.91 in 24h against an
+    # $18-30 estimate (a real intake surge plus two real bugs re-scoring/
+    # retrying rows). Nothing before this checked a running spend total
+    # against a limit before making the next paid call -- see
+    # llm_usage_service.spend_cap_exceeded, checked at every real,
+    # metered-API call site (confirmation_service, extension_service)
+    # right before it would spend money, not after. Nullable = no cap
+    # (explicit opt-out); a fresh settings row gets a real, non-null
+    # default so this protection is on by default, not something a
+    # deployment has to remember to turn on.
+    daily_llm_spend_cap_usd = Column(Float, nullable=True, default=5.0)
+
     # Quiet hours -- a confirmation deadline that would land inside
     # this daily local-time window gets pushed to the end of it, so it
     # never silently lapses while the user is predictably unreachable
@@ -793,6 +857,10 @@ class GlobalSettings(Base):
     # gitignored) using the same encrypted format as the on-demand
     # download, then prunes down to the retention count.
     automated_backups_enabled = Column(Boolean, default=True)
+    # Own gate for the profile-level interview prep auto-refresh (one small LLM call per
+    # profile change, never part of the job-hunting automation), same shape as the
+    # backup switch above.
+    profile_prep_auto_refresh = Column(Boolean, default=True)
     backup_retention_count = Column(Integer, default=14)
 
     # Tavily/Hunter.io budget tracking. Unlike Adzuna (polled
