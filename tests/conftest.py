@@ -10,6 +10,9 @@ import tempfile
 _TEST_DB_PATH = os.path.join(tempfile.gettempdir(), "career_pilot_test.db")
 os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DB_PATH}"
 os.environ.setdefault("SECRET_KEY", "test-secret-key-not-for-production-use")
+# No test may start a background LLM refresh of the profile interview prep; the tests that cover it
+# turn it back on explicitly (see tests/test_profile_prep.py).
+os.environ["PROFILE_PREP_AUTO_REFRESH"] = "0"
 
 import pytest  # noqa: E402
 

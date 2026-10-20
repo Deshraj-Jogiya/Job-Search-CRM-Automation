@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import BehavioralStory, ProfileVariant
-from ..services import behavioral_story_service, profile_service
+from ..services import behavioral_story_service, profile_service, resume_rules
 from ..services.behavioral_story_service import BehavioralStoryServiceError
 from ..services.profile_service import ProfileServiceError
 from ..templating import render
@@ -60,7 +60,7 @@ def profile_page(request: Request, db: Session = Depends(get_db)):
                 "eeo": active_content.get("eeo") or {},
                 "application_preferences": active_content.get("application_preferences") or {},
                 "education": active_content.get("education") or [],
-                "certifications": active_content.get("certifications") or [],
+                "certifications": [resume_rules.certification_display(c) for c in (active_content.get("certifications") or [])],
                 "completeness_warnings": profile_service.profile_completeness_warnings(active_content),
                 "behavioral_stories": _stories_with_parsed_traits(db, variant.id),
             }

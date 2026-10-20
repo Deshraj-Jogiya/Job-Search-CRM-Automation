@@ -1,0 +1,204 @@
+{% extends "_base.html" %}
+
+{% block title %}Career Pilot -- Interview Prep (Profile){% endblock %}
+
+{% block header_title %}<a href="/" class="plain-link">Career Pilot</a> / Interview Prep{% endblock %}
+
+{% block content %}
+{% if message %}
+<div class="flash flash-ok" role="status">{{ message }}</div>
+{% endif %}
+{% if error %}
+<div class="flash flash-error" role="alert">{{ error }}</div>
+{% endif %}
+
+{% if setup_error %}
+<section class="variant-block">
+    <h2>Interview Prep</h2>
+    <p class="muted-note">{{ setup_error }} <a href="/profile">Go to Profile</a></p>
+</section>
+{% else %}
+
+<section class="variant-block">
+    <h2>Your profile interview prep</h2>
+    <p class="muted-note">
+        General prep for any recruiter call or interview. It is built from your profile only: not tailored to a
+        job, company, or job description. For prep tied to a specific application (its company, its predicted
+        rounds, mock interviews), open that application from <a href="/jobs">Jobs</a> and use its Interview Prep.
+    </p>
+    <p class="muted-note">
+        Sections 1 to 5 are shown straight from your profile and always match it. Section 6 is the drafted
+        answers, generated on demand. Nothing here uses your confidential projects.
+    </p>
+</section>
+
+<section class="variant-block">
+    <h2>1. Answers you can give without drafting</h2>
+    <p class="muted-note">Taken exactly from your stored application preferences.</p>
+    {% if reference.preferences %}
+    <table>
+        <tbody>
+        {% for p in reference.preferences %}
+        <tr><th scope="row">{{ p.label }}</th><td>{{ p.value }}</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="muted-note">No application preferences are stored yet. Add them on the <a href="/profile">Profile</a> page.</p>
+    {% endif %}
+</section>
+
+<section class="variant-block">
+    <h2>2. Your work timeline</h2>
+    {% for e in reference.timeline %}
+    <details>
+        <summary><strong>{{ e.company }}{% if e.employment_type %} ({{ e.employment_type }}){% endif %}</strong> -- {{ e.role }} -- {{ e.date }}{% if e.location %} -- {{ e.location }}{% endif %}</summary>
+        <ul>
+            {% for b in e.bullets %}<li>{{ b }}</li>{% endfor %}
+        </ul>
+    </details>
+    {% endfor %}
+    {% if reference.education %}
+    <h3>Education</h3>
+    <ul>
+        {% for ed in reference.education %}<li>{{ ed.degree }}, {{ ed.school }}{% if ed.date %} ({{ ed.date }}){% endif %}</li>{% endfor %}
+    </ul>
+    {% endif %}
+    {% if reference.certifications %}
+    <h3>Certifications</h3>
+    <ul>
+        {% for c in reference.certifications %}<li>{{ c }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+</section>
+
+<section class="variant-block">
+    <h2>3. Project walkthroughs</h2>
+    <p class="muted-note">One card per project, for the "tell me about a project" question. Be ready to say what the problem was, what you did, and what happened.</p>
+    {% for p in reference.projects %}
+    <details>
+        <summary><strong>{{ p.name }}</strong>{% if p.date %} -- {{ p.date }}{% endif %}{% if p.technologies %} -- {{ p.technologies | join(", ") }}{% endif %}</summary>
+        <ul>
+            {% for b in p.bullets %}<li>{{ b }}</li>{% endfor %}
+        </ul>
+    </details>
+    {% endfor %}
+</section>
+
+<section class="variant-block">
+    <h2>4. Skills to be ready to explain</h2>
+    {% for area, items in reference.skills.items() %}
+    <p><strong>{{ area | replace("_", " ") | title }}:</strong> {{ items | join(", ") }}</p>
+    {% endfor %}
+</section>
+
+<section class="variant-block">
+    <h2>5. Behavioral stories and questions to ask</h2>
+    <h3>Confirmed stories</h3>
+    {% if reference.stories %}
+    {% for s in reference.stories %}
+    <details>
+        <summary><strong>{{ s.title }}</strong></summary>
+        <p><strong>Situation:</strong> {{ s.situation }}</p>
+        <p><strong>Task:</strong> {{ s.task }}</p>
+        <p><strong>Action:</strong> {{ s.action }}</p>
+        <p><strong>Result:</strong> {{ s.result }}</p>
+    </details>
+    {% endfor %}
+    {% else %}
+    <p class="muted-note">No confirmed behavioral stories yet. Draft and confirm them on the <a href="/profile">Profile</a> page; they appear here and feed the drafted answers below.</p>
+    {% endif %}
+    <h3>Questions worth asking any interviewer</h3>
+    <ul>
+        {% for q in reference.questions_to_ask %}<li>{{ q }}</li>{% endfor %}
+    </ul>
+</section>
+
+<section class="variant-block">
+    <h2>6. Drafted answers</h2>
+    <div class="flash {{ 'flash-ok' if prep_status.state == 'current' else 'flash-error' }}" role="status" id="prep-status">
+        {% if prep_status.generating %}
+        <strong>Updating now.</strong> Drafting from your latest profile (profile version {{ prep_status.current_version_id }}). Reload this page in a minute.
+        {% elif prep_status.state == "current" %}
+        <strong>Up to date.</strong> Built from your current profile (version {{ prep_status.built_from_version_id }}).
+        {% elif prep_status.state == "stale" %}
+        <strong>Out of date.</strong> Your profile changed (now version {{ prep_status.current_version_id }}; these answers were built from version {{ prep_status.built_from_version_id }}).
+        {% if prep_status.auto_refresh %}An update starts on its own; use Refresh to start it now.{% else %}Auto-refresh is off: use Refresh to update.{% endif %}
+        {% else %}
+        <strong>Not drafted yet.</strong>
+        {% if prep_status.auto_refresh %}The first draft starts on its own; use Refresh to start it now.{% else %}Auto-refresh is off: use Refresh to generate it.{% endif %}
+        {% endif %}
+        {% if prep_status.last_error %}<br>Last attempt failed: {{ prep_status.last_error }}{% endif %}
+    </div>
+    <form method="post" action="/interview-prep/generate">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" {{ "disabled" if prep_status.generating }}>Refresh from latest profile</button>
+    </form>
+    <form method="post" action="/interview-prep/auto-refresh">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="checkbox-label" for="auto-refresh">
+            <input type="checkbox" id="auto-refresh" name="auto_refresh" value="true" {{ "checked" if prep_status.auto_refresh }}>
+            <strong>Keep this updated automatically</strong> whenever your profile changes
+        </label>
+        <button type="submit">Save</button>
+    </form>
+    <p class="muted-note">
+        One AI pass per refresh. Drafts use only your profile and confirmed stories; any figure not found in your
+        profile is flagged below for you to verify. Work authorization, salary, and relocation are not drafted: see
+        section 1.
+    </p>
+    {% if drafted %}
+    <p class="muted-note">Last generated {{ prep.generated_at.strftime("%Y-%m-%d %H:%M") }} UTC.</p>
+    {% if drafted.authored_note %}<p class="muted-note"><strong>Note:</strong> {{ drafted.authored_note }}</p>{% endif %}
+    {% if drafted.grounding_warnings %}
+    <div class="flash flash-error" role="alert">
+        <strong>Check before using:</strong>
+        <ul>{% for w in drafted.grounding_warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+    {% if drafted.missing_questions %}
+    <div class="flash flash-error" role="alert">
+        <strong>The model skipped these questions, regenerate to retry:</strong>
+        <ul>{% for q in drafted.missing_questions %}<li>{{ q }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+
+    <h3>Your pitch</h3>
+    <details open>
+        <summary><strong>30 seconds</strong></summary>
+        <p>{{ drafted.pitch_30_seconds }}</p>
+    </details>
+    <details>
+        <summary><strong>90 seconds</strong></summary>
+        <p>{{ drafted.pitch_90_seconds }}</p>
+    </details>
+
+    <h3>Common questions</h3>
+    {% for a in drafted.answers %}
+    <details>
+        <summary><strong>{{ a.question }}</strong></summary>
+        <p>{{ a.draft_answer }}</p>
+        {% if a.quick_reference %}<p class="muted-note">Cue: {{ a.quick_reference }}</p>{% endif %}
+    </details>
+    {% endfor %}
+
+    {% if drafted.strengths_to_steer_toward %}
+    <h3>Strengths to steer toward</h3>
+    <ul>{% for s in drafted.strengths_to_steer_toward %}<li>{{ s }}</li>{% endfor %}</ul>
+    {% endif %}
+
+    {% if drafted.honest_gaps %}
+    <h3>Honest answers for your real gaps</h3>
+    {% for g in drafted.honest_gaps %}
+    <details>
+        <summary><strong>{{ g.gap }}</strong></summary>
+        <p>{{ g.honest_answer }}</p>
+    </details>
+    {% endfor %}
+    {% endif %}
+    {% else %}
+    <p class="muted-note">Nothing drafted yet.</p>
+    {% endif %}
+</section>
+{% endif %}
+{% endblock %}
