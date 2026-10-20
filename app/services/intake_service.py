@@ -130,6 +130,14 @@ _DEFAULT_LOCATION_EXCLUSIONS = [
     "Israel", "Italy", "Sweden", "Switzerland", "Austria", "Belgium",
     "Denmark", "Finland", "Norway", "New Zealand", "Poland", "EMEA",
     "APAC", "LATAM",
+    # Added 2026-09-24 after real postings from these countries were found
+    # to have reached the LLM scoring/tailoring stage (see
+    # location_eligible_for_scoring in sources/keyword_matching.py for the
+    # real backstop this list can never fully replace -- a deny-list can't
+    # enumerate every non-US/Canada city, e.g. "Coimbatore, Tamil Nadu"):
+    "South Korea", "Hong Kong", "Thailand", "Malaysia", "Indonesia",
+    "Taiwan", "Egypt", "Chile", "Peru", "Costa Rica", "Turkey", "Greece",
+    "Czech Republic", "Hungary", "Luxembourg", "Kenya", "Morocco",
 ]
 
 _ADZUNA_MONTHLY_CALL_BUDGET = int(os.getenv("ADZUNA_MONTHLY_CALL_BUDGET", "900"))

@@ -761,22 +761,24 @@ def download_tailored_document(application_id: int, document_type: str, inline: 
     if not doc:
         return _redirect_detail(application_id, error="Nothing tailored yet -- generate it first.")
 
+    resume_doc = (
+        db.query(TailoredDocument)
+        .filter(TailoredDocument.application_id == application_id, TailoredDocument.document_type == "resume")
+        .first()
+    )
+    candidate_name = json.loads(resume_doc.content).get("name", "") if resume_doc else ""
+
     if document_type == "resume":
         try:
             pdf_bytes = page_fit_service.render_resume_pdf_with_fit(db, doc.content)["pdf_bytes"]
         except page_fit_service.PageFitExhaustedError as e:
             return _redirect_detail(application_id, error=str(e))
     else:
-        resume_doc = (
-            db.query(TailoredDocument)
-            .filter(TailoredDocument.application_id == application_id, TailoredDocument.document_type == "resume")
-            .first()
-        )
-        candidate_name = json.loads(resume_doc.content).get("name", "") if resume_doc else ""
         pdf_bytes = document_render_service.render_cover_letter_pdf(doc.content, candidate_name)
 
-    name_part = "resume" if document_type == "resume" else "cover-letter"
-    filename = f"{name_part}-{application.posting.company_name_raw}-{application.posting.job_title}.pdf".replace(" ", "-")
+    filename = document_render_service.standard_document_filename(
+        document_type, candidate_name, application.posting.company_name_raw
+    )
     disposition = "inline" if inline else "attachment"
     return Response(
         content=pdf_bytes,
@@ -808,7 +810,9 @@ def download_tailored_resume_docx(application_id: int, db: Session = Depends(get
     resume_docx.save(buffer)
     buffer.seek(0)
 
-    filename = f"resume-{application.posting.company_name_raw}-{application.posting.job_title}.docx".replace(" ", "-")
+    filename = document_render_service.standard_document_filename(
+        "resume", json.loads(doc.content).get("name", ""), application.posting.company_name_raw
+    ).replace(".pdf", ".docx")
     return Response(
         content=buffer.getvalue(),
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
