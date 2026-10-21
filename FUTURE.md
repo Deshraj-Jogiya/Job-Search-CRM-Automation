@@ -114,4 +114,8 @@ needed a real location to work at all.
 No user accounts/multi-user, no email integration/job-alert emailer,
 no browser extension/Chrome plugin, no LLM-based matching, no data
 sources beyond what Phases 1/2a/(frozen 2b) already name. See the
-original spec conversation for the full list -- not re-derived here.
+original spec for the full list -- not re-derived here.
+
+Later work lifted one of these: the browser extension was built in
+September 2026 (see `docs/decisions/0006-browser-extension-for-employer-forms.md`).
+Open items now live in the repository's GitHub issues.

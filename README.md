@@ -1,5 +1,7 @@
 # Career Pilot — Job Search CRM & Automation Command Center
 
+[![Tests](https://github.com/Deshraj-Jogiya/Job-Search-CRM-Automation/actions/workflows/tests.yml/badge.svg)](https://github.com/Deshraj-Jogiya/Job-Search-CRM-Automation/actions/workflows/tests.yml)
+
 A personal job-search command center: it pulls in postings from
 multiple sources, scores and tailors your resume/cover letter against
 each one with an AI pass that's mechanically checked for fabrication,
@@ -12,7 +14,9 @@ the repetitive part (finding postings, drafting tailored materials,
 pre-filling forms); a person still reviews and clicks submit.
 
 **Full details:** see [`ARCHITECTURE.md`](./ARCHITECTURE.md) for how
-the system is built, and [`CONTRIBUTING.md`](./CONTRIBUTING.md) for
+the system is built, [`docs/decisions/`](./docs/decisions/README.md)
+for why the main design choices were made, [`CHANGELOG.md`](./CHANGELOG.md)
+for what changed when, and [`CONTRIBUTING.md`](./CONTRIBUTING.md) for
 the design principles worth knowing before extending it.
 
 ## Stack
@@ -76,12 +80,15 @@ code changes needed.
 ## What's here
 
 Living profile management, multi-source job search (LinkedIn, Adzuna,
-and direct Greenhouse/Lever/Ashby board polling), AI matching and
-tailoring with a fabrication safeguard, a confirmation-gated auto-apply
-queue, real application-form autofill, outreach automation with
-contact discovery, interview prep generation, outcome analytics,
-encrypted backup/restore, and a deployment setup for running this on a
-free-tier cloud VM. See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for how
+remote job boards, and direct polling of Greenhouse, Lever, Ashby,
+Recruitee, Personio, Workable and SmartRecruiters), scoring that runs
+free rule-based checks before any paid model call, AI tailoring with a
+fabrication safeguard, a confirmation-gated apply queue, a Kanban
+pipeline board, a browser extension that fills application forms in
+your own browser, outreach with contact discovery, a research agent
+over your own data, interview prep and mock interviews, outcome
+analytics, encrypted backup/restore, and a deployment setup for running
+this on a free-tier cloud VM. See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for how
 each piece works.
 
 ## Public Showcase Mode
