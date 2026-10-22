@@ -21,6 +21,35 @@ os.environ["LLM_PROVIDER"] = "anthropic"
 os.environ["ANTHROPIC_API_KEY"] = "test-key-not-a-real-key"
 os.environ.pop("APP_MODE", None)
 
+# Tests never read a developer's .env. It holds real Gmail SMTP credentials and paid API keys, and
+# importing app.main calls load_dotenv(): on 2026-10-22 that put the real SMTP login into the test run
+# and every tailoring test emailed a real "Approve? Data Engineer at Acme Corp" notification (14 per
+# full run). Three layers, so no single one is relied on: load_dotenv is disabled before any app module
+# imports it, every credential that can send or spend is blanked, and SMTP itself is blocked below.
+import dotenv  # noqa: E402
+
+dotenv.load_dotenv = lambda *args, **kwargs: False
+for _name in ("SMTP_USER", "SMTP_PASSWORD", "SMTP_SERVER", "NOTIFICATION_EMAIL", "TAVILY_API_KEY", "HUNTER_API_KEY",
+              "ADZUNA_APP_ID", "ADZUNA_APP_KEY", "JOBSPIPE_API_KEY", "OPENAI_API_KEY", "OPENAI_API_BASE",
+              "CLAUDE_CLI_PATH", "DASHBOARD_PASSWORD", "ADMIN_PASSWORD"):
+    os.environ[_name] = ""
+# An AI call a test forgot to mock goes to a closed local port and fails at once, instead of reaching
+# the real API (which it did, with the real key, before these lines existed).
+os.environ["ANTHROPIC_BASE_URL"] = "http://127.0.0.1:9"
+os.environ["OLLAMA_HOST"] = "http://127.0.0.1:9"
+
+import smtplib  # noqa: E402
+
+
+class _NoSmtp:
+    """Any attempt to open an SMTP connection in a test fails loudly instead of sending mail."""
+
+    def __init__(self, *args, **kwargs):
+        raise RuntimeError("A test tried to send real email. Mock email_utils.send_email instead.")
+
+
+smtplib.SMTP = smtplib.SMTP_SSL = _NoSmtp
+
 import pytest  # noqa: E402
 
 from app.database import Base, SessionLocal, engine  # noqa: E402
