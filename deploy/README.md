@@ -159,6 +159,17 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now career-pilot-watchdog.timer
 ```
 
+The script takes the port and unit as arguments (defaults: `8000`,
+`career-pilot.service`), so the public demo (section 9) gets the same
+protection from its own timer:
+
+```
+sudo cp /opt/career-pilot-demo/deploy/career-pilot-demo-watchdog.service /opt/career-pilot-demo/deploy/career-pilot-demo-watchdog.timer /etc/systemd/system/
+sudo restorecon -v /etc/systemd/system/career-pilot-demo-watchdog.* /opt/career-pilot-demo/deploy/health-watchdog.sh
+sudo systemctl daemon-reload
+sudo systemctl enable --now career-pilot-demo-watchdog.timer
+```
+
 This is local self-healing only -- it can't detect the VM itself going
 fully unreachable (crashed, network-partitioned, out of disk). For
 that, point a free external uptime checker (e.g.

@@ -1,0 +1,10 @@
+[Unit]
+Description=Career Pilot public demo health-check watchdog (restarts the demo if it hangs)
+After=career-pilot-demo.service
+
+[Service]
+Type=oneshot
+# Same script and reasoning as career-pilot-watchdog.service, pointed at
+# the demo's port and unit. Runs the copy in the demo's own checkout so
+# the demo keeps working even if the personal instance's directory moves.
+ExecStart=/opt/career-pilot-demo/deploy/health-watchdog.sh 8001 career-pilot-demo.service
