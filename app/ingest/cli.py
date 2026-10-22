@@ -63,6 +63,23 @@ def backfill_signals(db) -> dict:
     return {"postings_signal_updated": len(postings), **tier_result, **score_result}
 
 
+def backfill_fit(db) -> dict:
+    """Applies the role-type cap and the rule-based evidence (fit_service.py) to every application
+    scored before they existed. No LLM calls. Lazy imports for the same reason as backfill_signals()."""
+    from ..models import JobApplication, SearchKeyword
+    from ..services.matching_service import MatchingServiceError, refresh_fit_evidence
+
+    target_titles = [k.keyword for k in db.query(SearchKeyword).filter(SearchKeyword.is_active == True).all()]  # noqa: E712
+    scored = db.query(JobApplication).filter(JobApplication.match_analysis_json.isnot(None)).all()
+    changed = skipped = 0
+    for application in scored:
+        try:
+            changed += refresh_fit_evidence(db, application, target_titles)
+        except MatchingServiceError:
+            skipped += 1
+    return {"applications_refreshed": len(scored) - skipped, "scores_capped_or_changed": changed, "skipped_no_profile": skipped}
+
+
 def main(argv=None) -> int:
     # load_dotenv() must run before the VERY FIRST import anywhere in
     # this process that touches ..database (database.py reads
@@ -117,6 +134,8 @@ def main(argv=None) -> int:
         help="Recompute JobPosting sponsorship signals, Company.tier, and score_breakdown for everything on record",
     )
 
+    subparsers.add_parser("backfill-fit", help="Apply the role-type cap and fit evidence to already-scored applications")
+
     args = parser.parse_args(argv)
 
     db = SessionLocal()
@@ -131,6 +150,8 @@ def main(argv=None) -> int:
             result = apply_cap_exempt_flags(db)
         elif args.command == "backfill-signals":
             result = backfill_signals(db)
+        elif args.command == "backfill-fit":
+            result = backfill_fit(db)
         else:
             parser.error(f"Unknown command {args.command!r}")
             return 2

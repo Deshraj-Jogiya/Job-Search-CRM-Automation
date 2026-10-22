@@ -1,4 +1,5 @@
 {% extends "_base.html" %}
+{% from "_fit_scores.html" import fit_badges %}
 
 {% block title %}Career Pilot -- Daily Triage{% endblock %}
 
@@ -18,7 +19,7 @@
 {% endif %}
 
 {% set component_labels = {
-    "ai_profile_fit": "AI Profile Fit",
+    "ai_profile_fit": "Profile Fit",
     "sponsorship_history": "Sponsorship History",
     "wage_level_fit": "Wage-Level Fit",
     "role_title_match": "Role/Title Match",
@@ -37,7 +38,7 @@
                 <th>Company</th>
                 <th>Tier</th>
                 <th>Wage Level</th>
-                <th>Score</th>
+                <th>Fit / Opportunity</th>
                 <th>Posted</th>
                 <th>Signals</th>
                 <th>Actions</th>
@@ -59,9 +60,10 @@
                 </td>
                 <td>{{ app.posting.company.max_wage_level_15xx if app.posting.company else '--' }}</td>
                 <td>
+                    {{ fit_badges(app) }}
                     {% if app.score_breakdown and app.score_breakdown.components %}
                     <details class="score-breakdown">
-                        <summary>{{ app.score_breakdown.total }}</summary>
+                        <summary>Combined {{ app.score_breakdown.total }}</summary>
                         <table class="score-breakdown-table">
                             {% for key, c in app.score_breakdown.components.items() %}
                             <tr>

@@ -17,6 +17,9 @@
     under way. Try it as your own -- move cards on the <a href="/jobs/kanban">board</a>, open an
     application to see its tailored resume and interview prep, work the <a href="/queue">queue</a>, or
     edit the <a href="/profile">profile</a>. Nothing is ever sent or submitted, and everything resets once a day.
+    <br>This demo has no AI key. Every Fit score is computed by rules you can check on each application
+    (<a href="/how-scoring-works">how scoring works</a>), and the Tailor button reorders the profile without rewriting it.
+    The cover letters, interview prep and mock interview are sample output of the AI features.
 </div>
 {% endif %}
 {% if intake_unconfigured %}
@@ -132,7 +135,8 @@
     <form method="post" action="/research-agent/ask" class="inline-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="text" name="question" placeholder="Ask a question..." required style="min-width: 320px;">
-        <button type="submit">Ask</button>
+        <button type="submit" {{ "" if ai_available else "disabled" }}>Ask</button>
+        {% if not ai_available %}<span class="muted-note">Needs an AI provider, none configured here.</span>{% endif %}
     </form>
     {% if recent_research_queries %}
     <div class="sub-panel" style="margin-top: 1rem;">

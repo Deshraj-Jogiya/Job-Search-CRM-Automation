@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import JobApplication, MockInterviewSession
+from ..services.llm import AI_REQUIRED_MESSAGE, llm_available
 from ..services import mock_interview_service
 from ..services.mock_interview_service import TIER_DESCRIPTIONS, MockInterviewServiceError
 from ..templating import render
@@ -66,6 +67,8 @@ def start_mock_interview(
     camera_enabled: bool = Form(False),
     db: Session = Depends(get_db),
 ):
+    if not llm_available():
+        return _redirect(application_id, error=AI_REQUIRED_MESSAGE)
     try:
         session = mock_interview_service.start_session(db, application_id, round_name, tier, camera_enabled)
     except MockInterviewServiceError as e:
@@ -110,6 +113,10 @@ def respond_mock_interview(
     longest_pause_seconds: float = Form(0),
     db: Session = Depends(get_db),
 ):
+    if not llm_available():
+        return RedirectResponse(
+            url=f"/jobs/{application_id}/mock-interview/{session_id}?error={quote(AI_REQUIRED_MESSAGE)}", status_code=303
+        )
     # Only ever present for a voice-answered turn (see the
     # SpeechRecognition instrumentation in mock_interview_session.html)
     # -- absent/zero for a typed answer, where neither concept applies.
@@ -139,6 +146,10 @@ def end_mock_interview(
     movement_events: int = Form(0),
     db: Session = Depends(get_db),
 ):
+    if not llm_available():
+        return RedirectResponse(
+            url=f"/jobs/{application_id}/mock-interview/{session_id}?error={quote(AI_REQUIRED_MESSAGE)}", status_code=303
+        )
     # Only ever three small numbers -- never a video frame -- submitted
     # by the client-side face tracker (see mock_interview_session.html).
     # Absent/zero when camera feedback wasn't used for this session.

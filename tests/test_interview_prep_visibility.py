@@ -39,6 +39,7 @@ def _render_detail(application, posting, **extra_context):
         "csrf_token": "test-token",
         "static_version": "0",
         "is_authenticated": False,
+        "ai_available": True,
     }
     context.update(extra_context)
     return env.get_template("application_detail.html").render(**context)

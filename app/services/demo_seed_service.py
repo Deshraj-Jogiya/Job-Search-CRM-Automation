@@ -47,7 +47,8 @@ from ..models import (
     get_or_create_settings,
     utcnow,
 )
-from . import profile_service
+from . import fit_service, profile_service
+from .scoring_service import recompute_score_breakdown
 from .company_utils import normalize_company_name
 
 _FIXTURE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "fixtures", "demo_profile.json")
@@ -171,6 +172,10 @@ _POSTINGS = [
      "The ML platform team prepares training data for build-failure prediction.",
      "model training and evaluation", 3, "Spark, Python and feature pipelines", "GCP", "MLOps tooling.",
      155000, 185000, "We sponsor visas."),
+    ("Saltmarsh Media", "Frontend Software Engineer", "recruitee", "Remote (US)",
+     "The web team builds the player and the show pages listeners use every day.",
+     "the listening apps", 3, "React, TypeScript and Node.js", "AWS", "Audio streaming on the web.",
+     105000, 125000, ""),
     ("Tidewater Insurance", "Data Quality Engineer", "smartrecruiters", "Remote (US)",
      "A new team owning data contracts between policy systems and the warehouse.",
      "data contracts and quality monitoring", 3, "Great Expectations, dbt and Airflow", "AWS", "Data contracts.",
@@ -181,77 +186,32 @@ _POSTINGS = [
      98000, 118000, "This position is eligible for H-1B sponsorship."),
 ]
 
-# posting index -> (status, match score, days since created, attention reason, recruiter)
+# posting index -> (status, days since created, attention reason, recruiter). Scores are not listed here:
+# every one is computed by fit_service's rules from the posting and the profile, the same way this
+# demo scores a posting a visitor adds.
 _APPLICATIONS = {
-    0: ("Interviewing", 88, 34, None, ("Priya Raman", "priya.raman@example.com")),
-    1: ("Offer", 84, 41, None, ("Marcus Webb", "marcus.webb@example.com")),
-    2: ("Interviewing", 81, 22, None, ("Elena Ortiz", "elena.ortiz@example.com")),
-    3: ("Applied", 76, 12, None, None),
-    4: ("Applied", 79, 16, None, ("Sam Okafor", "sam.okafor@example.com")),
-    5: ("Not Selected", 58, 39, None, None),
-    6: ("Applied", 74, 9, None, None),
-    7: ("Applied", 72, 6, None, None),
-    8: ("Approved", 78, 3, None, None),
-    9: ("Needs Review", 83, 2,
+    0: ("Interviewing", 34, None, ("Priya Raman", "priya.raman@example.com")),
+    1: ("Offer", 41, None, ("Marcus Webb", "marcus.webb@example.com")),
+    2: ("Interviewing", 22, None, ("Elena Ortiz", "elena.ortiz@example.com")),
+    3: ("Applied", 12, None, None),
+    4: ("Applied", 16, None, ("Sam Okafor", "sam.okafor@example.com")),
+    5: ("Not Selected", 39, None, None),
+    6: ("Applied", 9, None, None),
+    7: ("Applied", 6, None, None),
+    8: ("Approved", 3, None, None),
+    9: ("Needs Review", 2,
         "Posting asks for Flink; the profile shows Kafka and Spark streaming but no Flink. Confirm before applying.", None),
-    10: ("Pending Confirmation", 71, 1, None, None),
-    11: ("Rejected", 49, 18, None, None),
-    12: ("Approved", 80, 2, None, None),
-    13: ("Needs Review", 54, 1, "Posting says no visa sponsorship; the profile needs sponsorship in the future.", None),
-    14: ("Pending Confirmation", 73, 0, None, None),
-    15: ("Not Selected", 69, 30, None, None),
-    16: ("Ingested", 0, 0, None, None),
-    17: ("Ingested", 0, 0, None, None),
-    18: ("Approved", 77, 4, None, None),
+    10: ("Pending Confirmation", 1, None, None),
+    11: ("Rejected", 18, None, None),
+    12: ("Approved", 2, None, None),
+    13: ("Needs Review", 1, "Posting says no visa sponsorship; the profile needs sponsorship in the future.", None),
+    14: ("Pending Confirmation", 0, None, None),
+    15: ("Not Selected", 30, None, None),
+    16: ("Ingested", 0, None, None),
+    17: ("Rejected", 3, None, None),
+    18: ("Ingested", 0, None, None),
+    19: ("Approved", 4, None, None),
 }
-
-
-def _score_breakdown(score: int, tier: str, signal: bool, days: int) -> dict:
-    ai = round(score * 0.30)
-    sponsor = {"A": 30, "B": 20, "C": 8, "X": 0}[tier]
-    wage, title, site = 14, 10, 4
-    recency = 2 if days < 7 else 1
-    bonus = 10 if signal else 0
-    comps = {
-        "ai_profile_fit": {"raw": score, "weight": 30, "contribution": ai},
-        "sponsorship_history": {"raw": tier, "weight": 30, "contribution": sponsor},
-        "wage_level_fit": {"raw": "II", "weight": 20, "contribution": wage},
-        "role_title_match": {"raw": None, "weight": 12, "contribution": title},
-        "worksite_clarity": {"raw": None, "weight": 6, "contribution": site},
-        "posting_recency": {"raw": round(1 / (days + 1), 2), "weight": 2, "contribution": recency},
-        "sponsorship_signal_bonus": {"raw": signal, "weight": 10, "contribution": bonus},
-    }
-    return {"components": comps, "total": min(100, sum(c["contribution"] for c in comps.values()))}
-
-
-def _match_analysis(score: int, posting: tuple) -> dict:
-    stack = [s.strip() for s in posting[7].replace(" and ", ", ").split(",")]
-    have = {"Airflow", "Spark", "dbt", "Kafka", "Python", "SQL", "Terraform", "Spark Structured Streaming"}
-    matching = [s for s in stack if s in have] + ["Data quality frameworks", "Python", "SQL"]
-    missing = [s for s in stack if s not in have]
-    return {
-        "match_score": score,
-        "matching_skills": list(dict.fromkeys(matching)),
-        "missing_keywords": missing,
-        "visa_sponsorship": "Yes" if posting[12] and "not" not in posting[12] else ("No" if "not" in posting[12] else "Unknown"),
-        "strengths": "Owns ingestion end to end at scale (500GB/day, 12 sources) and cut a nightly batch from 4 hours to 45 "
-                     "minutes, which maps directly to this team's reliability and freshness goals.",
-        "gaps_analysis": ("No production experience with " + ", ".join(missing) + " is shown in the profile; the streaming "
-                          "learning project is the closest evidence.") if missing else
-                         "No hard gaps; the posting's domain is new to the profile, so lead with transferable pipeline work.",
-    }
-
-
-def _tailored_resume(profile: dict, posting: tuple) -> dict:
-    company, title = posting[0], posting[1]
-    resume = json.loads(json.dumps(profile))
-    resume["title"] = title
-    resume["summary"] = (
-        f"Data engineer with 4 years running production pipelines, including ingestion of roughly 500GB a day from 12 "
-        f"sources and a batch-to-incremental migration that cut nightly runtime from 4 hours to 45 minutes. "
-        f"Ready to bring the same ownership of freshness and data quality to {posting[5]} at {company}."
-    )
-    return resume
 
 
 def _cover_letter(posting: tuple) -> str:
@@ -455,6 +415,7 @@ def seed_demo_data(db: Session) -> bool:
                     h1b_last_fiscal_year=2025 if approvals else None, created_at=now - timedelta(days=45))
         if field:
             setattr(c, field, slug)
+        c.max_wage_level_15xx = {"A": "III", "B": "II", "C": "II", "X": "I"}[tier]
         if name in _CAP_EXEMPT:
             c.is_cap_exempt, c.cap_exempt_reason = True, _CAP_EXEMPT[name]
         db.add(c)
@@ -463,7 +424,7 @@ def seed_demo_data(db: Session) -> bool:
 
     apps = {}
     for i, p in enumerate(_POSTINGS):
-        status, score, days, attention, recruiter = _APPLICATIONS[i]
+        status, days, attention, recruiter = _APPLICATIONS[i]
         company = companies[p[0]]
         created = now - timedelta(days=days, hours=3 + i % 5)
         signal = bool(p[12]) and "not" not in p[12]
@@ -485,11 +446,14 @@ def seed_demo_data(db: Session) -> bool:
         app = JobApplication(posting_id=posting.id, status=status, profile_variant_id=variant_id, created_at=created,
                              visa_sponsorship="Yes" if signal else ("No" if posting.sponsorship_blocked else "Unknown"),
                              attention_reason=attention)
+        rules = fit_service.rules_fit(profile, posting.job_title, posting.job_description)
         if status != "Ingested":
-            app.match_score = score
-            app.match_analysis_json = json.dumps(_match_analysis(score, p))
-            app.score_breakdown = _score_breakdown(score, company.tier, signal, days)
-            app.cover_letter_score = min(95, score + 4)
+            analysis = fit_service.analysis_from_rules(rules, app.visa_sponsorship)
+            analysis["fit_cap_reason"] = rules["cap_reason"]
+            analysis["evidence"] = {"role": rules["role"], "skills": rules["skills"], "years": rules["years"],
+                                    "rules_score": rules["score"]}
+            app.match_score = rules["score"]
+            app.match_analysis_json = json.dumps(analysis)
         if recruiter:
             app.recruiter_name, app.recruiter_email = recruiter
         if status in ("Approved", "Applied", "Interviewing", "Offer", "Not Selected"):
@@ -508,15 +472,21 @@ def seed_demo_data(db: Session) -> bool:
             app.not_selected_at = now - timedelta(days=max(1, days - 14))
         if status == "Rejected":
             app.rejected_at = created + timedelta(hours=6)
-            app.notes = "Skipped: junior role, well below current level."
+            app.notes = ("Skipped: a frontend role, not data engineering." if rules["cap_reason"]
+                         else "Skipped: junior role, well below current level.")
         db.add(app)
         db.flush()
         apps[i] = app
 
-        if status != "Ingested":
-            db.add(TailoredDocument(application_id=app.id, document_type="resume", ats_score=min(96, score + 7),
-                                    content=json.dumps(_tailored_resume(profile, p)), generated_at=created + timedelta(minutes=4)))
-            db.add(TailoredDocument(application_id=app.id, document_type="cover_letter", ats_score=app.cover_letter_score,
+        if status not in ("Ingested", "Rejected"):
+            # The resume is what this demo's own Tailor button makes: the profile's content reordered for the
+            # posting, nothing reworded. The cover letter is sample AI output (an instance with an AI
+            # provider writes one; this one has none), so it carries no score.
+            experience, projects, skills = fit_service.rearrange_for_posting(profile, profile.get("projects", []), posting.job_description)
+            resume = dict(profile, experience=experience, projects=projects, skills=skills, tailoring_method="rules")
+            db.add(TailoredDocument(application_id=app.id, document_type="resume", ats_score=rules["skills"]["score"],
+                                    content=json.dumps(resume), generated_at=created + timedelta(minutes=4)))
+            db.add(TailoredDocument(application_id=app.id, document_type="cover_letter",
                                     content=_cover_letter(p), generated_at=created + timedelta(minutes=5)))
 
     for i in (0, 2):
@@ -643,6 +613,8 @@ def seed_demo_data(db: Session) -> bool:
         created_at=now - timedelta(hours=7)))
 
     db.commit()
+    for app in apps.values():
+        recompute_score_breakdown(db, app)
     return True
 
 

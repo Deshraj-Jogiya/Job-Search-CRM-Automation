@@ -34,7 +34,7 @@ from ..database import utcnow
 from ..models import JobApplication, OutreachMessage
 from .activity_logger import log_activity
 from .email_utils import is_smtp_configured, send_email
-from .llm import get_llm_provider
+from .llm import get_llm_provider, llm_available
 from .matching_service import get_profile_content_for_application
 from .outreach_hygiene import OutreachCapViolation, check_caps
 
@@ -69,9 +69,27 @@ def verify_email_address(email: str) -> bool:
         return False
 
 
+def _template_note_text(profile_content: dict, posting, recipient_name: str, channel: str) -> str:
+    """The draft when no AI provider is configured: only facts already on record (the candidate's
+    current role and the posting), for the user to edit before anything is sent."""
+    current = (profile_content.get("experience") or [{}])[0]
+    role, employer = current.get("role") or profile_content.get("title") or "", current.get("company") or ""
+    background = f"I'm a {role} at {employer}" if role and employer else f"I'm a {role or 'candidate'}"
+    greeting = f"Hi {recipient_name.split()[0]}," if recipient_name else "Hi,"
+    if channel == "linkedin_connection":
+        text = (f"{greeting} {background} and applied for the {posting.job_title} role at "
+                f"{posting.company_name_raw}. I'd like to connect and learn what the team is focused on.")
+        return text[:299]
+    return (f"{greeting}\n\n{background}, and I applied for the {posting.job_title} role at "
+            f"{posting.company_name_raw}. I'd value a few minutes to hear what the team is working on and "
+            f"whether my background fits what you need.")
+
+
 def _draft_note_text(
     profile_content: dict, posting, recipient_name: str, channel: str, context_note: str | None = None
 ) -> str:
+    if not llm_available():
+        return _template_note_text(profile_content, posting, recipient_name, channel)
     if channel == "linkedin_connection":
         instruction = (
             "Write a LinkedIn connection request note, STRICTLY under 300 characters total including spaces, "

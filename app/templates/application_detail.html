@@ -48,18 +48,67 @@
                 {% if application.status not in final_statuses %}
                 <form method="post" action="/jobs/{{ application.id }}/score" class="inline-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <button type="submit">{{ "Re-score" if match_analysis else "Score This Job" }}</button>
+                    <button type="submit">{{ "Re-score" if match_analysis else "Score This Job" }}{{ "" if ai_available else " (rules)" }}</button>
                 </form>
                 {% endif %}
             </div>
             {% if match_analysis %}
-            <p><strong>{{ application.match_score }}% match</strong> &middot; visa sponsorship: {{ application.visa_sponsorship }}</p>
+            {% set sb = application.score_breakdown or {} %}
+            {% set opp = (sb.get("opportunity") or {}).get("score") %}
+            {% set ev = match_analysis.evidence or {} %}
+            <div class="score-pair">
+                <div class="score-pair-item">
+                    <span class="score-pair-label">Fit</span>
+                    <span class="score-pair-value">{{ application.match_score }}</span>
+                    <span class="muted-note">{{ "scored by rules (no AI)" if match_analysis.method == "rules" else "AI score" }}{{ ", capped" if match_analysis.fit_cap_reason }}</span>
+                </div>
+                {% if opp is not none %}
+                <div class="score-pair-item">
+                    <span class="score-pair-label">Opportunity</span>
+                    <span class="score-pair-value">{{ opp }}</span>
+                    <span class="muted-note">sponsorship record, pay level, worksite, freshness</span>
+                </div>
+                {% endif %}
+            </div>
+            {% if match_analysis.fit_cap_reason %}
+            <p class="flag-warning">{{ match_analysis.fit_cap_reason }}{% if match_analysis.ai_score_before_cap %} The AI scored it {{ match_analysis.ai_score_before_cap }}.{% endif %}</p>
+            {% endif %}
+            <p class="muted-note">Visa sponsorship: {{ application.visa_sponsorship }} &middot; <a href="/how-scoring-works">How scoring works</a></p>
             <p class="muted-note"><strong>Strengths:</strong> {{ match_analysis.strengths }}</p>
             <p class="muted-note"><strong>Gaps:</strong> {{ match_analysis.gaps_analysis }}</p>
+            {% if ev.skills %}
+            <details class="sub-panel" open>
+                <summary>Evidence: {{ ev.skills.matched|length }} of {{ ev.skills.requirements_found }} technical requirements found in the profile</summary>
+                <div class="table-scroll">
+                <table class="score-breakdown-table evidence-table">
+                    {% for m in ev.skills.matched %}
+                    <tr><td>{{ m.term }}{{ "" if m.required else " (preferred)" }}</td><td>found</td><td>{{ m.evidence }}</td></tr>
+                    {% endfor %}
+                    {% for m in ev.skills.transferable %}
+                    <tr><td>{{ m.term }}{{ "" if m.required else " (preferred)" }}</td><td>comparable tool</td><td>{{ m.via }}, {{ m.evidence }}</td></tr>
+                    {% endfor %}
+                    {% for m in ev.skills.missing %}
+                    <tr><td>{{ m.term }}{{ "" if m.required else " (preferred)" }}</td><td>not found</td><td>--</td></tr>
+                    {% endfor %}
+                    {% if ev.role %}
+                    <tr><td>Role type</td><td>{{ {"match": "matches", "mismatch": "differs", "unknown": "not classified"}[ev.role.status] }}</td>
+                        <td>posting: {{ ev.role.posting_family_label }}; profile: {{ ev.role.profile_family_labels|join(", ") or "--" }}</td></tr>
+                    {% endif %}
+                    {% if ev.years and ev.years.required_years %}
+                    <tr><td>Years asked for</td><td>{{ ev.years.required_years }}+</td><td>profile shows {{ ev.years.profile_years }}</td></tr>
+                    {% endif %}
+                </table>
+                </div>
+                {% if match_analysis.method != "rules" and ev.rules_score is not none %}
+                <p class="muted-note">The rule-based check alone gives {{ ev.rules_score }}.</p>
+                {% endif %}
+            </details>
+            {% else %}
             <p class="muted-note"><strong>Matching skills:</strong> {{ match_analysis.matching_skills | join(", ") }}</p>
             <p class="muted-note"><strong>Missing keywords:</strong> {{ match_analysis.missing_keywords | join(", ") if match_analysis.missing_keywords else "none" }}</p>
+            {% endif %}
             {% else %}
-            <p class="muted-note">Not scored yet -- click "Score This Job" to run AI match evaluation against your active profile.</p>
+            <p class="muted-note">Not scored yet -- click "Score This Job" to check fit against your active profile{{ "" if ai_available else " (scored by rules: no AI provider is configured)" }}.</p>
             {% endif %}
         </section>
 
@@ -69,12 +118,17 @@
                 {% if application.status not in final_statuses %}
                 <form method="post" action="/jobs/{{ application.id }}/tailor" class="inline-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    {% if ai_available %}
                     <button type="submit">{{ "Re-tailor" if resume_doc else "Tailor Resume & Cover Letter" }}</button>
+                    {% else %}
+                    <button type="submit" title="Reorders the profile's own bullets and skills for this posting; nothing is reworded, no cover letter">{{ "Re-tailor" if resume_doc else "Tailor Resume" }} (reorder, no AI)</button>
+                    {% endif %}
                 </form>
                 {% endif %}
             </div>
             {% if resume_doc %}
-            <p class="muted-note">{% if resume_doc.ats_score is not none %}Resume ATS score: <strong>{{ resume_doc.ats_score }}%</strong> &middot; {% endif %}generated {{ resume_doc.generated_at.strftime("%Y-%m-%d %H:%M") }} UTC</p>
+            {% set rules_resume = '"tailoring_method": "rules"' in resume_doc.content %}
+            <p class="muted-note">{% if rules_resume %}Reordered for this posting without AI (nothing reworded) &middot; {% endif %}{% if resume_doc.ats_score is not none %}{{ "Keyword match" if rules_resume else "Resume ATS score" }}: <strong>{{ resume_doc.ats_score }}%</strong> &middot; {% endif %}generated {{ resume_doc.generated_at.strftime("%Y-%m-%d %H:%M") }} UTC</p>
             <a href="/jobs/{{ application.id }}/tailored/resume/download?inline=1" class="btn-secondary" target="_blank" rel="noopener">Preview Resume PDF</a>
             <a href="/jobs/{{ application.id }}/tailored/resume/download" class="btn-secondary">Download Resume PDF</a>
             <a href="/jobs/{{ application.id }}/tailored/resume/download-docx" class="btn-secondary">Download Resume DOCX</a>
@@ -85,7 +139,7 @@
             </details>
             {% endif %}
             {% if cl_doc %}
-            <p class="muted-note">{% if cl_doc.ats_score is not none %}Cover letter score: <strong>{{ cl_doc.ats_score }}%</strong> &middot; {% endif %}generated {{ cl_doc.generated_at.strftime("%Y-%m-%d %H:%M") }} UTC</p>
+            <p class="muted-note">{% if not ai_available %}{{ "Sample AI output" if showcase_mode else "Written by an AI provider earlier" }} &middot; {% endif %}{% if cl_doc.ats_score is not none %}Cover letter score: <strong>{{ cl_doc.ats_score }}%</strong> &middot; {% endif %}generated {{ cl_doc.generated_at.strftime("%Y-%m-%d %H:%M") }} UTC</p>
             <a href="/jobs/{{ application.id }}/tailored/cover_letter/download?inline=1" class="btn-secondary" target="_blank" rel="noopener">Preview Cover Letter PDF</a>
             <a href="/jobs/{{ application.id }}/tailored/cover_letter/download" class="btn-secondary">Download Cover Letter PDF</a>
             <details class="sub-panel">
@@ -107,7 +161,8 @@
                     {% if not is_closed %}
                     <form method="post" action="/jobs/{{ application.id }}/interview-prep" class="inline-form">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        <button type="submit">{{ "Regenerate" if interview_prep else "Generate Interview Prep" }}</button>
+                        <button type="submit" {{ "" if ai_available else "disabled" }}>{{ "Regenerate" if interview_prep else "Generate Interview Prep" }}</button>
+                        {% if not ai_available %}<span class="muted-note">Needs an AI provider, none configured here.</span>{% endif %}
                     </form>
                     {% endif %}
                     {% if predicted_rounds and predicted_rounds.rounds %}
@@ -280,7 +335,11 @@
             {% endfor %}
             {% endif %}
             {% else %}
+            {% if ai_available %}
             <p class="muted-note">Not generated yet -- click "Generate Interview Prep" for a full round-by-round plan with drafted answers, grounded in real research when Tavily is configured, JD-only otherwise.</p>
+            {% else %}
+            <p class="muted-note">Not generated: interview prep is written by an AI provider, and none is configured on this instance.</p>
+            {% endif %}
             {% endif %}
         </section>
         {% endif %}

@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import BehavioralStory, ProfileVariant
+from ..services.llm import AI_REQUIRED_MESSAGE, llm_available
 from ..services import behavioral_story_service, profile_service, resume_rules
 from ..services.behavioral_story_service import BehavioralStoryServiceError
 from ..services.profile_service import ProfileServiceError
@@ -285,6 +286,8 @@ def sync_portfolio(variant_id: int, db: Session = Depends(get_db)):
 
 @router.post("/variants/{variant_id}/linkedin-import")
 def linkedin_import(variant_id: int, pasted_text: str = Form(...), db: Session = Depends(get_db)):
+    if not llm_available():
+        return _redirect(error=AI_REQUIRED_MESSAGE)
     try:
         profile_service.propose_linkedin_diff(db, variant_id, pasted_text)
         return _redirect(message="LinkedIn diff proposed -- review and approve below.")
@@ -312,6 +315,8 @@ def reject_version(version_id: int, db: Session = Depends(get_db)):
 
 @router.post("/variants/{variant_id}/behavioral-stories/generate")
 def generate_behavioral_stories(variant_id: int, db: Session = Depends(get_db)):
+    if not llm_available():
+        return _redirect(error=AI_REQUIRED_MESSAGE)
     try:
         stories = behavioral_story_service.generate_story_drafts(db, variant_id)
         return _redirect(message=f"Drafted {len(stories)} behavioral stories -- review and confirm each below.")

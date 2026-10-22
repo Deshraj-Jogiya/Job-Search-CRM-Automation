@@ -1,0 +1,12 @@
+{# Fit (does this resume match the job) and Opportunity (sponsorship record, pay level, worksite, freshness)
+   shown apart, so a strong sponsor never hides a poor fit. Falls back to the stored match score for an
+   application whose breakdown predates the split. #}
+{% macro fit_badges(app) -%}
+{% set sb = app.score_breakdown or {} %}
+{% set fit = sb.get("fit") or {} %}
+{% set fit_score = fit.get("score") if fit else (app.match_score if app.match_analysis_json else none) %}
+{% set opp = (sb.get("opportunity") or {}).get("score") %}
+{% if fit_score is not none %}<span class="badge {{ 'badge-active' if fit_score >= 70 else ('badge-warn' if fit_score < 50 else '') }}"
+    title="{{ fit.get('cap_reason') or ('Scored by rules: skill overlap, role type and years asked for' if fit.get('method') == 'rules' else 'AI fit score') }}">Fit {{ fit_score }}{{ ' (capped)' if fit.get('cap_reason') }}</span>{% endif %}
+{% if opp is not none %}<span class="badge" title="Sponsorship record, pay level, worksite and freshness of the posting">Opportunity {{ opp }}</span>{% endif %}
+{%- endmacro %}

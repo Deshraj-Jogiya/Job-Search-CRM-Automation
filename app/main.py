@@ -38,7 +38,7 @@ from .routers import extension as extension_router
 from .services import analytics_service, auth_service, backup_service, demo_seed_service, llm_usage_service, profile_prep_service, profile_service, trend_research_service
 from .services import scheduler as bg_scheduler
 from .services.activity_logger import log_activity
-from .services.llm import get_llm_provider
+from .services.llm import AI_REQUIRED_MESSAGE, get_llm_provider, llm_available
 from .services.research_agent import run_research_agent
 
 Base.metadata.create_all(bind=engine)
@@ -267,6 +267,8 @@ def ask_research_agent(question: str = Form(...)):
     in a background thread like every other LLM-backed action here (up
     to 6 sequential calls), result lands in ResearchAgentQuery for the
     dashboard to show after a refresh."""
+    if not llm_available():
+        return RedirectResponse(url="/?error=" + quote(AI_REQUIRED_MESSAGE), status_code=303)
     db = SessionLocal()
     try:
         query = ResearchAgentQuery(question=question.strip())
@@ -279,6 +281,30 @@ def ask_research_agent(question: str = Form(...)):
 
     threading.Thread(target=_research_agent_in_background, args=(query_id, question.strip()), daemon=True).start()
     return RedirectResponse(url="/?message=" + quote("Asked -- refresh in a few seconds for the answer."), status_code=303)
+
+
+@app.get("/how-scoring-works", response_class=HTMLResponse, dependencies=app_dependencies)
+def how_scoring_works(request: Request):
+    from .services import fit_service, scoring_service
+
+    weights = {k: v for k, v in vars(scoring_service).items() if k.endswith("_WEIGHT")}
+    opportunity = [
+        ("sponsorship_history", "Sponsorship history", weights["_SPONSORSHIP_HISTORY_WEIGHT"],
+         "The employer's H-1B approval record (tier A to X), from public USCIS and DOL data."),
+        ("wage_level_fit", "Pay level", weights["_WAGE_LEVEL_FIT_WEIGHT"],
+         "The prevailing-wage level (I to IV) the posting or employer pays at; a higher level scores higher."),
+        ("worksite_clarity", "Worksite clarity", weights["_WORKSITE_CLARITY_WEIGHT"],
+         "A specific location scores higher than a vague or conflicting one."),
+        ("posting_recency", "Freshness", weights["_POSTING_RECENCY_WEIGHT"],
+         "How long the posting has been open, against the stale-posting setting."),
+        ("sponsorship_signal_bonus", "Sponsorship stated", weights["_SPONSORSHIP_SIGNAL_BONUS_WEIGHT"],
+         "The posting itself says it sponsors visas."),
+    ]
+    return render(request, "how_scoring_works.html", {
+        "cap": fit_service.ROLE_MISMATCH_CAP,
+        "families": [label for _, label, _ in fit_service.ROLE_FAMILIES],
+        "opportunity": opportunity,
+    })
 
 
 @app.get("/", response_class=HTMLResponse, dependencies=app_dependencies)

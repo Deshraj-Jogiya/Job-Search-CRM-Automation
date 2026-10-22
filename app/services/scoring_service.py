@@ -36,6 +36,7 @@ between "yesterday's tier" and "today's tier" doesn't require redoing
 profile-fit analysis.
 """
 
+import json
 from datetime import datetime
 
 from sqlalchemy.orm import Session
@@ -291,7 +292,35 @@ def compute_score_breakdown(
         "sponsorship_signal_bonus": _sponsorship_signal_bonus_component(posting),
     }
     total = min(100, sum(c["contribution"] for c in components.values()))
-    return {"components": components, "total": total}
+    return {"components": components, "total": total, "fit": fit_summary(application),
+            "opportunity": opportunity_summary(components)}
+
+
+# The combined total mixes two questions: does this resume fit the job, and is the posting a good
+# opportunity (sponsorship record, pay level, clear worksite, freshness). Shown apart so a strong
+# sponsor can never hide a poor fit.
+OPPORTUNITY_COMPONENTS = ("sponsorship_history", "wage_level_fit", "worksite_clarity", "posting_recency",
+                          "sponsorship_signal_bonus")
+
+
+def opportunity_summary(components: dict) -> dict:
+    parts = [components[k] for k in OPPORTUNITY_COMPONENTS if k in components]
+    weight = sum(c["weight"] for c in parts)
+    earned = sum(c["contribution"] for c in parts)
+    return {"score": round(100 * earned / weight) if weight else None}
+
+
+def fit_summary(application: JobApplication) -> dict:
+    """Fit is the stored match score (AI, or rule-based when no AI provider is configured), already
+    capped when the role type differs. None until the application has been scored."""
+    if application.match_analysis_json is None:
+        return {"score": None, "method": None, "cap_reason": None}
+    try:
+        analysis = json.loads(application.match_analysis_json)
+    except (TypeError, ValueError):
+        analysis = {}
+    return {"score": application.match_score, "method": analysis.get("method", "ai"),
+            "cap_reason": analysis.get("fit_cap_reason"), "ai_score_before_cap": analysis.get("ai_score_before_cap")}
 
 
 def recompute_score_breakdown(db: Session, application: JobApplication) -> dict:

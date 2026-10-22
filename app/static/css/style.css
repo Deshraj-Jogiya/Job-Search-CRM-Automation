@@ -391,6 +391,7 @@ html.light-theme .pending-item {
 }
 
 input[type="text"],
+input[type="url"],
 input[type="email"],
 input[type="number"],
 input[type="password"],
@@ -614,6 +615,16 @@ html.light-theme .flash-error-inline {
     color: var(--accent-indigo);
     border-color: rgba(99, 102, 241, 0.4);
     background: rgba(99, 102, 241, 0.1);
+}
+
+.badge-warn {
+    color: #b45309;
+    border-color: rgba(217, 119, 6, 0.45);
+    background: rgba(217, 119, 6, 0.1);
+}
+
+html:not(.light-theme) .badge-warn {
+    color: #fbbf24;
 }
 
 .flag-row {
@@ -1535,4 +1546,86 @@ html.light-theme .flag-warning {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     background: var(--bg-dark);
+}
+
+/* Fit and Opportunity side by side on the application page */
+.score-pair {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 8px 0 12px;
+}
+
+.score-pair-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 150px;
+    padding: 10px 14px;
+    border: 1px solid var(--input-border);
+    border-radius: var(--radius-md);
+    background: var(--input-bg);
+}
+
+.score-pair-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+}
+
+.score-pair-value {
+    font-size: 1.6rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.evidence-table td {
+    white-space: normal;
+    overflow-wrap: break-word;
+    vertical-align: top;
+}
+
+.evidence-table td:nth-child(-n+2) {
+    white-space: nowrap;
+}
+
+button:disabled,
+button[disabled] {
+    opacity: 0.45;
+    cursor: not-allowed;
+    filter: grayscale(0.6);
+}
+
+.add-job-panel summary {
+    cursor: pointer;
+}
+
+.add-job-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.add-job-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.add-job-row label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1 1 200px;
+    font-size: 0.85rem;
+}
+
+.add-job-form textarea {
+    width: 100%;
+}
+
+.add-job-form button {
+    align-self: flex-start;
 }

@@ -42,6 +42,7 @@ from ..models import (
     TailoredDocument,
     get_or_create_settings,
 )
+from ..services.llm import AI_REQUIRED_MESSAGE, llm_available
 from ..services import (
     adaptation_service,
     autofill_service,
@@ -290,6 +291,35 @@ def jobs_page(request: Request, db: Session = Depends(get_db)):
             "error": request.query_params.get("error"),
         },
     )
+
+
+@router.post("/add")
+def add_job_by_paste(
+    job_title: str = Form(...),
+    company_name: str = Form(""),
+    job_url: str = Form(""),
+    job_description: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """Add a posting by pasting it, the web counterpart of the extension's one-click add (same dedupe and
+    company matching). Scored straight away: instantly by the rules when no AI provider is configured,
+    in the background otherwise. Tailoring stays a separate, deliberate click."""
+    from ..services import extension_service
+
+    try:
+        application = extension_service.add_job_from_page(db, job_url.strip(), job_title, company_name, job_description)
+    except extension_service.ExtensionServiceError as e:
+        return _redirect(error=str(e).replace("on this page -- add it from the Jobs page instead", "in what was pasted"))
+    if application.match_analysis_json:
+        return _redirect_detail(application.id, message="That posting was already added -- here it is.")
+    if llm_available():
+        threading.Thread(target=_score_in_background, args=(application.id,), daemon=True).start()
+        return _redirect_detail(application.id, message="Added. Scoring started -- refresh in a moment to see the fit.")
+    try:
+        matching_service.score_application(db, application.id)
+    except matching_service.MatchingServiceError as e:
+        return _redirect_detail(application.id, error=str(e))
+    return _redirect_detail(application.id, message="Added and scored by rules. The evidence for every point is below.")
 
 
 @router.post("/intake/run")
@@ -827,6 +857,8 @@ def generate_interview_prep_now(application_id: int, db: Session = Depends(get_d
         raise HTTPException(status_code=404, detail="Application not found")
     if application.status == "Rejected":
         return _redirect_detail(application_id, error="Can't generate interview prep for a Rejected application.")
+    if not llm_available():
+        return _redirect_detail(application_id, error=AI_REQUIRED_MESSAGE)
     threading.Thread(target=_interview_prep_in_background, args=(application_id,), daemon=True).start()
     return _redirect_detail(
         application_id,

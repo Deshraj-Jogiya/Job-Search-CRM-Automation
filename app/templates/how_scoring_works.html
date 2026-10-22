@@ -1,0 +1,57 @@
+{% extends "_base.html" %}
+
+{% block title %}Career Pilot -- How Scoring Works{% endblock %}
+
+{% block header_title %}<a href="/" class="plain-link">Career Pilot</a> / How scoring works{% endblock %}
+
+{% block content %}
+<section class="settings-panel">
+    <h2>Two numbers, two questions</h2>
+    <p><strong>Fit</strong> answers "does this resume match this job". <strong>Opportunity</strong> answers "is this
+        posting worth the effort": sponsorship record, pay level, worksite and freshness. They are shown apart so a
+        strong sponsor can never hide a poor fit. The queue sorts by a combined total of both.</p>
+    <p class="muted-note">{{ "An AI provider is configured on this instance, so Fit is the AI's score, checked by the rules below." if ai_available
+        else "No AI provider is configured on this instance, so Fit is the rule-based score below." }}</p>
+</section>
+
+<section class="settings-panel">
+    <h2>Fit</h2>
+    <p>The rule-based fit is computed from the posting and the profile alone, with no AI and no network call:</p>
+    <table class="score-breakdown-table evidence-table">
+        <tr><td>Skill overlap</td><td>60%</td><td>Technical requirements named in the posting (required ones count fully, "nice to have"
+            ones half), each looked up in the profile's experience bullets, projects, skills and certifications. A comparable tool in
+            the same narrow category (Tableau for Power BI, Prefect for Airflow) earns half credit. Every requirement is listed on the
+            application page with where it was found.</td></tr>
+        <tr><td>Role type</td><td>20%</td><td>The posting's title against the role types the profile targets or has held
+            ({{ families|join(", ") }}).</td></tr>
+        <tr><td>Years asked for</td><td>20%</td><td>The largest minimum stated in the required section against the profile's total
+            experience, with overlapping roles counted once.</td></tr>
+    </table>
+    <h3>Role-type cap</h3>
+    <p>When a posting's role type is not one the profile targets or has held (an SDE resume against a Data Analyst
+        posting, say), Fit is capped at <strong>{{ cap }}</strong>, whoever scored it. The cap is a fixed rule, so an AI score
+        cannot get past it, and it applies before anything automatic reads the score: fast-track review, auto-tailoring and
+        autofill launch. Tailoring a resume afterwards does not lift it. A title the rules don't recognise is never capped.</p>
+</section>
+
+<section class="settings-panel">
+    <h2>Opportunity</h2>
+    <table class="score-breakdown-table evidence-table">
+        {% for key, label, weight, how in opportunity %}
+        <tr><td>{{ label }}</td><td>{{ weight }} pts</td><td>{{ how }}</td></tr>
+        {% endfor %}
+    </table>
+    <p class="muted-note">Opportunity is the share of these points earned, from 0 to 100.</p>
+</section>
+
+<section class="settings-panel">
+    <h2>Without an AI provider</h2>
+    <ul>
+        <li>Scoring uses the rule-based fit above.</li>
+        <li>Resume tailoring reorders the profile's own bullets and skills so the ones this posting asks for come first. Nothing is
+            added or reworded, so nothing can be invented. No cover letter is written.</li>
+        <li>Outreach drafts are a short template built from facts on record, for you to edit before sending.</li>
+        <li>Interview prep, mock interviews, story drafting, LinkedIn import and the research question box need an AI provider and say so.</li>
+    </ul>
+</section>
+{% endblock %}

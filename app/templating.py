@@ -10,6 +10,8 @@ from fastapi import Request
 from fastapi.templating import Jinja2Templates
 from .csrf import get_csrf_token
 from .services import auth_service
+from .app_mode import is_showcase_mode
+from .services.llm import llm_available
 
 templates = Jinja2Templates(directory="app/templates")
 
@@ -31,6 +33,8 @@ def _static_version() -> str:
 
 def render(request: Request, template_name: str, context: dict):
     context["csrf_token"] = get_csrf_token(request)
+    context.setdefault("ai_available", llm_available())
+    context.setdefault("showcase_mode", is_showcase_mode())
     context.setdefault("static_version", _static_version())
     # Cheap, DB-free check (pure HMAC + expiry) -- _base.html uses this
     # to decide whether to show "Log Out", instead of checking raw

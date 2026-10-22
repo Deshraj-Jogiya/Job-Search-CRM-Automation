@@ -14,10 +14,10 @@ import json
 
 from sqlalchemy.orm import Session
 
-from ..models import JobApplication, ProfileVariant, ProfileVersion
-from . import resume_rules
+from ..models import JobApplication, ProfileVariant, ProfileVersion, SearchKeyword
+from . import fit_service, resume_rules
 from .activity_logger import log_activity
-from .llm import get_llm_provider, parse_json_response
+from .llm import get_llm_provider, llm_available, parse_json_response
 from .scoring_service import recompute_score_breakdown
 
 
@@ -143,12 +143,33 @@ def score_application(db: Session, application_id: int) -> JobApplication:
         )
 
     profile_content, variant_id = get_profile_content_for_application(db, application)
-    jd_text = application.posting.job_description
+    posting = application.posting
+    jd_text = posting.job_description
 
-    try:
-        result = evaluate_match(profile_content, jd_text)
-    except Exception as e:
-        raise MatchingServiceError(f"Match evaluation failed: {e}") from e
+    # The rule-based fit runs every time: it is the score when no AI provider is configured, and with
+    # one it supplies the evidence shown beside the AI score and the role-type cap on it.
+    target_titles = [k.keyword for k in db.query(SearchKeyword).filter(SearchKeyword.is_active == True).all()]  # noqa: E712
+    rules = fit_service.rules_fit(profile_content, posting.job_title, jd_text, target_titles)
+
+    if llm_available():
+        try:
+            result = evaluate_match(profile_content, jd_text)
+        except Exception as e:
+            raise MatchingServiceError(f"Match evaluation failed: {e}") from e
+        ai_score = int(result.get("match_score", 0))
+        capped, cap_reason = fit_service.apply_role_cap(ai_score, rules["role"])
+        result["method"] = "ai"
+        result["fit_cap_reason"] = cap_reason
+        if cap_reason:
+            result["ai_score_before_cap"] = ai_score
+            result["match_score"] = capped
+            result["gaps_analysis"] = f"{cap_reason} {result.get('gaps_analysis') or ''}".strip()
+    else:
+        visa = "Sponsors" if posting.sponsorship_signal else ("No Sponsorship" if posting.sponsorship_blocked else "Unknown")
+        result = fit_service.analysis_from_rules(rules, visa)
+        result["fit_cap_reason"] = rules["cap_reason"]
+    result["evidence"] = {"role": rules["role"], "skills": rules["skills"], "years": rules["years"],
+                          "rules_score": rules["score"]}
 
     application.match_score = int(result.get("match_score", 0))
     application.match_analysis_json = json.dumps(result)
@@ -161,7 +182,45 @@ def score_application(db: Session, application_id: int) -> JobApplication:
     log_activity(
         db,
         f"Scored '{application.posting.job_title}' at {application.posting.company_name_raw}: "
-        f"{application.match_score}% match.",
+        f"{application.match_score}% fit ({'AI' if result['method'] == 'ai' else 'rules'}"
+        f"{', capped: role type differs' if result.get('fit_cap_reason') else ''}).",
         "INFO",
     )
     return application
+
+
+def refresh_fit_evidence(db: Session, application: JobApplication, target_titles: list[str] | None = None) -> bool:
+    """No-LLM refresh of an already-scored application: recomputes the rule-based evidence and applies
+    the role-type cap to the stored score (keeping the uncapped AI score beside it). Returns True when
+    the score changed. Used to bring applications scored before the cap existed up to date."""
+    if application.match_analysis_json is None:
+        return False
+    try:
+        analysis = json.loads(application.match_analysis_json)
+    except (TypeError, ValueError):
+        return False
+    profile_content, _ = get_profile_content_for_application(db, application)
+    posting = application.posting
+    if target_titles is None:
+        target_titles = [k.keyword for k in db.query(SearchKeyword).filter(SearchKeyword.is_active == True).all()]  # noqa: E712
+    rules = fit_service.rules_fit(profile_content, posting.job_title, posting.job_description, target_titles)
+    analysis.setdefault("method", "ai")
+    before = application.match_score
+    if analysis["method"] == "rules":
+        new_score, cap_reason = rules["score"], rules["cap_reason"]
+    else:
+        raw = analysis.get("ai_score_before_cap") or application.match_score
+        new_score, cap_reason = fit_service.apply_role_cap(raw, rules["role"])
+        if cap_reason:
+            analysis["ai_score_before_cap"] = raw
+        else:
+            analysis.pop("ai_score_before_cap", None)
+    analysis["fit_cap_reason"] = cap_reason
+    analysis["match_score"] = new_score
+    analysis["evidence"] = {"role": rules["role"], "skills": rules["skills"], "years": rules["years"],
+                            "rules_score": rules["score"]}
+    application.match_score = new_score
+    application.match_analysis_json = json.dumps(analysis)
+    db.commit()
+    recompute_score_breakdown(db, application)
+    return new_score != before

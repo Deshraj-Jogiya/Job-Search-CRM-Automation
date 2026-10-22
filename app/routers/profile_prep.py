@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import get_or_create_settings
+from ..services.llm import AI_REQUIRED_MESSAGE, llm_available
 from ..services import profile_prep_service
 from ..services.profile_prep_service import ProfilePrepServiceError
 from ..templating import render
@@ -54,6 +55,8 @@ def profile_prep_page(request: Request, db: Session = Depends(get_db)):
 @router.post("/generate")
 def generate_profile_prep_now(db: Session = Depends(get_db)):
     """The manual Refresh button: always runs (ignores the failure cooldown and the auto-refresh switch)."""
+    if not llm_available():
+        return RedirectResponse(url=f"/interview-prep?error={quote(AI_REQUIRED_MESSAGE)}", status_code=303)
     try:
         profile_prep_service.load_profile(db)
     except ProfilePrepServiceError as e:

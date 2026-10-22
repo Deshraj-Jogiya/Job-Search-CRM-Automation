@@ -38,7 +38,8 @@
     <div class="prep-controls">
         <form method="post" action="/interview-prep/generate">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button type="submit" {{ "disabled" if prep_status.generating }}>Refresh answers</button>
+            <button type="submit" {{ "disabled" if prep_status.generating or not ai_available }}>Refresh answers</button>
+            {% if not ai_available %}<span class="muted-note">Needs an AI provider, none configured here.</span>{% endif %}
         </form>
         <form method="post" action="/interview-prep/auto-refresh" class="prep-auto">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

@@ -38,13 +38,34 @@ class TestSeed:
         version = db.query(models.ProfileVersion).filter_by(is_active=True).one()
         assert prep.profile_version_id == version.id  # counts as current, so nothing tries to regenerate it
 
-    def test_every_tailored_document_parses_and_is_scored(self, db, monkeypatch):
+    def test_every_score_is_computed_not_invented(self, db, monkeypatch):
+        """Each seeded score must equal what the rules give for that posting, and each resume is the
+        profile reordered (same bullets), scored by its keyword match. Cover letters are sample AI output
+        and carry no score."""
+        from app.services import fit_service
         monkeypatch.setenv("APP_MODE", "showcase")
         seed_demo_data(db)
+        profile = json.loads(db.query(models.ProfileVersion).filter_by(is_active=True).one().content_json)
+        own_bullets = sorted(b for e in profile["experience"] for b in e["bullets"])
+        for app in db.query(models.JobApplication).filter(models.JobApplication.match_analysis_json.isnot(None)):
+            rules = fit_service.rules_fit(profile, app.posting.job_title, app.posting.job_description)
+            assert app.match_score == rules["score"]
+            assert app.score_breakdown["fit"]["score"] == rules["score"]
+            assert app.score_breakdown["opportunity"]["score"] is not None
         for doc in db.query(models.TailoredDocument):
-            assert doc.ats_score is not None
             if doc.document_type == "resume":
-                assert json.loads(doc.content)["experience"]
+                resume = json.loads(doc.content)
+                assert sorted(b for e in resume["experience"] for b in e["bullets"]) == own_bullets
+                assert doc.ats_score is not None
+            else:
+                assert doc.ats_score is None
+
+    def test_includes_a_capped_role_mismatch(self, db, monkeypatch):
+        monkeypatch.setenv("APP_MODE", "showcase")
+        seed_demo_data(db)
+        capped = [a for a in db.query(models.JobApplication) if (a.score_breakdown or {}).get("fit", {}).get("cap_reason")]
+        assert any("Frontend" in a.posting.job_title for a in capped)
+        assert all(a.match_score <= 40 for a in capped)
 
     def test_only_fictional_contact_details(self, db, monkeypatch):
         monkeypatch.setenv("APP_MODE", "showcase")

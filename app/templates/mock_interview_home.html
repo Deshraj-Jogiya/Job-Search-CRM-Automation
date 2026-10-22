@@ -47,7 +47,8 @@
             or stored; all analysis runs in your browser and only small numbers (not video) ever reach the app.
         </p>
 
-        <button type="submit">Start Practice Session</button>
+        <button type="submit" {{ "" if ai_available else "disabled" }}>Start Practice Session</button>
+        {% if not ai_available %}<span class="muted-note">Needs an AI provider, none configured here.</span>{% endif %}
     </form>
     {% endif %}
 </section>

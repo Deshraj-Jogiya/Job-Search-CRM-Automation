@@ -47,6 +47,35 @@ def get_llm_provider():
         )
 
 
+AI_REQUIRED_MESSAGE = (
+    "This needs an AI provider, and none is configured here (set one up in .env, see the README). "
+    "Scoring and resume tailoring still work without one, using rules."
+)
+
+
+def llm_available() -> bool:
+    """Whether an AI provider is configured, checked from the environment alone (no client, no network).
+
+    False on the public showcase instance whatever its environment says: it is meant to run with no
+    API keys, and its features fall back to rule-based versions (scoring, resume tailoring, outreach
+    drafts) or say plainly that they need an AI provider."""
+    from ...app_mode import is_showcase_mode
+
+    if is_showcase_mode():
+        return False
+    provider_name = os.getenv("LLM_PROVIDER", "anthropic").lower().strip()
+    if provider_name == "anthropic":
+        return bool(os.getenv("ANTHROPIC_API_KEY"))
+    if provider_name == "openai_compatible":
+        return bool(os.getenv("OPENAI_API_KEY"))
+    if provider_name == "ollama":
+        return True
+    if provider_name == "claude_cli":
+        path = os.getenv("CLAUDE_CLI_PATH")
+        return bool(path) and os.path.isfile(path)
+    return False
+
+
 def parse_json_response(raw_text: str):
     """Shared helper: LLMs sometimes wrap JSON in markdown code fences
     regardless of instructions. Strip that before parsing, once, instead

@@ -1,4 +1,5 @@
 {% extends "_base.html" %}
+{% from "_fit_scores.html" import fit_badges %}
 
 {% block title %}Career Pilot -- Review Queue{% endblock %}
 
@@ -50,7 +51,7 @@
                             <td><input type="checkbox" class="pending-cb" name="application_ids" value="{{ app.id }}" aria-label="Select {{ app.posting.job_title }} at {{ app.posting.company_name_raw }}"></td>
                             <td>{{ app.posting.company_name_raw }}</td>
                             <td><a href="/jobs/{{ app.id }}">{{ app.posting.job_title }}</a></td>
-                            <td>{{ app.match_score }}%</td>
+                            <td>{{ fit_badges(app) }}</td>
                             <td>{{ app.confirmation_deadline.strftime("%Y-%m-%d %H:%M") if app.confirmation_deadline else "--" }} UTC</td>
                         </tr>
                         {% endfor %}
@@ -130,7 +131,7 @@
                     <span class="muted-note">at {{ posting.company_name_raw }}</span>
                 </div>
                 <div class="ready-to-apply-meta">
-                    {% if application.match_score %}<span class="badge badge-active">{{ application.match_score }}% match</span>{% endif %}
+                    {{ fit_badges(application) }}
                     <span class="badge">{{ posting.source }}</span>
                     <span class="muted-note">first seen {{ posting.first_seen_at.strftime("%Y-%m-%d") }}</span>
                     {% if application.attention_reason %}

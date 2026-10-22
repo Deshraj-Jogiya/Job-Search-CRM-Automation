@@ -23,11 +23,12 @@ import re
 
 from sqlalchemy.orm import Session
 
-from ..models import JobApplication, ProfileVariant, TailoredDocument
+from ..models import JobApplication, ProfileVariant, SearchKeyword, TailoredDocument
 from .activity_logger import log_activity, log_exception
-from .llm import get_llm_provider, parse_json_response
+from .llm import get_llm_provider, llm_available, parse_json_response
 from .matching_service import MatchingServiceError, get_profile_content_for_application
-from . import resume_rules
+from . import fit_service, resume_rules
+from .scoring_service import recompute_score_breakdown
 
 TARGET_ATS_SCORE = 90
 MAX_REFINE_PASSES = 2
@@ -710,13 +711,25 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
     if not candidate_projects:
         candidate_projects = profile_content.get("projects", [])[: config["projects_by_variant"]["max_projects"]]
 
-    try:
-        tailored_experience, tailored_projects, final_score, initial_missing, remaining_missing = run_multi_pass_tailoring(
-            profile_content.get("experience", []), candidate_projects, jd_text
+    use_ai = llm_available()
+    target_titles = [k.keyword for k in db.query(SearchKeyword).filter(SearchKeyword.is_active == True).all()]  # noqa: E712
+    rules = fit_service.rules_fit(profile_content, posting.job_title, jd_text, target_titles)
+    if use_ai:
+        try:
+            tailored_experience, tailored_projects, final_score, initial_missing, remaining_missing = run_multi_pass_tailoring(
+                profile_content.get("experience", []), candidate_projects, jd_text
+            )
+            extras = _tailor_summary_skills(profile_content, jd_text)
+        except Exception as e:
+            raise MatchingServiceError(f"Resume tailoring failed: {e}") from e
+    else:
+        # No AI provider: reorder the profile's own content for this posting, never reword it.
+        tailored_experience, tailored_projects, reordered_skills = fit_service.rearrange_for_posting(
+            profile_content, candidate_projects, jd_text
         )
-        extras = _tailor_summary_skills(profile_content, jd_text)
-    except Exception as e:
-        raise MatchingServiceError(f"Resume tailoring failed: {e}") from e
+        extras = {"summary": profile_content.get("summary"), "skills": reordered_skills}
+        final_score = rules["skills"]["score"] or 0
+        initial_missing = remaining_missing = []
 
     resolved_keywords = [kw for kw in initial_missing if kw not in remaining_missing]
     unsupported = _find_unsupported_keywords(profile_content, resolved_keywords)
@@ -728,7 +741,7 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
     # comparison), so this is skipped, not run wastefully, whenever
     # structural_violations already caught a bigger problem.
     bullet_fabrications = []
-    if not structural_violations:
+    if use_ai and not structural_violations:
         try:
             bullet_fabrications = check_bullet_fabrication(
                 profile_content.get("experience", []), tailored_experience,
@@ -885,22 +898,29 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
             "INFO",
         )
 
+    if not use_ai:
+        resume_doc["tailoring_method"] = "rules"
     _upsert_document(db, application.id, "resume", json.dumps(resume_doc, indent=2), ats_score=final_score)
 
-    try:
-        cl_text = generate_cover_letter(
-            profile_content, posting.company_name_raw, posting.job_title, jd_text
-        )
-        cl_score = score_cover_letter(cl_text, jd_text)
-    except Exception as e:
-        raise MatchingServiceError(f"Cover letter generation failed: {e}") from e
+    if use_ai:
+        try:
+            cl_text = generate_cover_letter(
+                profile_content, posting.company_name_raw, posting.job_title, jd_text
+            )
+            cl_score = score_cover_letter(cl_text, jd_text)
+        except Exception as e:
+            raise MatchingServiceError(f"Cover letter generation failed: {e}") from e
 
-    # C9: same cliche-language cleanup as the resume bullets above,
-    # applied after scoring (a handful of swapped-out filler words don't
-    # need a second LLM call to re-verify compellingness).
-    cl_text = resume_rules.rewrite_ai_cliche_language(cl_text)
+        # C9: same cliche-language cleanup as the resume bullets above,
+        # applied after scoring (a handful of swapped-out filler words don't
+        # need a second LLM call to re-verify compellingness).
+        cl_text = resume_rules.rewrite_ai_cliche_language(cl_text)
 
-    _upsert_document(db, application.id, "cover_letter", cl_text, ats_score=cl_score)
+        _upsert_document(db, application.id, "cover_letter", cl_text, ats_score=cl_score)
+    else:
+        # A cover letter is new writing; without an AI provider none is made rather than a template
+        # passed off as tailored. An earlier one from an AI run stays as it was.
+        cl_text, cl_score = "", application.cover_letter_score
 
     # Independent check: which JD keywords does the cover letter (a
     # separate LLM call/prompt from the resume loop) actually claim,
@@ -911,7 +931,9 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
     cl_unsupported = _find_unsupported_keywords(profile_content, cl_mentioned)
     all_unsupported = sorted(set(unsupported) | set(cl_unsupported))
 
-    application.match_score = final_score
+    # The tailored resume's keyword score replaces the earlier fit, but the role-type cap still applies:
+    # tailoring a resume does not turn a different kind of role into a match.
+    application.match_score, _ = fit_service.apply_role_cap(final_score, rules["role"])
     application.cover_letter_score = cl_score
     application.profile_variant_id = variant_id
     application.status = "Tailored"
@@ -996,11 +1018,13 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
         )
 
     db.commit()
+    recompute_score_breakdown(db, application)
 
     log_activity(
         db,
-        f"Tailored '{posting.job_title}' at {posting.company_name_raw}: "
-        f"resume {final_score}%, cover letter {cl_score}%.",
+        f"Tailored '{posting.job_title}' at {posting.company_name_raw}"
+        + (f": resume {final_score}%, cover letter {cl_score}%." if use_ai
+           else f" without AI (reordered, not rewritten): resume keyword match {final_score}%, no cover letter."),
         "INFO",
     )
 

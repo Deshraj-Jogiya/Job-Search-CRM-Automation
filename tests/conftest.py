@@ -13,6 +13,13 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key-not-for-production-use")
 # No test may start a background LLM refresh of the profile interview prep; the tests that cover it
 # turn it back on explicitly (see tests/test_profile_prep.py).
 os.environ["PROFILE_PREP_AUTO_REFRESH"] = "0"
+# Tests run as an instance with an AI provider configured (llm_available() is True), with a key that
+# can never make a paid call: importing app.main loads .env, but load_dotenv never overrides a variable
+# already set, so a real key in a developer's .env stays out of the test run. Tests of the no-AI paths
+# switch it off explicitly.
+os.environ["LLM_PROVIDER"] = "anthropic"
+os.environ["ANTHROPIC_API_KEY"] = "test-key-not-a-real-key"
+os.environ.pop("APP_MODE", None)
 
 import pytest  # noqa: E402
 
