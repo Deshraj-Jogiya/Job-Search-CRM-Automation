@@ -24,10 +24,11 @@ from datetime import date, datetime, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
+from ..app_mode import is_showcase_mode
 from ..database import SessionLocal
 from ..models import get_or_create_settings
 from . import (
-    backup_service, confirmation_service, intake_service, notification_service, profile_prep_service,
+    backup_service, confirmation_service, demo_seed_service, intake_service, notification_service, profile_prep_service,
     trend_research_service,
 )
 from .activity_logger import log_activity, sweep_activity_log_retention
@@ -137,6 +138,11 @@ def _trend_check_tick() -> None:
     )
 
 
+def _demo_reset_tick() -> None:
+    # Showcase only: visitors share one database, so it goes back to the sample search once a day.
+    _run_isolated("demo data reset", demo_seed_service.reset_demo_data)
+
+
 def start_scheduler() -> None:
     if not scheduler.running:
         scheduler.add_job(_tick, trigger="interval", minutes=_TICK_MINUTES, name="job_intake_tick")
@@ -159,6 +165,8 @@ def start_scheduler() -> None:
             _profile_prep_tick, trigger="interval", hours=1, name="profile_prep_catch_up", max_instances=1,
             next_run_time=datetime.now() + timedelta(seconds=45),
         )
+        if is_showcase_mode():
+            scheduler.add_job(_demo_reset_tick, trigger="interval", hours=24, name="demo_data_reset", max_instances=1)
         scheduler.start()
         print(
             f"Background scheduler started (intake tick every {_TICK_MINUTES}m, progress tick every "

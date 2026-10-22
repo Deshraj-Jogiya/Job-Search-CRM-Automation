@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
+from ..app_mode import is_showcase_mode
 from ..database import get_db
 from ..models import AdminAccount
 from ..services import auth_service
@@ -30,7 +31,11 @@ def _base_url(request: Request) -> str:
 @router.get("/signup", response_class=HTMLResponse)
 def signup_page(request: Request, db: Session = Depends(get_db)):
     # Signup is first-run setup, not open registration -- once an
-    # account exists, this instance has its one operator.
+    # account exists, this instance has its one operator. The public
+    # demo has no operator at all: an account there would let the first
+    # visitor lock every later visitor out.
+    if is_showcase_mode():
+        return RedirectResponse(url="/", status_code=303)
     if db.query(AdminAccount).first():
         return RedirectResponse(url="/login", status_code=303)
     return render(request, "signup.html", {"error": request.query_params.get("error")})
@@ -45,6 +50,8 @@ def signup_submit(
     recovery_email: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    if is_showcase_mode():
+        return RedirectResponse(url="/", status_code=303)
     if db.query(AdminAccount).first():
         return RedirectResponse(url="/login", status_code=303)
 

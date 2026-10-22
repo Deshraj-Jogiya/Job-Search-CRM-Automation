@@ -35,7 +35,7 @@ from .routers import queue as queue_router
 from .routers import metrics as metrics_router
 from .routers import adaptation as adaptation_router
 from .routers import extension as extension_router
-from .services import analytics_service, auth_service, backup_service, llm_usage_service, profile_prep_service, profile_service, trend_research_service
+from .services import analytics_service, auth_service, backup_service, demo_seed_service, llm_usage_service, profile_prep_service, profile_service, trend_research_service
 from .services import scheduler as bg_scheduler
 from .services.activity_logger import log_activity
 from .services.llm import get_llm_provider
@@ -171,9 +171,21 @@ def _seed_demo_profile_if_needed() -> None:
         db.close()
 
 
+def _seed_demo_data_if_needed() -> None:
+    # The profile alone leaves every other page of the demo empty; fill in a sample search on first start.
+    if not is_showcase_mode():
+        return
+    db = SessionLocal()
+    try:
+        demo_seed_service.seed_demo_data(db)
+    finally:
+        db.close()
+
+
 @app.on_event("startup")
 def on_startup():
     _seed_demo_profile_if_needed()
+    _seed_demo_data_if_needed()
     profile_prep_service.register_auto_refresh()
     bg_scheduler.start_scheduler()
 
