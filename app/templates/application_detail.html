@@ -148,7 +148,11 @@
             </details>
             {% endif %}
             {% if not resume_doc and not cl_doc %}
+            {% if ai_available %}
             <p class="muted-note">Not tailored yet -- click "Tailor Resume & Cover Letter" to run the multi-pass AI tailoring loop against your active profile.</p>
+            {% else %}
+            <p class="muted-note">Not tailored yet -- "Tailor Resume" reorders your profile's own bullets and skills so the ones this posting asks for come first. Nothing is reworded and no cover letter is written without an AI provider.</p>
+            {% endif %}
             {% endif %}
         </section>
 
