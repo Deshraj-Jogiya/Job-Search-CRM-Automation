@@ -51,7 +51,7 @@ target_metadata = Base.metadata
 # aren't in this app's models.py -- excluding them here so no future
 # `alembic revision --autogenerate` can ever propose that again, not
 # just a one-time manual edit to the baseline migration.
-_FOREIGN_TABLES = {"portfolio_messages", "linkedin_comments", "chatbot_cache", "portfolio_visits"}
+_FOREIGN_TABLES = {"portfolio_messages", "linkedin_comments", "chatbot_cache", "portfolio_visits", "portfolio_events"}
 
 
 def include_object(object, name, type_, reflected, compare_to):
