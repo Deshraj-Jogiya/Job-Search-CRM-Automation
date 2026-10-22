@@ -19,6 +19,7 @@ keyword match while the letter itself is weak, or vice versa.
 """
 
 import json
+import os
 import re
 
 from sqlalchemy.orm import Session
@@ -176,7 +177,31 @@ def _tailor_experience_and_projects_pass(experience: list, projects: list, jd_te
     }
 
 
+def verify_ats_score_by_rules(experience: list, projects: list, jd_text: str) -> dict:
+    """The same check as the AI verify below, done by fit_service's keyword rules instead: which of the
+    posting's technical requirements the tailored experience and projects name (required ones count
+    fully, preferred half, a comparable tool half). Free and deterministic, but it only knows the
+    tools in its vocabulary, so it can miss a soft requirement the AI would list."""
+    overlap = fit_service.skill_overlap({"experience": experience, "projects": projects}, jd_text)
+    return {"score": overlap["score"] if overlap["score"] is not None else 0,
+            "missing_keywords": [m["term"] for m in overlap["missing"] if m["required"]]}
+
+
+def ats_verify_mode() -> str:
+    """"ai" (default) or "rules", from ATS_VERIFY_MODE. Rules saves one paid call per tailoring pass;
+    stays opt-in until `python -m app.ingest.cli compare-ats-verify` shows the two agree on real
+    resumes. Always rules when no AI provider is configured."""
+    mode = os.getenv("ATS_VERIFY_MODE", "ai").strip().lower()
+    return mode if mode in ("ai", "rules") and llm_available() else "rules"
+
+
 def _verify_ats_score(experience: list, projects: list, jd_text: str) -> dict:
+    if ats_verify_mode() == "rules":
+        return verify_ats_score_by_rules(experience, projects, jd_text)
+    return verify_ats_score_by_ai(experience, projects, jd_text)
+
+
+def verify_ats_score_by_ai(experience: list, projects: list, jd_text: str) -> dict:
     """Scores against the candidate's tailored projects too, not just
     experience bullets -- the tailoring loop's own re-score was
     previously blind to projects entirely (same root issue as the

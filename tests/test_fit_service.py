@@ -206,3 +206,51 @@ def test_how_scoring_works_page_shows_the_real_cap(db):
     page = TestClient(web_app).get("/how-scoring-works").text
     assert f"capped at <strong>{fit_service.ROLE_MISMATCH_CAP}</strong>" in page
     assert "Sponsorship history" in page
+
+
+class TestAtsVerifyByRules:
+    def test_scores_tailored_content_and_lists_required_gaps(self):
+        result = tailoring_service.verify_ats_score_by_rules(DATA_ENGINEER["experience"], DATA_ENGINEER["projects"], STAFF_DE_JD)
+        # Like the AI verify it reads only experience and projects: AWS sits in this profile's skills list alone
+        assert result["score"] >= 80 and result["missing_keywords"] == ["AWS"]
+        gaps = tailoring_service.verify_ats_score_by_rules(SOFTWARE_ENGINEER["experience"], [], DATA_ANALYST_JD)
+        assert "Tableau or Power BI" in gaps["missing_keywords"] and "Python" not in gaps["missing_keywords"]  # Python is only preferred
+
+    def test_ai_stays_the_default_until_switched(self, monkeypatch):
+        monkeypatch.delenv("ATS_VERIFY_MODE", raising=False)
+        assert tailoring_service.ats_verify_mode() == "ai"
+        monkeypatch.setenv("ATS_VERIFY_MODE", "rules")
+        assert tailoring_service.ats_verify_mode() == "rules"
+        with patch("app.services.tailoring_service.verify_ats_score_by_ai", side_effect=AssertionError("no AI call")):
+            tailoring_service._verify_ats_score(DATA_ENGINEER["experience"], [], DE_JD)
+
+    def test_always_rules_without_an_ai_provider(self, monkeypatch):
+        monkeypatch.setenv("ATS_VERIFY_MODE", "ai")
+        monkeypatch.delenv("ANTHROPIC_API_KEY")
+        assert tailoring_service.ats_verify_mode() == "rules"
+
+    def test_compare_command_reports_agreement(self, db):
+        from app.ingest.cli import compare_ats_verify
+        app = _scored_application(db, DATA_ENGINEER, "Data Engineer", DE_JD)
+        db.add(models.TailoredDocument(application_id=app.id, document_type="resume", content=json.dumps(DATA_ENGINEER)))
+        db.commit()
+        with patch("app.services.tailoring_service.verify_ats_score_by_ai", return_value={"score": 92, "missing_keywords": ["Snowflake"]}):
+            report = compare_ats_verify(db, limit=5)
+        assert report["compared"] == 1 and report["rows"][0]["ai"] == 92
+        assert report["same_refine_decision"] in ("0/1", "1/1")
+
+
+class TestAlternatives:
+    def test_one_of_a_list_is_one_requirement(self):
+        jd = "Requirements\n- Python, SQL, and Spark or Flink\n- Dashboards in Tableau or Power BI"
+        overlap = fit_service.skill_overlap(DATA_ENGINEER, jd)
+        # Python, SQL, Spark-or-Flink, Tableau-or-Power BI, and data visualization ("dashboards")
+        assert overlap["requirements_found"] == 5
+        spark = next(m for m in overlap["matched"] if m["term"] == "Spark")
+        assert spark["alternatives"] == ["Flink"]
+        assert "Tableau or Power BI" in [m["term"] for m in overlap["missing"]]
+
+    def test_a_plain_comma_list_stays_all_required(self):
+        overlap = fit_service.skill_overlap(SOFTWARE_ENGINEER, "Requirements\n- Python, SQL, Airflow")
+        assert overlap["requirements_found"] == 3
+        assert [m["term"] for m in overlap["missing"]] == ["Airflow"]

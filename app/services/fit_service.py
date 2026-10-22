@@ -189,6 +189,51 @@ def _find_evidence(term: str, sources: list[tuple[str, str]]) -> str | None:
     return None
 
 
+def _first_pos(term: str, line: str) -> tuple[int, int] | None:
+    """(start, end) of the first mention of a term in one line."""
+    if term in _SHORT_TERMS:
+        m = re.search(r"(?<![A-Za-z0-9])" + re.escape(term) + r"(?![A-Za-z0-9])", line)
+        return m.span() if m else None
+    low = line.lower()
+    spans = [m.span() for p in _patterns(term)
+             if (m := re.search(r"(?<![a-z0-9])" + re.escape(p) + r"(?![a-z0-9])", low))]
+    return min(spans) if spans else None
+
+
+_OR_JOIN = re.compile(r"^[\s,/]*(?:,?\s*(?:or|and/or)\s*)?[\s,/]*$", re.IGNORECASE)
+_LIST_JOIN = re.compile(r"^[\s,/]*(?:,?\s*(?:or|and/or|and)\s*)?[\s,/]*$", re.IGNORECASE)
+_LIST_INTRO = re.compile(r"(one of|any of|such as|e\.g\.|for example|like|similar to|equivalent)\s*[:(]?\s*$", re.IGNORECASE)
+
+
+def _alternative_groups(terms: list[str], jd: str) -> list[list[str]]:
+    """Terms a line offers as alternatives ("Tableau or Power BI", "one of Java, Go, C++"). Only
+    neighbouring terms joined by "or" count, or a list introduced by "one of / such as / e.g.", so
+    "Python, SQL, and Spark or Flink" still requires Python and SQL."""
+    groups = []
+    for line in jd.splitlines():
+        found = sorted(((pos, t) for t in terms if (pos := _first_pos(t, line))), key=lambda x: x[0])
+        if len(found) < 2:
+            continue
+        chain = [found[0]]
+        intro = bool(_LIST_INTRO.search(line[:found[0][0][0]]))
+        has_or = False
+        def close(chain, has_or, intro):
+            if len(chain) > 1 and (has_or or intro):
+                groups.append([t for _, t in chain])
+        for prev, cur in zip(found, found[1:]):
+            between = line[prev[0][1]:cur[0][0]]
+            joiner = _LIST_JOIN if intro else _OR_JOIN
+            if joiner.match(between):
+                chain.append(cur)
+                has_or = has_or or bool(re.search(r"\bor\b", between, re.IGNORECASE))
+            else:
+                close(chain, has_or, intro)
+                chain, has_or = [cur], False
+                intro = bool(_LIST_INTRO.search(between))
+        close(chain, has_or, intro)
+    return groups
+
+
 def skill_overlap(profile: dict, jd: str) -> dict:
     jd = jd or ""
     required_text, preferred_text = _split_required_preferred(jd)
@@ -206,25 +251,44 @@ def skill_overlap(profile: dict, jd: str) -> dict:
     requirements = [(t, w) for t, w in requirements
                     if not any(o != t and t.lower() in o.lower().split() and o in names for o in names)]
 
-    matched, transferable, missing = [], [], []
-    earned = total = 0.0
-    for term, weight in requirements:
-        total += weight
+    def assess(term):
+        """(credit 0/0.5/1, entry) for one term: found, found through a comparable tool, or missing."""
         where = _find_evidence(term, sources)
         if where:
-            matched.append({"term": term, "evidence": where, "required": weight == 1.0})
-            earned += weight
-            continue
+            return 1.0, ("matched", {"term": term, "evidence": where})
         group = next((g for g in _EQUIVALENT_GROUPS if term in g), set())
         alt = next(((o, w) for o in sorted(group - {term}) if (w := _find_evidence(o, sources))), None)
         if alt:
-            transferable.append({"term": term, "via": alt[0], "evidence": alt[1], "required": weight == 1.0})
-            earned += weight * 0.5
-        else:
-            missing.append({"term": term, "required": weight == 1.0})
+            return 0.5, ("transferable", {"term": term, "via": alt[0], "evidence": alt[1]})
+        return 0.0, ("missing", {"term": term})
+
+    weights = dict(requirements)
+    # A set of alternatives is one requirement, met by its best-covered member
+    units, seen = [], set()
+    for group in _alternative_groups([t for t, _ in requirements], jd):
+        group = [t for t in group if t not in seen]
+        if len(group) > 1:
+            units.append(group)
+            seen.update(group)
+    units += [[t] for t, _ in requirements if t not in seen]
+
+    matched, transferable, missing = [], [], []
+    earned = total = 0.0
+    for unit in units:
+        weight = max(weights[t] for t in unit)
+        total += weight
+        credit, (kind, entry) = max((assess(t) for t in unit), key=lambda r: r[0])
+        entry["required"] = weight == 1.0
+        if len(unit) > 1:
+            entry["alternatives"] = [t for t in unit if t != entry["term"]]
+            if kind == "missing":
+                entry["term"] = " or ".join(unit)
+                entry.pop("alternatives")
+        earned += weight * credit
+        {"matched": matched, "transferable": transferable, "missing": missing}[kind].append(entry)
 
     return {
-        "requirements_found": len(requirements),
+        "requirements_found": len(units),
         "score": round(100 * earned / total) if total else None,
         "matched": matched,
         "transferable": transferable,

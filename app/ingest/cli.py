@@ -80,6 +80,41 @@ def backfill_fit(db) -> dict:
     return {"applications_refreshed": len(scored) - skipped, "scores_capped_or_changed": changed, "skipped_no_profile": skipped}
 
 
+def compare_ats_verify(db, limit: int = 20) -> dict:
+    """Runs the AI and the rule-based ATS verify side by side on the most recent tailored resumes and
+    reports how closely they agree, the evidence for switching ATS_VERIFY_MODE to "rules". Makes one
+    paid AI call per resume (counted against the daily spend cap like any other call)."""
+    import json as _json
+
+    from ..models import JobApplication, TailoredDocument
+    from ..services import llm_usage_service
+    from ..services.tailoring_service import TARGET_ATS_SCORE, verify_ats_score_by_ai, verify_ats_score_by_rules
+
+    docs = (db.query(TailoredDocument).filter(TailoredDocument.document_type == "resume")
+            .order_by(TailoredDocument.generated_at.desc()).limit(limit).all())
+    rows = []
+    for doc in docs:
+        if llm_usage_service.spend_cap_exceeded(db):
+            break
+        app = db.query(JobApplication).filter(JobApplication.id == doc.application_id).first()
+        if not app or not app.posting:
+            continue
+        resume = _json.loads(doc.content)
+        exp, proj, jd = resume.get("experience", []), resume.get("projects", []), app.posting.job_description
+        ai, rules = verify_ats_score_by_ai(exp, proj, jd), verify_ats_score_by_rules(exp, proj, jd)
+        ai_missing = {str(k).lower() for k in ai.get("missing_keywords", [])}
+        rules_missing = {k.lower() for k in rules["missing_keywords"]}
+        rows.append({"application_id": app.id, "ai": int(ai.get("score", 0)), "rules": rules["score"],
+                     "missing_both": len(ai_missing & rules_missing), "ai_only": sorted(ai_missing - rules_missing),
+                     "rules_only": sorted(rules_missing - ai_missing)})
+    diffs = [abs(r["ai"] - r["rules"]) for r in rows]
+    # What matters in practice is whether both would send the resume to another refine pass
+    same_decision = sum((r["ai"] >= TARGET_ATS_SCORE) == (r["rules"] >= TARGET_ATS_SCORE) for r in rows)
+    return {"compared": len(rows), "mean_abs_diff": round(sum(diffs) / len(diffs), 1) if diffs else None,
+            "max_abs_diff": max(diffs) if diffs else None, "same_refine_decision": f"{same_decision}/{len(rows)}",
+            "rows": rows}
+
+
 def main(argv=None) -> int:
     # load_dotenv() must run before the VERY FIRST import anywhere in
     # this process that touches ..database (database.py reads
@@ -135,6 +170,10 @@ def main(argv=None) -> int:
     )
 
     subparsers.add_parser("backfill-fit", help="Apply the role-type cap and fit evidence to already-scored applications")
+    compare_parser = subparsers.add_parser(
+        "compare-ats-verify", help="Compare the AI and rule-based ATS verify on recent tailored resumes (paid AI calls)"
+    )
+    compare_parser.add_argument("--limit", type=int, default=20)
 
     args = parser.parse_args(argv)
 
@@ -152,6 +191,8 @@ def main(argv=None) -> int:
             result = backfill_signals(db)
         elif args.command == "backfill-fit":
             result = backfill_fit(db)
+        elif args.command == "compare-ats-verify":
+            result = compare_ats_verify(db, args.limit)
         else:
             parser.error(f"Unknown command {args.command!r}")
             return 2
