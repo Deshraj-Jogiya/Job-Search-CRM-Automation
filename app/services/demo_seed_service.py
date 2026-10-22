@@ -469,7 +469,7 @@ def seed_demo_data(db: Session) -> bool:
         signal = bool(p[12]) and "not" not in p[12]
         posting = JobPosting(
             company_id=company.id, company_name_raw=p[0], job_title=p[1], location=p[3], source=p[2],
-            job_url=f"https://jobs.example.com/{normalize_company_name(p[0]).replace(' ', '-')}/{i + 1}",
+            job_url=None,  # fictional employers have no real posting to link to
             external_id=f"demo-{i + 1}",
             job_description=_JD_TEMPLATE.format(team=p[4], consumers=p[5], years=p[6], stack=p[7], cloud=p[8],
                                                  nice=p[9], lo=p[10], hi=p[11], sponsor=p[12]),

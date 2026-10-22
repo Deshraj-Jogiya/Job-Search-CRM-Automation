@@ -41,7 +41,7 @@
     <p class="muted-note">
         {{ app.posting.company_name_raw }}
         &middot; first seen {{ app.posting.first_seen_at.strftime("%Y-%m-%d") }}
-        &middot; <a href="{{ app.posting.job_url }}" target="_blank" rel="noopener noreferrer">view posting &#8599;</a>
+        {% if app.posting.job_url %}&middot; <a href="{{ app.posting.job_url }}" target="_blank" rel="noopener noreferrer">view posting &#8599;</a>{% endif %}
         {% if app.status == "Pending Confirmation" and app.confirmation_deadline %}
         &middot; auto-proceeds {{ app.confirmation_deadline.strftime("%Y-%m-%d %H:%M") }} UTC
         {% endif %}

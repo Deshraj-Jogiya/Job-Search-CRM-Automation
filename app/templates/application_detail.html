@@ -26,7 +26,7 @@
             </div>
             <p class="muted-note">
                 First seen {{ posting.first_seen_at.strftime("%Y-%m-%d") }}
-                &middot; <a href="{{ posting.job_url }}" target="_blank" rel="noopener noreferrer">view original posting &#8599;</a>
+                {% if posting.job_url %}&middot; <a href="{{ posting.job_url }}" target="_blank" rel="noopener noreferrer">view original posting &#8599;</a>{% endif %}
             </p>
             {% if posting.staleness_flag or posting.scam_flag_reason or posting.eligibility_flag_reason or posting.repost_count > 0 %}
             <div class="flag-row">
@@ -57,7 +57,7 @@
             <p class="muted-note"><strong>Strengths:</strong> {{ match_analysis.strengths }}</p>
             <p class="muted-note"><strong>Gaps:</strong> {{ match_analysis.gaps_analysis }}</p>
             <p class="muted-note"><strong>Matching skills:</strong> {{ match_analysis.matching_skills | join(", ") }}</p>
-            <p class="muted-note"><strong>Missing keywords:</strong> {{ match_analysis.missing_keywords | join(", ") }}</p>
+            <p class="muted-note"><strong>Missing keywords:</strong> {{ match_analysis.missing_keywords | join(", ") if match_analysis.missing_keywords else "none" }}</p>
             {% else %}
             <p class="muted-note">Not scored yet -- click "Score This Job" to run AI match evaluation against your active profile.</p>
             {% endif %}
