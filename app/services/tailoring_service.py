@@ -933,7 +933,8 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
 
     # The tailored resume's keyword score replaces the earlier fit, but the role-type cap still applies:
     # tailoring a resume does not turn a different kind of role into a match.
-    application.match_score, _ = fit_service.apply_role_cap(final_score, rules["role"])
+    # Without AI the resume is only reordered, which changes nothing about fit, so the rule-based fit stays.
+    application.match_score, _ = fit_service.apply_role_cap(final_score if use_ai else rules["score"], rules["role"])
     application.cover_letter_score = cl_score
     application.profile_variant_id = variant_id
     application.status = "Tailored"

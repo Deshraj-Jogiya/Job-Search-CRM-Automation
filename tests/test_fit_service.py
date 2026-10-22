@@ -169,6 +169,8 @@ class TestTailoring:
         assert sorted(bullets) == sorted(profile["experience"][0]["bullets"])  # same words, nothing added
         assert resume["summary"] == profile["summary"] and resume["tailoring_method"] == "rules"
         assert db.query(models.TailoredDocument).filter_by(application_id=app.id, document_type="cover_letter").count() == 0
+        db.refresh(app)
+        assert app.match_score == fit_service.rules_fit(profile, "Data Engineer", DE_JD)["score"]  # reordering does not change fit
 
 
 def test_outreach_draft_without_ai_uses_only_facts_on_record(monkeypatch):
