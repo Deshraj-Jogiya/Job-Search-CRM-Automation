@@ -79,5 +79,25 @@
   ],
   "Walmart": [
     "Wal-Mart Associates"
+  ],
+  "Abridge": [
+    "Abridge AI"
+  ],
+  "UnitedHealthcare": [
+    "United HealthCare Services"
+  ],
+  "Banner Health": [
+    "Banner University Medical",
+    "Banner Medical"
+  ],
+  "TGen": [
+    "The Translational Genomics Research Institute"
+  ],
+  "Phoenix Children's": [
+    "Phoenix Childrens Hospital"
+  ],
+  "City of Hope": [
+    "City of Hope National Medical Center",
+    "Beckman Research Institute of the City of Hope"
   ]
 }
