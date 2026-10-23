@@ -33,7 +33,7 @@ each. Nothing here blocks any other feature if you skip it entirely.
 - Load it, naming the fiscal quarter yourself (the file itself doesn't
   reliably encode this in a parseable way):
   ```bash
-  python -m app.ingest.cli lca data/raw/dol/LCA_Disclosure_Data_FY2024_Q1.xlsx FY2024Q1
+  python -m app.ingest.cli lca data/raw/dol/LCA_Disclosure_Data_FY2026_Q3.xlsx FY2026Q3 --reset   # --reset when it replaces the quarter on record
   ```
 - Only counts CERTIFIED H-1B filings (withdrawn/denied rows and other
   visa classes in the same file are ignored). Re-running with the same

@@ -1,5 +1,83 @@
 {
-  "QuantumBlack, AI by McKinsey": ["McKinsey United States"],
-  "Amazon": ["Amazon.com Services", "Amazon Development Center US", "Amazon Data Services"],
-  "Amazon Web Services (AWS)": ["Amazon Web Services"]
+  "QuantumBlack, AI by McKinsey": [
+    "McKinsey United States"
+  ],
+  "Amazon": [
+    "Amazon.com Services",
+    "Amazon Development Center US",
+    "Amazon Data Services",
+    "Amazon Web Services"
+  ],
+  "Amazon Web Services (AWS)": [
+    "Amazon Web Services"
+  ],
+  "American Express": [
+    "American Express Travel Related Services"
+  ],
+  "Starbucks": [
+    "Starbucks Coffee"
+  ],
+  "Deloitte": [
+    "Deloitte Consulting LLP",
+    "Deloitte and Touche LLP",
+    "Deloitte Tax LLP"
+  ],
+  "Citigroup": [
+    "Citigroup Global Markets",
+    "Citibank N A"
+  ],
+  "Abbott": [
+    "Abbott Laboratories"
+  ],
+  "Cisco": [
+    "Cisco Systems"
+  ],
+  "Optum": [
+    "Optum Services"
+  ],
+  "Barclays": [
+    "Barclays Services",
+    "Barclays Capital"
+  ],
+  "Oracle": [
+    "Oracle America"
+  ],
+  "Capgemini": [
+    "Capgemini America"
+  ],
+  "Atlassian": [
+    "Atlassian US"
+  ],
+  "Robinhood": [
+    "Robinhood Markets"
+  ],
+  "Rivian": [
+    "Rivian Automotive"
+  ],
+  "Citadel": [
+    "Citadel Americas Services",
+    "Citadel Enterprise Americas Services"
+  ],
+  "ExxonMobil": [
+    "ExxonMobil Global Services"
+  ],
+  "Aramark": [
+    "Aramark Services"
+  ],
+  "Xcel Energy": [
+    "Xcel Energy Services"
+  ],
+  "SoFi": [
+    "SoFi Bank N A"
+  ],
+  "JPMorganChase": [
+    "JPMorgan Chase and",
+    "JPMorgan Chase"
+  ],
+  "Meta": [
+    "Meta Platforms"
+  ],
+  "Walmart": [
+    "Wal-Mart Associates"
+  ]
 }

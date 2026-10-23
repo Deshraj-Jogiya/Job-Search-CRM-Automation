@@ -160,6 +160,7 @@ def main(argv=None) -> int:
     lca_parser = subparsers.add_parser("lca", help="Load one DOL OFLC LCA Disclosure quarterly XLSX")
     lca_parser.add_argument("xlsx_path")
     lca_parser.add_argument("fiscal_quarter", help='e.g. "FY2024Q1"')
+    lca_parser.add_argument("--reset", action="store_true", help="Clear every company's LCA counts first (when replacing the quarter on record)")
 
     oews_parser = subparsers.add_parser("oews", help="Load DOL OFLC OEWS wage-level data")
     oews_parser.add_argument("file_path")
@@ -186,7 +187,7 @@ def main(argv=None) -> int:
         elif args.command == "alerts":
             result = load_sponsorship_alerts(db)
         elif args.command == "lca":
-            result = load_dol_lca_data(db, args.xlsx_path, args.fiscal_quarter)
+            result = load_dol_lca_data(db, args.xlsx_path, args.fiscal_quarter, reset=args.reset)
         elif args.command == "oews":
             result = load_oews_wage_data(db, args.file_path, args.source_year)
         elif args.command == "cap-exempt":

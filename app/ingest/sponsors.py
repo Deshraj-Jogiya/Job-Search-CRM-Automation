@@ -65,19 +65,38 @@ def _load_aliases() -> dict[str, list[str]]:
         return {}
 
 
+# Words a legal entity adds to a brand without making it a different business: "Cognizant US", "Wipro Limited", "Oracle America",
+# "Capital One Services", "Bank of America N A". A name extended by anything else ("Sigma Software", "Rocket Mortgage") is a
+# different company and is not counted.
+_ENTITY_WORDS = {
+    "us", "u", "s", "usa", "america", "americas", "north", "limited", "ltd", "services", "service", "systems", "laboratories",
+    "global", "group", "holdings", "bank", "n", "a", "na", "national", "association", "opco", "consulting", "llp", "operations",
+    "corporate", "technologies", "technology", "solutions", "and", "co",
+}
+_LEGAL_SUFFIX_WORDS = {"us", "u", "s", "usa", "limited", "ltd", "llp", "opco", "n", "a", "na"}
+
+
 def _file_keys_for(name: str, file_keys: dict, aliases: dict[str, list[str]]) -> list[str]:
-    """The file's employer keys that belong to one tracked company, most certain rule first: the exact normalized name;
-    hand-checked aliases; the same name with spaces ignored ("JPMorganChase" vs "JPMorgan Chase"); and a legal entity
-    filing "doing business as" the tracked name ("Nielsen Consumer dba NielsenIQ"). The last two only count when
-    exactly one employer fits, so an ambiguous name is left unmatched rather than guessed."""
+    """The file's employer keys that belong to one tracked company. The exact normalized name, hand-checked aliases and the
+    company's own legal entities (the name followed only by _ENTITY_WORDS) are all counted together, since a large employer
+    files under several. Failing those: the same name with spaces ignored ("JPMorganChase" vs "JPMorgan Chase"), or a legal
+    entity filing "doing business as" the tracked name ("Nielsen Consumer dba NielsenIQ"), each only when exactly one employer
+    fits, so an ambiguous name is left unmatched rather than guessed."""
     if not name:
         return []
-    if name in file_keys:
-        return [name]
-    if name in aliases:
-        found = [k for k in aliases[name] if k in file_keys]
-        if found:
-            return found
+    found = [name] if name in file_keys else []
+    for k in aliases.get(name, []):
+        if k in file_keys and k not in found:  # two aliases can normalize to the same key; count it once
+            found.append(k)
+    prefix = name + " "
+    # A one-word brand is often an ordinary word ("Sigma", "Apollo", "Reach"), so only a legal or country suffix links it to an
+    # entity; larger one-word brands that file as "X Systems" or "X Services" are listed in the aliases file instead.
+    allowed = _ENTITY_WORDS if " " in name else _LEGAL_SUFFIX_WORDS
+    for k in file_keys.get("__by_first__", {}).get(name.split(" ", 1)[0], []):
+        if k.startswith(prefix) and k not in found and set(k[len(prefix):].split()) <= allowed:
+            found.append(k)
+    if found:
+        return found
     compact = name.replace(" ", "")
     if len(compact) >= 6:
         same = [k for k in file_keys.get("__compact__", {}).get(compact, [])]
@@ -92,11 +111,13 @@ def _index(keys) -> dict:
     index: dict = {k: True for k in keys}
     compact: dict[str, list[str]] = {}
     dba: dict[str, list[str]] = {}
+    by_first: dict[str, list[str]] = {}
     for k in keys:
         compact.setdefault(k.replace(" ", ""), []).append(k)
+        by_first.setdefault(k.split(" ", 1)[0], []).append(k)
         if " dba " in k:
             dba.setdefault(k.split(" dba ", 1)[1].strip(), []).append(k)
-    index["__compact__"], index["__dba__"] = compact, dba
+    index["__compact__"], index["__dba__"], index["__by_first__"] = compact, dba, by_first
     return index
 
 
@@ -216,7 +237,7 @@ def _normalize_wage_level(raw) -> str | None:
     return None
 
 
-def load_dol_lca_data(db: Session, xlsx_path: str, fiscal_quarter: str) -> dict:
+def load_dol_lca_data(db: Session, xlsx_path: str, fiscal_quarter: str, reset: bool = False) -> dict:
     """One DOL LCA Disclosure file covers one fiscal quarter, so
     fiscal_quarter (e.g. "FY2024Q1") is supplied by the caller rather
     than parsed from the filename -- naming conventions for these
@@ -266,6 +287,9 @@ def load_dol_lca_data(db: Session, xlsx_path: str, fiscal_quarter: str) -> dict:
             max_wage_level[key] = level
 
     companies = db.query(Company).all()
+    if reset:  # replacing the quarter on record: no company keeps a count the new file does not support
+        for company in companies:
+            company.lca_filings_total = company.lca_last_fiscal_quarter = company.max_wage_level_15xx = None
     now = utcnow()
     matched = 0
     wage_level_matched = 0

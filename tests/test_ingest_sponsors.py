@@ -268,3 +268,24 @@ def test_a_new_company_on_the_alert_list_is_flagged_when_created():
     db = sessionmaker(bind=engine)()
     assert get_or_create_company(db, "Sadup Softech LLC").sponsorship_alert_kind == "debarred"
     assert get_or_create_company(db, "Unlisted Analytics Inc").sponsorship_alert_kind is None
+
+
+def test_legal_entity_names_count_but_other_businesses_sharing_a_first_word_do_not():
+    from app.ingest.sponsors import _file_keys_for, _index
+
+    keys = ["cognizant us", "wipro limited", "bank of america n a", "sigma software", "sigma computing", "rocket mortgage",
+            "american express", "american express national bank"]
+    index = _index(keys)
+    assert _file_keys_for("cognizant", index, {}) == ["cognizant us"]
+    assert _file_keys_for("wipro", index, {}) == ["wipro limited"]
+    assert _file_keys_for("bank of america", index, {}) == ["bank of america n a"]
+    assert _file_keys_for("sigma", index, {}) == []
+    assert _file_keys_for("rocket", index, {}) == []
+    assert _file_keys_for("sigma", _index(["sigma global", "sigma usa"]), {}) == ["sigma usa"]  # one word: legal suffix only
+    assert _file_keys_for("american express", index, {}) == ["american express", "american express national bank"]
+
+
+def test_aliases_that_normalize_to_the_same_employer_are_counted_once():
+    from app.ingest.sponsors import _file_keys_for, _index
+
+    assert _file_keys_for("acme", _index(["acme data"]), {"acme": ["acme data", "acme data"]}) == ["acme data"]
