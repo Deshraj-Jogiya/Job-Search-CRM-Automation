@@ -83,6 +83,17 @@ choices, see [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 - **Interview prep.** General talking points from your own background,
   plus company-specific angles grounded in real research when
   configured.
+- **Monthly upgrade check.** Every 30 days (or on demand from
+  `/upgrades`), five mechanical checks with no LLM: skills the target
+  postings require against how the profile shows them (silent below 30
+  postings), new commits in each project's repo counted only inside
+  the project's own dates, questions about current roles and projects
+  whose answers become bullets in the candidate's words, reply-rate
+  comparisons behind the adaptation layer's evidence gates, and
+  interview weak spots that recur across 3+ debriefs. The first run
+  each quarter adds a quarterly summary. Every profile change it offers
+  is a pending version approved on the Profile page; an ended project
+  is never reopened.
 - **Outcome analytics.** Funnel conversion rates, source performance,
   and company memory (so a company that's gone silent before is
   visible next time it appears).
