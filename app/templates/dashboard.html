@@ -49,10 +49,16 @@
 {% endif %}
 {% if upgrade_card and upgrade_card.count %}
 <div class="flash flash-ok" role="status">
+    {% if showcase_mode %}
+    <strong>Sample: {{ upgrade_card.count }} upgrade{{ "s" if upgrade_card.count != 1 else "" }} for Jordan Ellis</strong>
+    from this demo's own monthly check, run on the fictional candidate's profile and sample postings: which skills the
+    postings ask for, new work in linked repos, and questions about recent work. Nothing changes until it's approved.
+    <a href="/upgrades">See the sample upgrades</a>
+    {% else %}
     <strong>{{ upgrade_card.count }} upgrade{{ "s" if upgrade_card.count != 1 else "" }} to look at</strong>
-    from the {{ "quarterly" if upgrade_card.is_quarterly else "monthly" }} check on {{ upgrade_card.created_at.strftime("%b %d") }}:
-    skills postings ask for, new work in your repos, and questions about what you've done lately. Nothing changes
-    until you approve it. <a href="/upgrades">See upgrades</a>
+    from this {{ "quarter's" if upgrade_card.is_quarterly else "month's" }} check: skills postings ask for, new work in your repos,
+    and questions about what you've done lately. Nothing changes until you approve it. <a href="/upgrades">See upgrades</a>
+    {% endif %}
 </div>
 {% endif %}
 {% if message %}

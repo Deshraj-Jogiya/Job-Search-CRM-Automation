@@ -12,6 +12,10 @@
 <div class="flash flash-error" role="alert">{{ error }}</div>
 {% endif %}
 
+{% if showcase_mode %}
+<div class="flash flash-ok" role="status">Demo: everything below comes from this demo's own data, the fictional candidate
+    Jordan Ellis and the sample postings. Your own instance runs the same check on your profile, postings and repos.</div>
+{% endif %}
 <section class="variant-block">
     <h2>Upgrades</h2>
     <p class="muted-note">Once a month the platform checks what postings ask for, what changed in your repos, and how
@@ -23,7 +27,7 @@
             <button type="submit">Run the check now</button>
         </form>
         <span class="muted-note">
-            {% if row %}Last run {{ row.created_at.strftime("%Y-%m-%d") }}{% if row.is_quarterly %}, with the quarterly summary{% endif %}.
+            {% if row %}Last run {{ row.created_at.strftime("%Y-%m-%d") }} (UTC){% if row.is_quarterly %}, with the quarterly summary{% endif %}.
             Runs on its own every {{ run_every_days }} days.{% else %}Not run yet. It runs on its own every {{ run_every_days }} days.{% endif %}
         </span>
     </div>

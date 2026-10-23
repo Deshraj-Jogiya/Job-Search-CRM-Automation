@@ -296,3 +296,17 @@ def test_ci_and_ci_cd_count_once():
 
 def test_server_sizes_in_a_readme_are_not_results():
     assert upgrade_service._new_readme_numbers("Runs on 24 GB RAM, 500 MB disk; 40% faster.", []) == ["40%"]
+
+
+
+def test_demo_labels_the_upgrades_as_the_fictional_candidates():
+    from datetime import datetime as dt
+    from tests.test_dashboard_template import _base_context
+    html = _render(row=None, report=None, count=0, showcase_mode=True)
+    assert "Jordan Ellis" in html and "this demo's own data" in html
+
+    card = {"count": 1, "is_quarterly": True, "created_at": dt(2026, 10, 23)}
+    demo = _base_context(showcase_mode=True, upgrade_card=card)
+    assert "Sample: 1 upgrade for Jordan Ellis" in demo and "your repos" not in demo
+    personal = _base_context(upgrade_card=card)
+    assert "1 upgrade to look at" in personal and "Jordan" not in personal
