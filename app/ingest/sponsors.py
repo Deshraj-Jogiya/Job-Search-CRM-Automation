@@ -20,6 +20,9 @@ employers) never double-counts.
 
 import math
 
+import json
+import os
+
 import pandas as pd
 from sqlalchemy.orm import Session
 
@@ -46,6 +49,54 @@ _LCA_WAGE_LEVEL_ALIASES = ["PW_WAGE_LEVEL", "PW Wage Level", "Wage Level"]
 # wage_level_fit score component, which reads Company.max_wage_level_15xx.
 _WAGE_LEVEL_SOC_PREFIX = "15-"
 _WAGE_LEVEL_RANK = {"I": 1, "II": 2, "III": 3, "IV": 4}
+
+
+_ALIASES_PATH = os.path.join(os.path.dirname(__file__), "sponsor_name_aliases.json")
+
+
+def _load_aliases() -> dict[str, list[str]]:
+    """Hand-checked links from a tracked company's normalized name to the employer names the government files use
+    (a brand vs its legal entity, e.g. QuantumBlack files as McKinsey). Keys and values are normalized names."""
+    try:
+        with open(_ALIASES_PATH, encoding="utf-8") as f:
+            return {normalize_company_name(k): [normalize_company_name(v) for v in vs] for k, vs in json.load(f).items()}
+    except FileNotFoundError:
+        return {}
+
+
+def _file_keys_for(name: str, file_keys: dict, aliases: dict[str, list[str]]) -> list[str]:
+    """The file's employer keys that belong to one tracked company, most certain rule first: the exact normalized name;
+    hand-checked aliases; the same name with spaces ignored ("JPMorganChase" vs "JPMorgan Chase"); and a legal entity
+    filing "doing business as" the tracked name ("Nielsen Consumer dba NielsenIQ"). The last two only count when
+    exactly one employer fits, so an ambiguous name is left unmatched rather than guessed."""
+    if not name:
+        return []
+    if name in file_keys:
+        return [name]
+    if name in aliases:
+        found = [k for k in aliases[name] if k in file_keys]
+        if found:
+            return found
+    compact = name.replace(" ", "")
+    if len(compact) >= 6:
+        same = [k for k in file_keys.get("__compact__", {}).get(compact, [])]
+        if len(same) == 1:
+            return same
+    dba = [k for k in file_keys.get("__dba__", {}).get(name, [])]
+    return dba if len(dba) == 1 else []
+
+
+def _index(keys) -> dict:
+    """Lookup structure for _file_keys_for: every key, plus space-free and "dba" indexes built once per file."""
+    index: dict = {k: True for k in keys}
+    compact: dict[str, list[str]] = {}
+    dba: dict[str, list[str]] = {}
+    for k in keys:
+        compact.setdefault(k.replace(" ", ""), []).append(k)
+        if " dba " in k:
+            dba.setdefault(k.split(" dba ", 1)[1].strip(), []).append(k)
+    index["__compact__"], index["__dba__"] = compact, dba
+    return index
 
 
 def _to_int(value) -> int | None:
@@ -111,10 +162,15 @@ def load_uscis_h1b_data(db: Session, csv_path: str) -> dict:
     companies = db.query(Company).all()
     now = utcnow()
     matched = 0
+    index, aliases = _index(aggregated), _load_aliases()
     for company in companies:
-        bucket = aggregated.get(company.normalized_name)
-        if bucket is None:
+        keys = _file_keys_for(company.normalized_name, index, aliases)
+        if not keys:
             continue
+        parts = [aggregated[k] for k in keys]
+        years = [b["last_fiscal_year"] for b in parts if b["last_fiscal_year"] is not None]
+        bucket = {"approvals": sum(b["approvals"] for b in parts), "denials": sum(b["denials"] for b in parts),
+                  "last_fiscal_year": max(years) if years else None}
         company.h1b_approvals_total = bucket["approvals"]
         company.h1b_denials_total = bucket["denials"]
         company.h1b_last_fiscal_year = bucket["last_fiscal_year"]
@@ -206,16 +262,19 @@ def load_dol_lca_data(db: Session, xlsx_path: str, fiscal_quarter: str) -> dict:
     now = utcnow()
     matched = 0
     wage_level_matched = 0
+    index, aliases = _index(counts), _load_aliases()
     for company in companies:
-        filings = counts.get(company.normalized_name)
-        if filings is None:
+        keys = _file_keys_for(company.normalized_name, index, aliases)
+        if not keys:
             continue
+        filings = sum(counts[k] for k in keys)
         company.lca_filings_total = filings
         company.lca_last_fiscal_quarter = fiscal_quarter
         company.lca_data_updated_at = now
         matched += 1
 
-        level = max_wage_level.get(company.normalized_name)
+        levels = [max_wage_level[k] for k in keys if k in max_wage_level]
+        level = max(levels, key=lambda lv: _WAGE_LEVEL_RANK[lv]) if levels else None
         if level is not None:
             company.max_wage_level_15xx = level
             wage_level_matched += 1

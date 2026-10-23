@@ -203,3 +203,18 @@ class TestDolLcaIngest:
 
         beta = db.query(Company).filter(Company.name == "Beta Inc").first()
         assert beta.max_wage_level_15xx == "III"
+
+
+def test_file_keys_match_brand_variants_without_guessing():
+    from app.ingest.sponsors import _file_keys_for, _index
+
+    keys = ["jpmorgan chase", "nielsen consumer dba nielseniq", "mckinsey united states", "acme", "acme one", "a b c d e f"]
+    index = _index(keys)
+    aliases = {"quantumblack ai by mckinsey": ["mckinsey united states"]}
+    assert _file_keys_for("acme", index, aliases) == ["acme"]  # exact name wins
+    assert _file_keys_for("jpmorganchase", index, aliases) == ["jpmorgan chase"]  # spaces ignored
+    assert _file_keys_for("nielseniq", index, aliases) == ["nielsen consumer dba nielseniq"]  # doing business as
+    assert _file_keys_for("quantumblack ai by mckinsey", index, aliases) == ["mckinsey united states"]
+    assert _file_keys_for("unknown co", index, aliases) == []
+    ambiguous = _index(["data co", "dataco"])
+    assert _file_keys_for("da taco", ambiguous, {}) == []  # two employers fit: left unmatched
