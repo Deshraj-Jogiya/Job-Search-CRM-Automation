@@ -54,6 +54,9 @@
                     <span class="badge{{ ' badge-active' if app.posting.company.tier in ('A', 'B') else '' }}">
                         {{ app.posting.company.tier or 'unknown' }}{{ ' (cap-exempt)' if app.posting.company.is_cap_exempt else '' }}
                     </span>
+                    {% if app.posting.company.sponsorship_alert %}
+                    <span class="badge badge-warn" title="{{ app.posting.company.sponsorship_alert }}">{{ {'debarred': 'debarred', 'perm_suspended': 'green card suspended', 'paused': 'paused visa hiring'}.get(app.posting.company.sponsorship_alert_kind, 'alert') }}</span>
+                    {% endif %}
                     {% else %}
                     <span class="badge">unknown</span>
                     {% endif %}

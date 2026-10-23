@@ -22,6 +22,7 @@ import math
 
 import json
 import os
+from datetime import date
 
 import pandas as pd
 from sqlalchemy.orm import Session
@@ -142,7 +143,7 @@ def _aggregate_uscis_rows(df: pd.DataFrame, columns: dict) -> dict[str, dict]:
     return aggregated
 
 
-def load_uscis_h1b_data(db: Session, csv_path: str) -> dict:
+def load_uscis_h1b_data(db: Session, csv_path: str, reset: bool = False) -> dict:
     """Aggregates approvals/denials per employer across every fiscal
     year present in the file, then updates every tracked Company whose
     normalized name matches an employer in the file. Returns counts
@@ -160,6 +161,12 @@ def load_uscis_h1b_data(db: Session, csv_path: str) -> dict:
     aggregated = _aggregate_uscis_rows(df, columns)
 
     companies = db.query(Company).all()
+    if reset:
+        # Replacing the years on record (e.g. FY2023 with FY2024-26): clear every company first, so one that no longer appears
+        # in the new file does not keep an old count.
+        for company in companies:
+            company.h1b_approvals_total = company.h1b_denials_total = company.h1b_last_fiscal_year = None
+            company.sponsorship_tier = None
     now = utcnow()
     matched = 0
     index, aliases = _index(aggregated), _load_aliases()
@@ -294,3 +301,51 @@ def load_dol_lca_data(db: Session, xlsx_path: str, fiscal_quarter: str) -> dict:
         "INFO",
     )
     return result
+
+
+_ALERTS_PATH = os.path.join(os.path.dirname(__file__), "sponsorship_alerts.json")
+
+
+def apply_listed_alert(company: Company, path: str = _ALERTS_PATH) -> bool:
+    """Sets the alert on one newly created company if it is on the list, so a company first seen after the last full load is
+    flagged at once. Returns whether it matched."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            alerts = json.load(f)["alerts"]
+    except FileNotFoundError:
+        return False
+    index = _index([company.normalized_name])
+    for alert in alerts:
+        if _file_keys_for(normalize_company_name(alert["name"]), index, {}):
+            company.sponsorship_alert_kind = alert["kind"]
+            company.sponsorship_alert = alert["note"]
+            company.sponsorship_alert_until = date.fromisoformat(alert["until"]) if alert.get("until") else None
+            company.sponsorship_alert_source = alert["source"]
+            return True
+    return False
+
+
+def load_sponsorship_alerts(db: Session, path: str = _ALERTS_PATH) -> dict:
+    """Applies the hand-checked list of current government actions (debarments, PERM suspensions, announced hiring pauses) to
+    tracked companies, replacing whatever was there before. Names match the same way the sponsorship files do."""
+    with open(path, encoding="utf-8") as f:
+        alerts = json.load(f)["alerts"]
+    companies = db.query(Company).all()
+    by_name: dict[str, list[Company]] = {}
+    for company in companies:
+        company.sponsorship_alert_kind = company.sponsorship_alert = None
+        company.sponsorship_alert_until = company.sponsorship_alert_source = None
+        by_name.setdefault(company.normalized_name, []).append(company)
+    index = _index(by_name)
+    matched = []
+    for alert in alerts:
+        for key in _file_keys_for(normalize_company_name(alert["name"]), index, {}):
+            for company in by_name[key]:
+                company.sponsorship_alert_kind = alert["kind"]
+                company.sponsorship_alert = alert["note"]
+                company.sponsorship_alert_until = date.fromisoformat(alert["until"]) if alert.get("until") else None
+                company.sponsorship_alert_source = alert["source"]
+                matched.append(f"{company.name} ({alert['kind']})")
+    db.commit()
+    log_activity(db, f"Sponsorship alerts: {len(alerts)} on file, applied to {len(matched)} tracked companies.", "INFO")
+    return {"alerts_on_file": len(alerts), "companies_flagged": matched}

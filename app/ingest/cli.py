@@ -146,7 +146,7 @@ def main(argv=None) -> int:
 
     from ..database import SessionLocal
     from .cap_exempt import apply_cap_exempt_flags
-    from .sponsors import load_dol_lca_data, load_uscis_h1b_data
+    from .sponsors import load_dol_lca_data, load_sponsorship_alerts, load_uscis_h1b_data
     from .wages import load_oews_wage_data
 
     parser = argparse.ArgumentParser(prog="python -m app.ingest.cli")
@@ -154,6 +154,8 @@ def main(argv=None) -> int:
 
     uscis_parser = subparsers.add_parser("uscis", help="Load the USCIS H-1B Employer Data Hub CSV")
     uscis_parser.add_argument("csv_path")
+    uscis_parser.add_argument("--reset", action="store_true", help="Clear every company's H-1B counts first (when replacing the years on record)")
+    subparsers.add_parser("alerts", help="Apply ingest/sponsorship_alerts.json (debarments, PERM suspensions, hiring pauses)")
 
     lca_parser = subparsers.add_parser("lca", help="Load one DOL OFLC LCA Disclosure quarterly XLSX")
     lca_parser.add_argument("xlsx_path")
@@ -180,7 +182,9 @@ def main(argv=None) -> int:
     db = SessionLocal()
     try:
         if args.command == "uscis":
-            result = load_uscis_h1b_data(db, args.csv_path)
+            result = load_uscis_h1b_data(db, args.csv_path, reset=args.reset)
+        elif args.command == "alerts":
+            result = load_sponsorship_alerts(db)
         elif args.command == "lca":
             result = load_dol_lca_data(db, args.xlsx_path, args.fiscal_quarter)
         elif args.command == "oews":

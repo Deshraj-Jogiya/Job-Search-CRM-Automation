@@ -9,7 +9,7 @@ that already fits, instead of migrating tables mid-project.
 """
 
 from sqlalchemy import (
-    Column, Integer, String, Text, DateTime, ForeignKey, Boolean, Float, JSON,
+    Column, Integer, String, Text, Date, DateTime, ForeignKey, Boolean, Float, JSON,
     UniqueConstraint, CheckConstraint,
 )
 from sqlalchemy.orm import relationship
@@ -160,6 +160,15 @@ class Company(Base):
     # (config-driven via GlobalSettings, not hardcoded here).
     tier = Column(String, nullable=True)
     tier_computed_at = Column(DateTime, nullable=True)
+
+    # A current government action against this employer, loaded from ingest/sponsorship_alerts.json (checked by hand against the
+    # DOL lists and reporting). 'debarred' (barred from H-1B/PERM filings) forces tier X until sponsorship_alert_until; 'perm_suspended'
+    # (green-card filings stopped, H-1B unaffected) and 'paused' (the company says it stopped hiring people who need a visa) are shown
+    # wherever the tier is, without changing it, because the H-1B record itself is still accurate.
+    sponsorship_alert_kind = Column(String, nullable=True)
+    sponsorship_alert = Column(String, nullable=True)
+    sponsorship_alert_until = Column(Date, nullable=True)
+    sponsorship_alert_source = Column(String, nullable=True)
 
     __table_args__ = (
         CheckConstraint("tier IN ('A', 'B', 'C', 'X')", name="ck_companies_tier"),

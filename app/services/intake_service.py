@@ -312,6 +312,9 @@ def get_or_create_company(db: Session, raw_name: str) -> Company:
     company = db.query(Company).filter(Company.normalized_name == normalized).first()
     if not company:
         company = Company(name=raw_name, normalized_name=normalized)
+        from ..ingest.sponsors import apply_listed_alert  # local import: ingest pulls in pandas, kept off this module's import path
+
+        apply_listed_alert(company)
         db.add(company)
         db.commit()
         db.refresh(company)

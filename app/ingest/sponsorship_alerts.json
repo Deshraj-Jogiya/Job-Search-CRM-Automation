@@ -1,0 +1,21 @@
+{
+  "_checked": "2026-10-23. Debarments from the DOL Wage and Hour H-1B list (effective 2026-10-01) and the OFLC program debarment list (2026-10-13). PERM suspensions announced 2026-10-08 at a White House briefing by the Labor Secretary; no written DOL notice yet. Re-check both lists before relying on this file.",
+  "alerts": [
+    {"name": "GowraTech, LLC", "kind": "debarred", "until": "2027-05-11", "note": "H-1B willful violator, debarred 2025-05-12 to 2027-05-11", "source": "https://www.dol.gov/agencies/whd/immigration/h1b/debarment"},
+    {"name": "Renotek Group LLC", "kind": "debarred", "until": "2027-08-07", "note": "H-1B willful violator, debarred 2025-08-08 to 2027-08-07", "source": "https://www.dol.gov/agencies/whd/immigration/h1b/debarment"},
+    {"name": "Seeloz, Inc.", "kind": "debarred", "until": "2028-03-03", "note": "H-1B willful violator, debarred 2026-03-04 to 2028-03-03", "source": "https://www.dol.gov/agencies/whd/immigration/h1b/debarment"},
+    {"name": "Sherwood at Mount Dora, Inc.", "kind": "debarred", "until": "2028-05-25", "note": "H-1B willful violator (dba Sherwood Academy), debarred 2026-05-26 to 2028-05-25", "source": "https://www.dol.gov/agencies/whd/immigration/h1b/debarment"},
+    {"name": "Da Vinci at Hunters Creek, Inc.", "kind": "debarred", "until": "2028-08-02", "note": "H-1B willful violator (dba Da Vinci Academy), debarred 2026-08-03 to 2028-08-02", "source": "https://www.dol.gov/agencies/whd/immigration/h1b/debarment"},
+    {"name": "Sadup Softech LLC", "kind": "debarred", "until": "2028-09-23", "note": "H-1B willful violator, debarred 2026-09-24 to 2028-09-23", "source": "https://www.dol.gov/agencies/whd/immigration/h1b/debarment"},
+    {"name": "Hercules Staffing, LLC", "kind": "debarred", "until": "2027-05-29", "note": "Debarred from PERM green-card filings 2025-05-29 to 2027-05-29 (failure to respond to an audit)", "source": "https://www.dol.gov/agencies/eta/foreign-labor/program-debarments"},
+    {"name": "Microsoft", "kind": "perm_suspended", "until": null, "note": "Green-card (PERM) filings suspended 2026-10-08, no end date; H-1B not suspended", "source": "https://www.shrm.org/topics-tools/news/talent-acquisition/microsoft-adobe-perm-suspensions"},
+    {"name": "Adobe", "kind": "perm_suspended", "until": null, "note": "Green-card (PERM) filings suspended 2026-10-08, no end date; H-1B not suspended", "source": "https://www.shrm.org/topics-tools/news/talent-acquisition/microsoft-adobe-perm-suspensions"},
+    {"name": "Cognizant", "kind": "perm_suspended", "until": null, "note": "Green-card (PERM) filings suspended 2026-10-08, no end date; H-1B not suspended", "source": "https://www.shrm.org/topics-tools/news/talent-acquisition/microsoft-adobe-perm-suspensions"},
+    {"name": "Infosys", "kind": "perm_suspended", "until": null, "note": "Green-card (PERM) filings suspended 2026-10-08, no end date; H-1B not suspended", "source": "https://www.shrm.org/topics-tools/news/talent-acquisition/microsoft-adobe-perm-suspensions"},
+    {"name": "Tata Consultancy Services", "kind": "perm_suspended", "until": null, "note": "Green-card (PERM) filings suspended 2026-10-08, no end date; H-1B not suspended", "source": "https://www.shrm.org/topics-tools/news/talent-acquisition/microsoft-adobe-perm-suspensions"},
+    {"name": "Wipro", "kind": "perm_suspended", "until": null, "note": "Green-card (PERM) filings suspended 2026-10-08, no end date; H-1B not suspended", "source": "https://www.shrm.org/topics-tools/news/talent-acquisition/microsoft-adobe-perm-suspensions"},
+    {"name": "HCL Technologies", "kind": "perm_suspended", "until": null, "note": "Green-card (PERM) filings suspended 2026-10-08, no end date; H-1B not suspended", "source": "https://www.shrm.org/topics-tools/news/talent-acquisition/microsoft-adobe-perm-suspensions"},
+    {"name": "Capgemini", "kind": "perm_suspended", "until": null, "note": "Green-card (PERM) filings suspended 2026-10-08, no end date; H-1B not suspended", "source": "https://www.shrm.org/topics-tools/news/talent-acquisition/microsoft-adobe-perm-suspensions"},
+    {"name": "Walmart", "kind": "paused", "until": null, "note": "Company confirmed it paused hiring candidates who need an H-1B (2025 report; check before applying)", "source": "https://www.newsweek.com/list-companies-no-longer-sponsoring-h-1b-visas-trump-10918993"}
+  ]
+}

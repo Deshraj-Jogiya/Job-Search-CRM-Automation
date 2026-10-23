@@ -218,3 +218,53 @@ def test_file_keys_match_brand_variants_without_guessing():
     assert _file_keys_for("unknown co", index, aliases) == []
     ambiguous = _index(["data co", "dataco"])
     assert _file_keys_for("da taco", ambiguous, {}) == []  # two employers fit: left unmatched
+
+
+def test_sponsorship_alerts_flag_companies_and_debarment_forces_tier_x(tmp_path):
+    import json
+    from datetime import date, timedelta
+
+    from app.database import Base
+    from app.ingest.sponsors import load_sponsorship_alerts
+    from app.models import Company, GlobalSettings
+    from app.services.company_tier import derive_tier
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    for name in ("Sadup Softech LLC", "Microsoft", "Acme Data"):
+        db.add(Company(name=name, normalized_name=__import__("app.services.company_utils", fromlist=["x"]).normalize_company_name(name),
+                       lca_filings_total=500, max_wage_level_15xx="III"))
+    db.commit()
+    future = (date.today() + timedelta(days=30)).isoformat()
+    past = (date.today() - timedelta(days=1)).isoformat()
+    path = tmp_path / "alerts.json"
+    path.write_text(json.dumps({"alerts": [
+        {"name": "Sadup Softech, LLC", "kind": "debarred", "until": future, "note": "debarred", "source": "https://dol.gov"},
+        {"name": "Microsoft", "kind": "perm_suspended", "until": None, "note": "PERM suspended", "source": "https://example.org"},
+    ]}))
+    result = load_sponsorship_alerts(db, str(path))
+    assert sorted(result["companies_flagged"]) == ["Microsoft (perm_suspended)", "Sadup Softech LLC (debarred)"]
+
+    settings = GlobalSettings(tier_a_min_filings=50, tier_b_min_filings=3, tier_a_min_wage_level=2)
+    by = {c.name: c for c in db.query(Company)}
+    assert derive_tier(by["Sadup Softech LLC"], settings) == "X"   # banned now, whatever its record
+    assert derive_tier(by["Microsoft"], settings) == "A"           # green-card suspension leaves the H-1B record as it is
+    assert derive_tier(by["Acme Data"], settings) == "A"
+    by["Sadup Softech LLC"].sponsorship_alert_until = date.fromisoformat(past)
+    assert derive_tier(by["Sadup Softech LLC"], settings) == "A"   # ban over
+
+
+def test_a_new_company_on_the_alert_list_is_flagged_when_created():
+    from app.database import Base
+    from app.services.intake_service import get_or_create_company
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+    assert get_or_create_company(db, "Sadup Softech LLC").sponsorship_alert_kind == "debarred"
+    assert get_or_create_company(db, "Unlisted Analytics Inc").sponsorship_alert_kind is None

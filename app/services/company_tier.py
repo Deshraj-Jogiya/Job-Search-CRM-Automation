@@ -30,6 +30,8 @@ B keeps that tier (cap-exempt never caps a tier down); it only
 provides a floor at C when there's no filing history at all to go on.
 """
 
+from datetime import date
+
 from ..models import Company, GlobalSettings
 
 # Prevailing-wage level letters -> a plain rank for >= comparison against
@@ -46,6 +48,11 @@ def derive_tier(company: Company, settings: GlobalSettings) -> str:
     db session, so callers (backfill CLI, scoring_service) control
     exactly which settings snapshot is used and this stays trivially
     testable without a database."""
+    # A debarred employer cannot file at all while the ban lasts, whatever its past record says.
+    if company.sponsorship_alert_kind == "debarred" and (
+        company.sponsorship_alert_until is None or company.sponsorship_alert_until >= date.today()
+    ):
+        return "X"
     total_filings = _total_filings(company)
     wage_rank = WAGE_LEVEL_RANK.get(company.max_wage_level_15xx, 0)
 

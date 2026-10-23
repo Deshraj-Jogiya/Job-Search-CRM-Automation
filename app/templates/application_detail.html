@@ -74,6 +74,10 @@
             <p class="flag-warning">{{ match_analysis.fit_cap_reason }}{% if match_analysis.ai_score_before_cap %} The AI scored it {{ match_analysis.ai_score_before_cap }}.{% endif %}</p>
             {% endif %}
             <p class="muted-note">Visa sponsorship: {{ application.visa_sponsorship }} &middot; <a href="/how-scoring-works">How scoring works</a></p>
+            {% set co = application.posting.company %}
+            {% if co and co.sponsorship_alert %}
+            <p class="flag-warning">Sponsorship alert for {{ co.name }}: {{ co.sponsorship_alert }}. <a href="{{ co.sponsorship_alert_source }}" target="_blank" rel="noopener">Source</a></p>
+            {% endif %}
             <p class="muted-note"><strong>Strengths:</strong> {{ match_analysis.strengths }}</p>
             <p class="muted-note"><strong>Gaps:</strong> {{ match_analysis.gaps_analysis }}</p>
             {% if ev.skills %}

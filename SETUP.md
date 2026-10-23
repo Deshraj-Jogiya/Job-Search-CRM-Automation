@@ -8,16 +8,21 @@ each. Nothing here blocks any other feature if you skip it entirely.
 
 ## 1. USCIS H-1B Employer Data Hub (sponsorship history)
 
-- Source: <https://www.uscis.gov/tools/reports-and-studies/h-1b-employer-data-hub>
-- Pick fiscal year(s), export/download the CSV.
-- Save it to `data/raw/uscis/` (any filename).
-- Load it:
+- Source: <https://www.uscis.gov/tools/reports-and-studies/h-1b-employer-data-hub>. The archive page only has yearly CSVs up to
+  FY2023; newer years come from the hub's Tableau view, which exports one fiscal year per request in a long format (one row per
+  employer per measure):
   ```bash
-  python -m app.ingest.cli uscis data/raw/uscis/h1b_employer_data_hub.csv
+  curl -sA "Mozilla/5.0" -o data/raw/uscis/uscis_hub_long_2025.csv     "https://bigdataanalyticspub-sb.uscis.dhs.gov/views/H1BEmployerDataHub-Final/H1BPublic.csv?Fiscal%20Year%20%20%20=2025"
   ```
-- Only updates companies already in your `companies` table (matched by
-  name) -- it does not create new ones. Safe to re-run any time a new
-  export comes out; each run recomputes totals from scratch.
+  (the filter name really has three trailing spaces; without the filter you get the current year). Pivot those files to the
+  `Fiscal Year, Employer, Initial Approval, Initial Denial, Continuing Approval, Continuing Denial` columns: Initial = New Employment +
+  New Concurrent + Change of Employer, Continuing = Continuation + Change with Same Employer + Amended.
+- Load it, with `--reset` when it replaces the years on record (so a company missing from the new file loses its old count):
+  ```bash
+  python -m app.ingest.cli uscis data/raw/uscis/h1b_hub_fy2024_2026.csv --reset
+  ```
+- Only updates companies already in your `companies` table -- it does not create new ones. Names match exactly, through
+  `app/ingest/sponsor_name_aliases.json`, with spaces ignored, or through a unique "dba" entity.
 
 ## 2. DOL OFLC LCA Disclosure Data (quarterly, sponsorship intent + wage)
 
@@ -43,6 +48,20 @@ each. Nothing here blocks any other feature if you skip it entirely.
   ```bash
   python -m app.ingest.cli oews data/raw/oews/oflc_oews_wages.xlsx 2024
   ```
+
+## 3b. Sponsorship alerts (debarments, PERM suspensions, hiring pauses)
+
+`app/ingest/sponsorship_alerts.json` is a hand-checked list of current government actions: the DOL Wage and Hour H-1B debarment list
+(<https://www.dol.gov/agencies/whd/immigration/h1b/debarment>), the OFLC program debarment list, announced PERM suspensions, and
+hiring pauses a company has confirmed. A debarred employer is tier X until its ban ends; the others are shown next to the tier. Check
+both DOL lists and the news monthly, edit the file, then:
+
+```bash
+python -m app.ingest.cli alerts
+python -m app.ingest.cli backfill-signals
+```
+
+New companies on the list are flagged as soon as intake creates them.
 
 ## 4. Cap-exempt sweep (no file needed)
 
