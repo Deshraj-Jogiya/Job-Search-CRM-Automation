@@ -37,6 +37,7 @@ from ..models import (
 )
 from . import fit_service
 from .activity_logger import log_activity
+from .profile_service import strip_confidential_projects
 
 MIN_POSTINGS = 30
 MARKET_WINDOW_DAYS = 90
@@ -100,16 +101,24 @@ def parse_date_range(text: str | None) -> tuple[datetime | None, datetime | None
 def _required_terms(profile: dict, description: str) -> set[str]:
     required_text, _ = fit_service._split_required_preferred(description or "")
     low = required_text.lower()
-    vocab = list(dict.fromkeys(fit_service._VOCABULARY + fit_service._profile_vocabulary(profile)))
-    found = [t for t in vocab if fit_service._mentions(t, low, required_text)]
-    # "SQL" inside "SQL Server" is the same requirement, as in skill_overlap
-    return {t for t in found if not any(o != t and t.lower() in o.lower().split() for o in found)}
+    found = [t for t in fit_service._VOCABULARY if fit_service._mentions(t, low, required_text)]
+    # The profile's own skill names count only when written the same way: matched case-insensitively,
+    # a skill like "Express" turns every "express interest" into a requirement.
+    for atom in fit_service._profile_vocabulary(profile):
+        if atom not in found and re.search(r"(?<![\w.])" + re.escape(atom) + r"(?!\w)", required_text):
+            found.append(atom)
+
+    # "SQL" inside "SQL Server", "CI" inside "CI/CD": the same requirement, counted once
+    def parts(term):
+        return re.split(r"[\s/]+", term.lower())
+    return {t for t in found if not any(o != t and t.lower() in parts(o) for o in found)}
 
 
 def evidence_strength(profile: dict, term: str) -> dict:
     """'work' (named in a role or project), 'listed' (only the skills list or a certificate) or 'none',
     plus a comparable tool the profile does show when the term itself isn't there."""
-    sources = fit_service._evidence_sources(profile)
+    # Team projects marked confidential can't be described in an interview, so they never count as evidence.
+    sources = fit_service._evidence_sources(strip_confidential_projects(profile))
     work, listed = sources[:-2], sources[-2:]
     where = fit_service._find_evidence(term, work)
     if where:
@@ -167,7 +176,7 @@ _REPO_RE = re.compile(r"github\.com/([^/\s]+)/([^/\s#?]+)")
 _SKIP_LANGUAGES = {"html", "css", "scss", "shell", "dockerfile", "makefile", "jinja", "procfile", "batchfile",
                    "powershell", "jupyter notebook", "hcl", "mako", "smarty"}
 _README_NUMBER = re.compile(
-    r"(?<![\w.])(\d[\d,]*(?:\.\d+)?)\s*(%|x\b|ms\b|tests?\b|rows\b|records\b|postings\b|files\b|GB\b|MB\b|k\b|M\b)",
+    r"(?<![\w.])(\d[\d,]*(?:\.\d+)?)\s*(%|x\b|ms\b|tests?\b|rows\b|records\b|postings\b|files\b)",  # sizes (MB, GB) are mostly server specs, not results
     re.IGNORECASE,
 )
 

@@ -272,3 +272,27 @@ def test_routes_redirect_with_messages(db):
     assert "error=" in r.headers["location"]
     r = router.languages(project_index=1, languages="Go", db=db)
     assert "error=" in r.headers["location"]
+
+
+# ---- found on the first live run (2026-10-22) -----------------------------------------------------------------
+
+def test_confidential_projects_never_count_as_evidence():
+    profile = {"skills": {"Web": ["Express"]}, "experience": [],
+               "projects": [{"name": "Team Project", "confidential": True, "bullets": ["Built with Express."]}]}
+    assert upgrade_service.evidence_strength(profile, "Express")["level"] == "listed"
+
+
+def test_profile_skill_names_must_match_case_to_count():
+    profile = {"skills": {"Web": ["Express", "CI/CD"]}}
+    assert "Express" not in upgrade_service._required_terms(profile, "Requirements: express interest in data")
+    assert "Express" in upgrade_service._required_terms(profile, "Requirements: Node and Express")
+
+
+def test_ci_and_ci_cd_count_once():
+    profile = {"skills": {"DevOps": ["CI/CD"]}}
+    terms = upgrade_service._required_terms(profile, "Requirements: CI/CD pipelines")
+    assert "CI/CD" in terms and "CI" not in terms
+
+
+def test_server_sizes_in_a_readme_are_not_results():
+    assert upgrade_service._new_readme_numbers("Runs on 24 GB RAM, 500 MB disk; 40% faster.", []) == ["40%"]
