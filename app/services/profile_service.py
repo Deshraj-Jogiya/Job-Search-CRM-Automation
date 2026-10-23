@@ -254,7 +254,7 @@ def get_variant_display_data(db: Session, variant_id: int) -> dict:
         .filter(
             ProfileVersion.variant_id == variant_id,
             ProfileVersion.is_active == False,  # noqa: E712
-            ProfileVersion.source == "linkedin_diff",
+            ProfileVersion.source.in_(["linkedin_diff", "upgrade_check"]),
         )
         .order_by(ProfileVersion.created_at.desc())
         .all()

@@ -1,0 +1,174 @@
+{% extends "_base.html" %}
+
+{% block title %}Career Pilot -- Upgrades{% endblock %}
+
+{% block header_title %}<a href="/" class="plain-link">Career Pilot</a> / Upgrades{% endblock %}
+
+{% block content %}
+{% if message %}
+<div class="flash flash-ok" role="status">{{ message }}</div>
+{% endif %}
+{% if error %}
+<div class="flash flash-error" role="alert">{{ error }}</div>
+{% endif %}
+
+<section class="variant-block">
+    <h2>Upgrades</h2>
+    <p class="muted-note">Once a month the platform checks what postings ask for, what changed in your repos, and how
+        applications and practice interviews went, then lists what is worth updating. Nothing about you changes until you
+        approve it: every profile change below is saved as a pending version on the <a href="/profile">Profile page</a>.</p>
+    <div class="upgrade-run">
+        <form method="post" action="/upgrades/run" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit">Run the check now</button>
+        </form>
+        <span class="muted-note">
+            {% if row %}Last run {{ row.created_at.strftime("%Y-%m-%d") }}{% if row.is_quarterly %}, with the quarterly summary{% endif %}.
+            Runs on its own every {{ run_every_days }} days.{% else %}Not run yet. It runs on its own every {{ run_every_days }} days.{% endif %}
+        </span>
+    </div>
+</section>
+
+{% if report %}
+{% set m = report.market %}
+{% set r = report.repos %}
+{% set o = report.outcomes %}
+{% set iv = report.interviews %}
+
+{% if report.quarter %}
+{% set q = report.quarter %}
+<section class="variant-block">
+    <h2>This quarter</h2>
+    <ul class="upgrade-list">
+        <li>{{ q.profile_versions }} profile version{{ "s" if q.profile_versions != 1 }} saved in the last 90 days, {{ q.approved_from_checks }} of them approved from these checks.</li>
+        {% if q.compared_with %}
+        <li>Compared with the report from {{ q.compared_with }}:
+            {% if q.rising_skills %}now asked for more often: {{ q.rising_skills|join(", ") }}.{% endif %}
+            {% if q.falling_skills %}asked for less: {{ q.falling_skills|join(", ") }}.{% endif %}
+            {% if not q.rising_skills and not q.falling_skills %}the most-requested skills haven't changed.{% endif %}</li>
+        {% else %}
+        <li>No report from three months ago yet, so there is nothing to compare skill demand against.</li>
+        {% endif %}
+    </ul>
+</section>
+{% endif %}
+
+<section class="variant-block" id="market">
+    <h2>What postings ask for <span class="badge {{ 'badge-active' if m.ready else '' }}">{{ m.target_postings }} postings</span></h2>
+    {% if not m.ready %}
+    <p class="muted-note">Waiting for data: {{ m.target_postings }} of {{ m.min_postings }} postings for your target roles
+        ({{ m.target_roles|join(", ") or "none set" }}) in the last {{ m.window_days }} days. A handful of postings ranks
+        nothing, so this stays quiet until there are {{ m.min_postings }}. New postings arrive while automation is on.</p>
+    {% else %}
+    {% if m.gaps %}
+    <p>Skills at least a fifth of your target postings require, where your profile shows them only in the skills list or
+        not at all. The fix is real work that uses them (a project, a task at work), never removing the skill.</p>
+    {% else %}
+    <p>Every skill a fifth or more of your target postings require is shown in a role or project. Nothing to do here.</p>
+    {% endif %}
+    <div class="table-scroll">
+    <table class="score-breakdown-table evidence-table">
+        <tr><th>Skill</th><th>Required in</th><th>Your evidence</th></tr>
+        {% for s in m.skills %}
+        <tr>
+            <td>{{ s.term }}</td>
+            <td>{{ s.share }}% <span class="muted-note">({{ s.count }})</span></td>
+            <td>{% if s.level == "work" %}{{ s.where }}
+                {% elif s.level == "listed" %}<span class="badge badge-warn">skills list only</span>
+                {% else %}<span class="badge badge-warn">not shown</span>{% if s.via %} <span class="muted-note">comparable: {{ s.via }}</span>{% endif %}{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    </div>
+    <p class="muted-note">Read by the same rules as the fit score, from the required part of each posting (preferred sections
+        don't count). Employers tend to over-list requirements, so treat this as a ranking of priorities, not a checklist.</p>
+    {% endif %}
+</section>
+
+<section class="variant-block" id="repos">
+    <h2>New work in your repos <span class="badge {{ 'badge-active' if r["items"] else '' }}">{{ r["items"]|length }}</span></h2>
+    <p class="muted-note">Commits since your profile was last updated ({{ r.since_profile_update }}), counted only inside each
+        project's own dates. A project with an end date is only updated with work from that period and is never reopened as
+        "Present".{% if r.ended_projects_not_checked %} {{ r.ended_projects_not_checked }} project{{ "s" if r.ended_projects_not_checked != 1 }}
+        ended before that update, so nothing new can belong to {{ "them" if r.ended_projects_not_checked != 1 else "it" }}.{% endif %}</p>
+    {% for item in r["items"] %}
+    <div class="sub-panel upgrade-item">
+        <h3>{{ item.name }} <span class="muted-note">{{ item.date }}</span></h3>
+        <p>{{ item.commits }} commit{{ "s" if item.commits != 1 }} in <a href="https://github.com/{{ item.repo }}" target="_blank" rel="noopener">{{ item.repo }}</a>
+            between {{ item.since }} and {{ item.until or "today" }}. If they added something worth a bullet, write it in the questions below{% if not item.is_current %} (as work done during the project){% endif %}.</p>
+        {% if item.new_numbers %}
+        <p class="muted-note">Numbers in the README that no bullet mentions: {{ item.new_numbers|join(", ") }}.</p>
+        {% endif %}
+        {% if item.new_languages %}
+        <form method="post" action="/upgrades/languages" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="project_index" value="{{ item.project_index }}">
+            <input type="hidden" name="languages" value="{{ item.new_languages|join(',') }}">
+            <span>The repo uses {{ item.new_languages|join(", ") }}, which the project doesn't list.</span>
+            <button type="submit" class="btn-secondary">Draft adding {{ "them" if item.new_languages|length > 1 else "it" }}</button>
+        </form>
+        {% endif %}
+    </div>
+    {% else %}
+    <p class="muted-note">No new commits inside any project's dates since the last profile update.</p>
+    {% endfor %}
+    {% if r.errors %}
+    <p class="muted-note">Couldn't reach GitHub for: {{ r.errors|join("; ") }}. They'll be checked again next run.</p>
+    {% endif %}
+</section>
+
+<section class="variant-block" id="prompts">
+    <h2>What have you done lately? <span class="badge {{ 'badge-active' if report.prompts else '' }}">{{ report.prompts|length }}</span></h2>
+    {% if report.prompts %}
+    <p class="muted-note">One answer per role or project. It becomes a resume bullet in your own words, saved as a pending
+        change for you to approve. Leave anything that has no news blank.</p>
+    {% for p in report.prompts %}
+    <form method="post" action="/upgrades/answer" class="sub-panel upgrade-item">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="target" value="{{ p.target }}">
+        <h3>{{ p.label }}</h3>
+        <ul class="upgrade-list">{% for qn in p.questions %}<li>{{ qn }}</li>{% endfor %}</ul>
+        <label for="answer-{{ loop.index }}" class="muted-note">Your answer, as one bullet</label>
+        <textarea id="answer-{{ loop.index }}" name="answer" rows="2" maxlength="{{ max_answer_chars }}"
+                  placeholder="e.g. Cut nightly validation from 40 to 12 minutes by parallelising the checks across 8 workers."></textarea>
+        <button type="submit">Save as a pending change</button>
+    </form>
+    {% endfor %}
+    {% else %}
+    <p class="muted-note">No current roles or projects (none marked "Present"), so there is nothing to ask about.</p>
+    {% endif %}
+</section>
+
+<section class="variant-block" id="outcomes">
+    <h2>Which applications get replies <span class="badge {{ 'badge-active' if o.ready else '' }}">{{ "ready" if o.ready else "waiting" }}</span></h2>
+    {% if not o.ready %}
+    <p class="muted-note">Not enough data yet: {{ o.sent }} sent, {{ o.replied }} repl{{ "ies" if o.replied != 1 else "y" }}.
+        Comparing resume versions, sources or company tiers needs at least {{ o.min_sent }} sent and {{ o.min_replies }} replies,
+        otherwise any "winner" is luck.</p>
+    {% else %}
+    <ul class="upgrade-list">
+        {% for c in o.comparisons if c.state == "REPORTABLE" %}
+        <li>{{ c.comparison_type|replace("_", " ")|capitalize }}: "{{ c.best_segment }}" gets more replies than "{{ c.worst_segment }}"
+            ({{ c.total_sent }} sent, {{ c.total_replied }} replies). Details and any proposed adjustment on <a href="/adaptation">Adaptation</a>.</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</section>
+
+<section class="variant-block" id="interviews">
+    <h2>Recurring interview weak spots <span class="badge {{ 'badge-active' if iv.themes else '' }}">{{ iv.themes|length }}</span></h2>
+    {% if not iv.ready %}
+    <p class="muted-note">Waiting for data: {{ iv.debriefs }} of {{ iv.min_debriefs }} mock-interview debriefs. One session's
+        feedback is about that session; a pattern needs at least {{ iv.min_debriefs }}.</p>
+    {% elif iv.themes %}
+    <ul class="upgrade-list">
+        {% for t in iv.themes %}
+        <li>{{ t.example }} <span class="muted-note">(came up {{ t.count }} times across {{ t.sessions|length }} sessions)</span></li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted-note">No weak spot came up in more than one session across {{ iv.debriefs }} debriefs.</p>
+    {% endif %}
+</section>
+{% endif %}
+{% endblock %}

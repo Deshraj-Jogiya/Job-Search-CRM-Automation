@@ -27,6 +27,7 @@ _RLS_MIGRATION_FILES = [
     "70dba536fd0f_add_research_agent_queries_table.py",
     "a7d4e2f6c9b1_add_saved_answers_table.py",
     "b3e9d7a1c4f2_add_profile_interview_prep_table.py",
+    "d5f1a8c3e7b2_add_upgrade_reports_table.py",
 ]
 
 

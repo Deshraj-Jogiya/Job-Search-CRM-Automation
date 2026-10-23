@@ -79,7 +79,7 @@
         {% for pending in entry.pending_versions %}
         <div class="pending-item">
             <p class="muted-note">
-                Proposed {{ pending.created_at.strftime("%Y-%m-%d %H:%M") }} UTC via LinkedIn paste-diff
+                Proposed {{ pending.created_at.strftime("%Y-%m-%d %H:%M") }} UTC via {{ "the monthly upgrade check" if pending.source == "upgrade_check" else "LinkedIn paste-diff" }}
             </p>
             <p>{{ pending.change_summary }}</p>
             {% if pending.regression_warnings %}

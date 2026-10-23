@@ -74,7 +74,7 @@ class ProfileVersion(Base):
     id = Column(Integer, primary_key=True, index=True)
     variant_id = Column(Integer, ForeignKey("profile_variants.id"), nullable=False)
     content_json = Column(Text, nullable=False)  # full structured resume data
-    source = Column(String, default="manual")  # 'portfolio_sync' | 'linkedin_diff' | 'manual'
+    source = Column(String, default="manual")  # 'portfolio_sync' | 'linkedin_diff' | 'upgrade_check' | 'manual'
     change_summary = Column(Text, nullable=True)  # human-readable diff summary, AI-generated
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=utcnow)
@@ -664,6 +664,18 @@ class ProfileInterviewPrep(Base):
     # since" -- without it nothing could say a prep had gone stale.
     profile_version_id = Column(Integer, ForeignKey("profile_versions.id"), nullable=True)
     trigger = Column(String, nullable=True)  # initial | profile_changed | manual
+
+
+class UpgradeReport(Base):
+    """One run of the monthly upgrade check (upgrade_service.py): what the five checks found, stored whole so
+    the page can show it and the quarterly summary can compare against a report from about three months
+    earlier. Never changes the profile by itself; profile changes it offers are pending ProfileVersions."""
+    __tablename__ = "upgrade_reports"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime, default=utcnow, index=True)
+    is_quarterly = Column(Boolean, default=False)
+    report_json = Column(Text, nullable=False)
 
 
 class LocationExclusion(Base):

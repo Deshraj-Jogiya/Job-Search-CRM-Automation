@@ -29,7 +29,7 @@ from ..database import SessionLocal
 from ..models import get_or_create_settings
 from . import (
     backup_service, confirmation_service, demo_seed_service, intake_service, notification_service, profile_prep_service,
-    trend_research_service,
+    trend_research_service, upgrade_service,
 )
 from .activity_logger import log_activity, sweep_activity_log_retention
 
@@ -138,6 +138,12 @@ def _trend_check_tick() -> None:
     )
 
 
+def _upgrade_check_tick() -> None:
+    # Checked daily, runs when the last report is 30+ days old. Not gated by automation_enabled: the five
+    # checks are mechanical (no LLM, no paid calls) and only read; profile changes they offer wait for approval.
+    _run_isolated("monthly upgrade check", upgrade_service.run_if_due)
+
+
 def _demo_reset_tick() -> None:
     # Showcase only: visitors share one database, so it goes back to the sample search once a day.
     _run_isolated("demo data reset", demo_seed_service.reset_demo_data)
@@ -164,6 +170,10 @@ def start_scheduler() -> None:
         scheduler.add_job(
             _profile_prep_tick, trigger="interval", hours=1, name="profile_prep_catch_up", max_instances=1,
             next_run_time=datetime.now() + timedelta(seconds=45),
+        )
+        scheduler.add_job(
+            _upgrade_check_tick, trigger="interval", hours=24, name="monthly_upgrade_check", max_instances=1,
+            next_run_time=datetime.now() + timedelta(minutes=2),
         )
         if is_showcase_mode():
             scheduler.add_job(_demo_reset_tick, trigger="interval", hours=24, name="demo_data_reset", max_instances=1)

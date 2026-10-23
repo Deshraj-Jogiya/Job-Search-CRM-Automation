@@ -1629,3 +1629,39 @@ button[disabled] {
 .add-job-form button {
     align-self: flex-start;
 }
+
+/* Upgrades page (monthly upgrade check) */
+.upgrade-run {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.upgrade-list {
+    margin: 8px 0;
+    padding-left: 1.2rem;
+    display: grid;
+    gap: 4px;
+}
+
+.upgrade-item {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.upgrade-item h3 {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.upgrade-item textarea {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.upgrade-item button {
+    justify-self: start;
+}

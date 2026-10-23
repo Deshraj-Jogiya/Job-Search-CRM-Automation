@@ -47,6 +47,14 @@
     (or reject) on the <a href="/adaptation">Adaptation page</a>.
 </div>
 {% endif %}
+{% if upgrade_card and upgrade_card.count %}
+<div class="flash flash-ok" role="status">
+    <strong>{{ upgrade_card.count }} upgrade{{ "s" if upgrade_card.count != 1 else "" }} to look at</strong>
+    from the {{ "quarterly" if upgrade_card.is_quarterly else "monthly" }} check on {{ upgrade_card.created_at.strftime("%b %d") }}:
+    skills postings ask for, new work in your repos, and questions about what you've done lately. Nothing changes
+    until you approve it. <a href="/upgrades">See upgrades</a>
+</div>
+{% endif %}
 {% if message %}
 <div class="flash flash-ok" role="status">{{ message }}</div>
 {% endif %}
