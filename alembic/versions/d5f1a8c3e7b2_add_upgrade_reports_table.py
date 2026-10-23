@@ -24,6 +24,17 @@ _APP_TABLES = ["upgrade_reports"]
 
 def upgrade() -> None:
     """Upgrade schema."""
+    bind = op.get_bind()
+    # The app's create_all() at startup can create the table before this runs (a restart ahead of the
+    # migration, as happened on the demo); then only RLS is left to do.
+    if not sa.inspect(bind).has_table('upgrade_reports'):
+        _create()
+    if bind.dialect.name == "postgresql":
+        for table in _APP_TABLES:
+            op.execute(f'ALTER TABLE "{table}" ENABLE ROW LEVEL SECURITY')
+
+
+def _create() -> None:
     op.create_table(
         'upgrade_reports',
         sa.Column('id', sa.Integer(), nullable=False),
@@ -34,11 +45,6 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_upgrade_reports_id'), 'upgrade_reports', ['id'], unique=False)
     op.create_index(op.f('ix_upgrade_reports_created_at'), 'upgrade_reports', ['created_at'], unique=False)
-
-    bind = op.get_bind()
-    if bind.dialect.name == "postgresql":
-        for table in _APP_TABLES:
-            op.execute(f'ALTER TABLE "{table}" ENABLE ROW LEVEL SECURITY')
 
 
 def downgrade() -> None:
