@@ -136,6 +136,7 @@
             <a href="/jobs/{{ application.id }}/tailored/resume/download?inline=1" class="btn-secondary" target="_blank" rel="noopener">Preview Resume PDF</a>
             <a href="/jobs/{{ application.id }}/tailored/resume/download" class="btn-secondary">Download Resume PDF</a>
             <a href="/jobs/{{ application.id }}/tailored/resume/download-docx" class="btn-secondary">Download Resume DOCX</a>
+            <a href="/jobs/{{ application.id }}/tailored/resume/download-txt" class="btn-secondary" title="For application forms that only take pasted text">Resume as Plain Text</a>
             <span class="muted-note">(DOCX has no in-browser preview -- no browser renders it natively; download to view.)</span>
             <details class="sub-panel">
                 <summary>Tailored resume JSON</summary>
@@ -146,11 +147,25 @@
             <p class="muted-note">{% if not ai_available %}{{ "Sample AI output" if showcase_mode else "Written by an AI provider earlier" }} &middot; {% endif %}{% if cl_doc.ats_score is not none %}Cover letter score: <strong>{{ cl_doc.ats_score }}%</strong> &middot; {% endif %}generated {{ cl_doc.generated_at.strftime("%Y-%m-%d %H:%M") }} UTC</p>
             <a href="/jobs/{{ application.id }}/tailored/cover_letter/download?inline=1" class="btn-secondary" target="_blank" rel="noopener">Preview Cover Letter PDF</a>
             <a href="/jobs/{{ application.id }}/tailored/cover_letter/download" class="btn-secondary">Download Cover Letter PDF</a>
+            <a href="/jobs/{{ application.id }}/tailored/cover_letter/download-docx" class="btn-secondary">Download Cover Letter DOCX</a>
+            <a href="/jobs/{{ application.id }}/tailored/cover_letter/download-txt" class="btn-secondary" title="For application forms that only take pasted text">Cover Letter as Plain Text</a>
             <details class="sub-panel">
                 <summary>Tailored cover letter</summary>
                 <pre class="json-preview">{{ cl_doc.content }}</pre>
             </details>
             {% endif %}
+            <details class="sub-panel"{% if application.recruiter_name or application.referred_by %} open{% endif %}>
+                <summary>Cover letter: addressee and referral</summary>
+                <form method="post" action="/jobs/{{ application.id }}/letter-details">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <p><label for="recruiter_name">Address the letter to</label><br>
+                    <input id="recruiter_name" name="recruiter_name" type="text" maxlength="120" value="{{ application.recruiter_name or '' }}" placeholder="Hiring Manager"></p>
+                    <p><label for="referred_by">Referred by (leave empty if nobody referred you)</label><br>
+                    <input id="referred_by" name="referred_by" type="text" maxlength="120" value="{{ application.referred_by or '' }}"></p>
+                    <button type="submit">Save</button>
+                    <span class="muted-note">The greeting changes at once; a referral is mentioned after you re-tailor.</span>
+                </form>
+            </details>
             {% if not resume_doc and not cl_doc %}
             {% if ai_available %}
             <p class="muted-note">Not tailored yet -- click "Tailor Resume & Cover Letter" to run the multi-pass AI tailoring loop against your active profile.</p>

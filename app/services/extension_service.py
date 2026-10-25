@@ -22,7 +22,7 @@ from urllib.parse import urlparse
 
 from sqlalchemy.orm import Session
 
-from . import document_render_service, page_fit_service
+from . import cover_letter_service, document_render_service, page_fit_service
 from .autofill.common_answers import is_referral_source_question, mechanical_common_answer, referral_source_answer
 from .intake_service import get_or_create_company
 from .matching_service import MatchingServiceError, get_profile_content_for_application
@@ -645,7 +645,7 @@ def resolve_field_answers(db: Session, application_id: int, fields: list[dict]) 
         if answer is None and is_referral_source_question(label):
             answer = referral_source_answer(application.posting.source)
         if answer is None and _COVER_LETTER_RE.search(label) and cover_letter:
-            answer = cover_letter.content
+            answer = cover_letter_service.full_text(cover_letter.content, profile.get("name", ""), application.recruiter_name)
 
         if answer and field.get("type") == "select":
             # The free-text answer above is never itself a valid value
@@ -701,8 +701,11 @@ def render_document_for_attachment(db: Session, application_id: int, document_ty
             .filter(TailoredDocument.application_id == application_id, TailoredDocument.document_type == "resume")
             .first()
         )
-        candidate_name = json.loads(resume_doc.content).get("name", "") if resume_doc else ""
-        pdf_bytes = document_render_service.render_cover_letter_pdf(doc.content, candidate_name)
+        resume_content = json.loads(resume_doc.content) if resume_doc else {}
+        application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+        pdf_bytes = document_render_service.render_cover_letter_pdf(
+            doc.content, resume_content.get("name", ""), resume_content.get("contact"),
+            application.recruiter_name if application else None)
 
     resume_doc_for_name = (
         db.query(TailoredDocument)

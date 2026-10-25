@@ -600,22 +600,30 @@ def render_interview_prep_cheat_sheet_pdf(
     return buf.getvalue()
 
 
-def render_cover_letter_pdf(cover_letter_text: str, candidate_name: str) -> bytes:
+def render_cover_letter_pdf(cover_letter_text: str, candidate_name: str, contact: dict | None = None,
+                            recipient_name: str | None = None, today=None) -> bytes:
+    """Name and contact header, date, greeting, the stored body, then the sign-off -- the body is stored without a
+    greeting or closing, so the letter is framed here (see cover_letter_service)."""
+    from . import cover_letter_service
+
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=letter,
         topMargin=0.8 * inch, bottomMargin=0.8 * inch,
         leftMargin=0.9 * inch, rightMargin=0.9 * inch,
     )
-    flow = [Paragraph(_esc(candidate_name or ""), _name_style), Spacer(1, 14)]
-    for paragraph in (cover_letter_text or "").split("\n\n"):
-        paragraph = paragraph.strip()
-        if paragraph:
-            # Escape first, then insert our own literal <br/> markup --
-            # doing it in this order means the <br/> tags we add can
-            # never themselves get escaped away.
-            flow.append(Paragraph(_esc(paragraph).replace("\n", "<br/>"), _body_style))
-            flow.append(Spacer(1, 8))
+    flow = [Paragraph(_esc(candidate_name or ""), _name_style)]
+    for line in _contact_lines(contact or {}):
+        flow.append(Paragraph(line, _contact_style))
+    flow += [Spacer(1, 14), Paragraph(_esc(cover_letter_service.letter_date(today)), _body_style), Spacer(1, 10),
+             Paragraph(_esc(cover_letter_service.greeting(recipient_name)), _body_style), Spacer(1, 8)]
+    for paragraph in cover_letter_service.body_paragraphs(cover_letter_text):
+        # Escape first, then insert our own literal <br/> markup --
+        # doing it in this order means the <br/> tags we add can
+        # never themselves get escaped away.
+        flow.append(Paragraph(_esc(paragraph).replace("\n", "<br/>"), _body_style))
+        flow.append(Spacer(1, 8))
+    flow += [Spacer(1, 4), Paragraph(cover_letter_service.CLOSING, _body_style), Paragraph(_esc(candidate_name or ""), _body_style)]
     doc.build(flow)
     return buf.getvalue()
 

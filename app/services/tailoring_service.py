@@ -597,7 +597,10 @@ def _tailor_summary_skills(profile_content: dict, jd_text: str) -> dict:
             "Tailor this candidate's professional summary and skills grouping to align with the job "
             "description. Do not fabricate anything. Keep the summary to 3 concise sentences (roughly "
             "4-5 lines on a resume) -- a resume summary is a hook, not a full recap of the skills section "
-            "that follows it.\n\n"
+            "that follows it. Sentence 1 says who the candidate is, using the job description's own role title "
+            "where the profile supports it, and never a years-of-experience figure the profile does not state. "
+            "Sentence 2 gives the strongest measured result from the profile that matters for this job. "
+            "Sentence 3 says what the candidate would bring to this team.\n\n"
             f"Job Description:\n{jd_text}\n\n"
             "Respond with EXACTLY this JSON shape:\n"
             "{\n"
@@ -634,11 +637,49 @@ def clean_cover_letter(text: str) -> str:
     return result
 
 
-def generate_cover_letter(profile_content: dict, company_name: str, job_title: str, jd_text: str) -> str:
-    projects_context = ""
-    for proj in profile_content.get("projects", []):
+_NUMBER_RE = re.compile(r"(?<![\w.])\d[\d,]*(?:\.\d+)?%?")
+
+
+def unsupported_numbers(text: str, facts: str) -> list[str]:
+    """Numbers in a cover letter that appear nowhere in the facts it was written from (the profile and the tailored
+    resume). A letter is new prose with no original bullet to compare against, so this mechanical check is what keeps
+    an invented metric out of it."""
+    def norm(n: str) -> str:
+        return n.replace(",", "").rstrip("%")
+
+    known = {norm(n) for n in _NUMBER_RE.findall(facts or "")}
+    seen, out = set(), []
+    for n in _NUMBER_RE.findall(text or ""):
+        key = norm(n)
+        if key and key not in known and key not in seen:
+            seen.add(key)
+            out.append(n)
+    return out
+
+
+def _cover_letter_facts(profile_content: dict, experience: list | None, projects: list | None) -> str:
+    return json.dumps({"profile": profile_content, "experience": experience or [], "projects": projects or []})
+
+
+def generate_cover_letter(profile_content: dict, company_name: str, job_title: str, jd_text: str,
+                          experience: list | None = None, projects: list | None = None,
+                          referred_by: str | None = None, correction: str | None = None) -> str:
+    """Body paragraphs only; cover_letter_service adds the greeting, date and sign-off. experience and projects are
+    the tailored resume's, so the letter cites the same evidence the resume leads with; without them the profile's
+    own are used."""
+    experience = experience if experience is not None else profile_content.get("experience", [])
+    projects = projects if projects is not None else profile_content.get("projects", [])
+    evidence = ""
+    for job in experience:
+        evidence += f"- {job.get('role', '')} at {job.get('company', '')}: {' '.join(job.get('bullets') or [])}\n"
+    for proj in projects:
         bullets = proj.get("bullets") or ([proj["description"]] if "description" in proj else [])
-        projects_context += f"- {proj.get('name', '')}: {' '.join(bullets)}\n"
+        evidence += f"- Project {proj.get('name', '')}: {' '.join(bullets)}\n"
+    referral = (
+        f"The candidate was referred by {referred_by.strip()}. Name them in the first sentence.\n"
+        if referred_by and referred_by.strip() else
+        "Nobody referred the candidate: do not mention a referral or a contact.\n"
+    )
 
     llm = get_llm_provider()
     text = llm.complete_text(
@@ -647,20 +688,27 @@ def generate_cover_letter(profile_content: dict, company_name: str, job_title: s
             "greeting, no closing, no signature, since the template supplies those."
         ),
         prompt=(
-            "Write an extremely professional, compelling, tailored cover letter (exactly 3 paragraphs, under "
-            "300 words total) for this candidate applying to this job.\n\n"
+            "Write a tailored cover letter body (exactly 3 paragraphs, under 300 words total) for this candidate "
+            "applying to this job.\n\n"
             f"Candidate: {profile_content.get('name')}\n"
-            f"Profile: {profile_content.get('summary')}\n"
-            f"Recent Projects:\n{projects_context}\n\n"
+            f"Profile summary: {profile_content.get('summary')}\n"
+            f"Evidence (the only facts you may use about the candidate):\n{evidence}\n"
             f"Target Company: {company_name}\n"
             f"Target Role: {job_title}\n"
+            f"{referral}"
             f"Job Description:\n{jd_text}\n\n"
-            "Paragraph 1: direct hook expressing strong, specific interest in this role at this company.\n"
-            "Paragraph 2: map 1-2 of the candidate's most relevant projects/experience directly to the JD's "
-            "technical requirements, with concrete impact.\n"
-            "Paragraph 3: reiterate value, professional call-to-action.\n\n"
+            f"Paragraph 1: name the exact role ('{job_title}') and {company_name}. Give one specific reason for "
+            "interest in this company, taken from the job description itself (its product, mission, team or "
+            "problem); never state a company fact that is not in the job description. End the paragraph with one "
+            "sentence saying who the candidate is and what they bring.\n"
+            "Paragraph 2: two concrete examples from the evidence, each matched to a requirement the job "
+            "description names, each with its measured result. Use only numbers that appear in the evidence, "
+            "exactly as written; never invent, estimate or round one.\n"
+            "Paragraph 3: restate interest in the role, then a direct call to action asking for a conversation "
+            "or interview.\n\n"
             "No generic template phrases ('I am excited to apply', 'please find my resume attached'). No "
             "greetings or sign-offs -- start directly with paragraph 1's body text."
+            + (f"\n\nYour previous draft broke a rule; fix it: {correction}" if correction else "")
         ),
         temperature=0.5,
         max_tokens=700,
@@ -929,9 +977,17 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
 
     if use_ai:
         try:
-            cl_text = generate_cover_letter(
-                profile_content, posting.company_name_raw, posting.job_title, jd_text
-            )
+            cl_args = dict(experience=resume_doc.get("experience"), projects=resume_doc.get("projects"),
+                           referred_by=application.referred_by)
+            cl_text = generate_cover_letter(profile_content, posting.company_name_raw, posting.job_title, jd_text, **cl_args)
+            cl_facts = _cover_letter_facts(profile_content, resume_doc.get("experience"), resume_doc.get("projects"))
+            bad_numbers = unsupported_numbers(cl_text, cl_facts)
+            if bad_numbers:
+                cl_text = generate_cover_letter(
+                    profile_content, posting.company_name_raw, posting.job_title, jd_text, **cl_args,
+                    correction=f"these numbers are not in the evidence: {', '.join(bad_numbers)}. Remove them or use "
+                               "only numbers the evidence states.")
+                bad_numbers = unsupported_numbers(cl_text, cl_facts)
             cl_score = score_cover_letter(cl_text, jd_text)
         except Exception as e:
             raise MatchingServiceError(f"Cover letter generation failed: {e}") from e
@@ -945,7 +1001,7 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
     else:
         # A cover letter is new writing; without an AI provider none is made rather than a template
         # passed off as tailored. An earlier one from an AI run stays as it was.
-        cl_text, cl_score = "", application.cover_letter_score
+        cl_text, cl_score, bad_numbers = "", application.cover_letter_score, []
 
     # Independent check: which JD keywords does the cover letter (a
     # separate LLM call/prompt from the resume loop) actually claim,
@@ -954,6 +1010,7 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
     # subset of what the resume check already found.
     cl_mentioned = [kw for kw in initial_missing if kw.lower() in cl_text.lower()]
     cl_unsupported = _find_unsupported_keywords(profile_content, cl_mentioned)
+    cl_unsupported += [f"cover letter number {n}" for n in bad_numbers]  # still invented after one rewrite: a human checks it
     all_unsupported = sorted(set(unsupported) | set(cl_unsupported))
 
     # The tailored resume's keyword score replaces the earlier fit, but the role-type cap still applies:

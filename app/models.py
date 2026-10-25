@@ -330,6 +330,8 @@ class JobApplication(Base):
     recruiter_name = Column(String, nullable=True)
     recruiter_linkedin = Column(String, nullable=True)
     recruiter_email = Column(String, nullable=True)
+    # Who referred the candidate, as the candidate typed it; the cover letter mentions a referral only when this is set.
+    referred_by = Column(String, nullable=True)
 
     applied_at = Column(DateTime, nullable=True)
     rejected_at = Column(DateTime, nullable=True)

@@ -221,14 +221,16 @@ def test_resolve_field_answers_fills_the_real_tailored_cover_letter_text(db, set
     _set_profile(db, _profile())
     company = make_company(db)
     application = make_application(db, make_posting(db, company), status="Approved")
-    db.add(TailoredDocument(application_id=application.id, document_type="cover_letter", content="Dear Hiring Manager, ..."))
+    db.add(TailoredDocument(application_id=application.id, document_type="cover_letter", content="I build pipelines."))
     db.commit()
 
     answers = extension_service.resolve_field_answers(db, application.id, [
         {"field_id": "f1", "label": "Cover Letter"},
     ])
 
-    assert answers == {"f1": "Dear Hiring Manager, ..."}
+    # The stored body is pasted with the same greeting and sign-off every other format gets.
+    name = _profile()["name"]
+    assert answers == {"f1": f"Dear Hiring Manager,\n\nI build pipelines.\n\nSincerely,\n{name}"}
 
 
 def test_resolve_field_answers_never_guesses_an_unrecognized_question(db, settings):

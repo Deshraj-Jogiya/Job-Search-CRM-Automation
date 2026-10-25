@@ -49,6 +49,7 @@ from ..services import (
     behavioral_story_service,
     confirmation_service,
     contact_discovery_service,
+    cover_letter_service,
     docx_generator,
     document_render_service,
     intake_service,
@@ -796,7 +797,8 @@ def download_tailored_document(application_id: int, document_type: str, inline: 
         .filter(TailoredDocument.application_id == application_id, TailoredDocument.document_type == "resume")
         .first()
     )
-    candidate_name = json.loads(resume_doc.content).get("name", "") if resume_doc else ""
+    resume_content = json.loads(resume_doc.content) if resume_doc else {}
+    candidate_name = resume_content.get("name", "")
 
     if document_type == "resume":
         try:
@@ -804,7 +806,8 @@ def download_tailored_document(application_id: int, document_type: str, inline: 
         except page_fit_service.PageFitExhaustedError as e:
             return _redirect_detail(application_id, error=str(e))
     else:
-        pdf_bytes = document_render_service.render_cover_letter_pdf(doc.content, candidate_name)
+        pdf_bytes = document_render_service.render_cover_letter_pdf(
+            doc.content, candidate_name, resume_content.get("contact"), application.recruiter_name)
 
     filename = document_render_service.standard_document_filename(
         document_type, candidate_name, application.posting.company_name_raw
@@ -848,6 +851,72 @@ def download_tailored_resume_docx(application_id: int, db: Session = Depends(get
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+def _tailored_documents(db: Session, application_id: int):
+    application = (
+        db.query(JobApplication).options(joinedload(JobApplication.posting))
+        .filter(JobApplication.id == application_id).first()
+    )
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+    docs = {d.document_type: d for d in db.query(TailoredDocument).filter(TailoredDocument.application_id == application_id)}
+    return application, docs
+
+
+@router.get("/{application_id}/tailored/cover_letter/download-docx")
+def download_tailored_cover_letter_docx(application_id: int, db: Session = Depends(get_db)):
+    application, docs = _tailored_documents(db, application_id)
+    if "cover_letter" not in docs:
+        return _redirect_detail(application_id, error="Nothing tailored yet -- generate it first.")
+    resume_content = json.loads(docs["resume"].content) if "resume" in docs else {}
+    name = resume_content.get("name", "")
+    letter = cover_letter_service.build_docx(docs["cover_letter"].content, name, resume_content.get("contact"),
+                                             application.recruiter_name)
+    filename = document_render_service.standard_document_filename(
+        "cover_letter", name, application.posting.company_name_raw).replace(".pdf", ".docx")
+    return Response(
+        content=cover_letter_service.docx_bytes(letter),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/{application_id}/tailored/{document_type}/download-txt")
+def download_tailored_document_txt(application_id: int, document_type: str, db: Session = Depends(get_db)):
+    """Plain text of either document, for application forms that only take pasted text."""
+    if document_type not in ("resume", "cover_letter"):
+        raise HTTPException(status_code=404, detail="Unknown document type")
+    application, docs = _tailored_documents(db, application_id)
+    if document_type not in docs:
+        return _redirect_detail(application_id, error="Nothing tailored yet -- generate it first.")
+    resume_content = json.loads(docs["resume"].content) if "resume" in docs else {}
+    name = resume_content.get("name", "")
+    if document_type == "resume":
+        text = cover_letter_service.resume_plain_text(resume_content)
+    else:
+        text = cover_letter_service.plain_text(docs["cover_letter"].content, name, resume_content.get("contact"),
+                                               application.recruiter_name)
+    filename = document_render_service.standard_document_filename(
+        document_type, name, application.posting.company_name_raw).replace(".pdf", ".txt")
+    return Response(content=text, media_type="text/plain; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@router.post("/{application_id}/letter-details")
+def save_letter_details(application_id: int, recruiter_name: str = Form(""), referred_by: str = Form(""),
+                        db: Session = Depends(get_db)):
+    """Who the cover letter is addressed to, and who referred the candidate. The greeting changes at once; a referral
+    appears in the letter's text after the next tailoring."""
+    application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+    application.recruiter_name = recruiter_name.strip()[:120] or None
+    application.referred_by = referred_by.strip()[:120] or None
+    db.commit()
+    message = "Saved. The greeting uses it now"
+    message += "; re-tailor to mention the referral in the letter." if application.referred_by else "."
+    return _redirect_detail(application_id, message=message)
 
 
 @router.post("/{application_id}/interview-prep")
