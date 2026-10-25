@@ -798,7 +798,7 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
     rules = fit_service.rules_fit(profile_content, posting.job_title, jd_text, target_titles)
     # Research on the employer (its own site first), cached per company; empty without Tavily, and not spent on a
     # rules-only run that cannot use it.
-    company_brief = company_research_service.brief_for(db, posting.company) if use_ai else {"facts": []}
+    company_brief = company_research_service.brief_for_posting(db, posting) if use_ai else {"facts": []}
     company_context = company_research_service.prompt_block(company_brief)
     if use_ai:
         try:

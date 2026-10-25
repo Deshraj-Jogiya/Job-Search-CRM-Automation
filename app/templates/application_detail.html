@@ -160,7 +160,7 @@
                 <p class="muted-note">Used to choose which projects lead, the summary's last sentence and the cover letter's reason for applying. Company-site lines are the company's own words.</p>
                 <ul>
                 {% for f in company_research.facts %}
-                    <li><strong>{{ "Company site" if f.own_site else "Outside source" }}:</strong> {{ f.text }} <a href="{{ f.url }}" target="_blank" rel="noopener">source</a></li>
+                    <li><strong>{{ "About this team, " if f.kind == "team" else "" }}{{ ("company site" if f.kind == "team" else "Company site") if f.own_site else ("outside source" if f.kind == "team" else "Outside source") }}:</strong> {{ f.text }} <a href="{{ f.url }}" target="_blank" rel="noopener">source</a></li>
                 {% endfor %}
                 </ul>
             </details>
