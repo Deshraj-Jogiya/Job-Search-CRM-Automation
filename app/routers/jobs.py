@@ -645,6 +645,7 @@ def _build_detail_context(application_id: int, request: Request, db: Session, di
         "match_analysis": match_analysis,
         "resume_doc": resume_doc,
         "cl_doc": cl_doc,
+        "company_research": (json.loads(resume_doc.content).get("company_research") if resume_doc else None),
         "general_prep": general_prep,
         "company_prep": company_prep,
         "process_research": process_research,

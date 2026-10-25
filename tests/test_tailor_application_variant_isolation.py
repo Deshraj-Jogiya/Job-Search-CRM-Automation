@@ -99,7 +99,7 @@ def _tailor_and_get_resume_doc(db, application):
         patch("app.services.resume_rules.get_config", return_value=_config_with_test_project_slugs()),
         patch(
             "app.services.tailoring_service.run_multi_pass_tailoring",
-            side_effect=lambda experience, projects, jd_text: (
+            side_effect=lambda experience, projects, jd_text, company_context="": (
                 _SAME_TAILORED_EXPERIENCE, projects, 90, [], [],
             ),
         ),

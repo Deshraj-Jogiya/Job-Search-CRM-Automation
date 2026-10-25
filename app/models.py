@@ -110,6 +110,10 @@ class Company(Base):
     workable_slug = Column(String, nullable=True)
     smartrecruiters_slug = Column(String, nullable=True)  # SmartRecruiters' own "company identifier", not a URL slug
     board_slugs_checked_at = Column(DateTime, nullable=True)
+    # Company research for tailoring (company_research_service): the brief is JSON {domain, facts: [{text, url, own_site}]}.
+    website_domain = Column(String, nullable=True)
+    research_brief = Column(Text, nullable=True)
+    researched_at = Column(DateTime, nullable=True)
 
     # H-1B sponsorship signal, sourced from the USCIS H-1B Employer Data
     # Hub CSV (see ingest/sponsors.py). Null on every one of these columns

@@ -28,7 +28,7 @@ from ..models import JobApplication, ProfileVariant, SearchKeyword, TailoredDocu
 from .activity_logger import log_activity, log_exception
 from .llm import get_llm_provider, llm_available, parse_json_response
 from .matching_service import MatchingServiceError, get_profile_content_for_application
-from . import fit_service, resume_rules
+from . import company_research_service, fit_service, resume_rules
 from .scoring_service import recompute_score_breakdown
 
 TARGET_ATS_SCORE = 90
@@ -102,7 +102,7 @@ _GENERIC_OFFICE_TOOLS = {
 _FINAL_STATUSES = ("Applied", "Approved", "Rejected", "Interviewing", "Offer", "Not Selected")
 
 
-def _tailor_experience_and_projects_pass(experience: list, projects: list, jd_text: str) -> dict:
+def _tailor_experience_and_projects_pass(experience: list, projects: list, jd_text: str, company_context: str = "") -> dict:
     """Rewrites experience bullets AND selects + rewrites whichever
     projects are genuinely relevant to this JD -- one unified pass
     instead of two disconnected ones. Project selection is relevance-
@@ -136,7 +136,9 @@ def _tailor_experience_and_projects_pass(experience: list, projects: list, jd_te
             "fixed count -- include as many or as few as are actually strong matches (up to 3). A project "
             "belongs in the selection because its real technologies or outcomes would matter to whoever "
             "reads this JD, not to hit a target number. Rewrite each selected project into 3 concise, "
-            "metrics-driven bullets using the same real-evidence-only rules as experience above.\n\n"
+            "metrics-driven bullets using the same real-evidence-only rules as experience above. When COMPANY "
+            "CONTEXT is given, prefer the projects and bullets closest to what this company builds (its products, "
+            "customers and technology), and list the selected projects most relevant first.\n\n"
             "Write for an ATS resume checker. Every bullet should name a concrete result: keep each figure "
             "(count, percentage, size, duration) that the source bullet already states, exactly as written, and "
             "lead with the bullets that carry one. If a source bullet has no figure, you may use a number only "
@@ -150,6 +152,7 @@ def _tailor_experience_and_projects_pass(experience: list, projects: list, jd_te
             f"Original Experience:\n{json.dumps(experience, indent=2)}\n\n"
             f"Original Projects:\n{json.dumps(projects, indent=2)}\n\n"
             f"Job Description:\n{jd_text}\n\n"
+            + (f"{company_context}\n\n" if company_context else "") +
             "Respond with EXACTLY this JSON shape:\n"
             "{\n"
             '  "experience": [{"role": "...", "company": "...", "location": "...", "date": "...", "bullets": ["...", "..."]}],\n'
@@ -350,7 +353,8 @@ def _correct_fabricated_content_pass(
     }
 
 
-def run_multi_pass_tailoring(experience: list, projects: list, jd_text: str) -> tuple[list, list, int, list, list]:
+def run_multi_pass_tailoring(experience: list, projects: list, jd_text: str,
+                             company_context: str = "") -> tuple[list, list, int, list, list]:
     """The real tailor -> verify -> refine loop. Returns
     (final_experience, final_projects, final_score,
     initial_missing_keywords, remaining_missing_keywords) -- the score
@@ -365,7 +369,7 @@ def run_multi_pass_tailoring(experience: list, projects: list, jd_text: str) -> 
     experience bullet or a project bullet, and project selection is
     relevance-driven (not a fixed count) so a candidate's strongest
     project evidence for THIS JD isn't permanently capped out."""
-    tailored = _tailor_experience_and_projects_pass(experience, projects, jd_text)
+    tailored = _tailor_experience_and_projects_pass(experience, projects, jd_text, company_context)
     tailored_experience, tailored_projects = tailored["experience"], tailored["projects"]
     verification = _verify_ats_score(tailored_experience, tailored_projects, jd_text)
     score = int(verification.get("score", 0))
@@ -579,7 +583,7 @@ def _extract_candidate_terms(keyword: str) -> list:
     return terms
 
 
-def _tailor_summary_skills(profile_content: dict, jd_text: str) -> dict:
+def _tailor_summary_skills(profile_content: dict, jd_text: str, company_context: str = "") -> dict:
     """Summary/skills only -- project selection and tailoring now
     happens inside run_multi_pass_tailoring, alongside experience, so
     it can participate in the same JD-keyword refine loop instead of a
@@ -600,8 +604,10 @@ def _tailor_summary_skills(profile_content: dict, jd_text: str) -> dict:
             "that follows it. Sentence 1 says who the candidate is, using the job description's own role title "
             "where the profile supports it, and never a years-of-experience figure the profile does not state. "
             "Sentence 2 gives the strongest measured result from the profile that matters for this job. "
-            "Sentence 3 says what the candidate would bring to this team.\n\n"
+            "Sentence 3 says what the candidate would bring to this team, tied to what the company builds when "
+            "COMPANY CONTEXT is given.\n\n"
             f"Job Description:\n{jd_text}\n\n"
+            + (f"{company_context}\n\n" if company_context else "") +
             "Respond with EXACTLY this JSON shape:\n"
             "{\n"
             '  "summary": "tailored professional summary",\n'
@@ -663,7 +669,8 @@ def _cover_letter_facts(profile_content: dict, experience: list | None, projects
 
 def generate_cover_letter(profile_content: dict, company_name: str, job_title: str, jd_text: str,
                           experience: list | None = None, projects: list | None = None,
-                          referred_by: str | None = None, correction: str | None = None) -> str:
+                          referred_by: str | None = None, correction: str | None = None,
+                          company_context: str = "") -> str:
     """Body paragraphs only; cover_letter_service adds the greeting, date and sign-off. experience and projects are
     the tailored resume's, so the letter cites the same evidence the resume leads with; without them the profile's
     own are used."""
@@ -697,10 +704,12 @@ def generate_cover_letter(profile_content: dict, company_name: str, job_title: s
             f"Target Role: {job_title}\n"
             f"{referral}"
             f"Job Description:\n{jd_text}\n\n"
+            + (f"{company_context}\n\n" if company_context else "") +
             f"Paragraph 1: name the exact role ('{job_title}') and {company_name}. Give one specific reason for "
-            "interest in this company, taken from the job description itself (its product, mission, team or "
-            "problem); never state a company fact that is not in the job description. End the paragraph with one "
-            "sentence saying who the candidate is and what they bring.\n"
+            "interest in this company (its product, customers, mission or an engineering problem), taken from the "
+            "company context or the job description, preferring the company's own words; never state a company "
+            "fact that is in neither. End the paragraph with one sentence saying who the candidate is and what "
+            "they bring to that.\n"
             "Paragraph 2: two concrete examples from the evidence, each matched to a requirement the job "
             "description names, each with its measured result. Use only numbers that appear in the evidence, "
             "exactly as written; never invent, estimate or round one.\n"
@@ -787,12 +796,16 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
     use_ai = llm_available()
     target_titles = [k.keyword for k in db.query(SearchKeyword).filter(SearchKeyword.is_active == True).all()]  # noqa: E712
     rules = fit_service.rules_fit(profile_content, posting.job_title, jd_text, target_titles)
+    # Research on the employer (its own site first), cached per company; empty without Tavily, and not spent on a
+    # rules-only run that cannot use it.
+    company_brief = company_research_service.brief_for(db, posting.company) if use_ai else {"facts": []}
+    company_context = company_research_service.prompt_block(company_brief)
     if use_ai:
         try:
             tailored_experience, tailored_projects, final_score, initial_missing, remaining_missing = run_multi_pass_tailoring(
-                profile_content.get("experience", []), candidate_projects, jd_text
+                profile_content.get("experience", []), candidate_projects, jd_text, company_context
             )
-            extras = _tailor_summary_skills(profile_content, jd_text)
+            extras = _tailor_summary_skills(profile_content, jd_text, company_context)
         except Exception as e:
             raise MatchingServiceError(f"Resume tailoring failed: {e}") from e
     else:
@@ -973,12 +986,15 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
 
     if not use_ai:
         resume_doc["tailoring_method"] = "rules"
+    if company_brief.get("facts"):
+        # Kept with the documents it shaped, so the application page can show what the tailoring knew.
+        resume_doc["company_research"] = {k: company_brief.get(k) for k in ("domain", "facts", "researched_at")}
     _upsert_document(db, application.id, "resume", json.dumps(resume_doc, indent=2), ats_score=final_score)
 
     if use_ai:
         try:
             cl_args = dict(experience=resume_doc.get("experience"), projects=resume_doc.get("projects"),
-                           referred_by=application.referred_by)
+                           referred_by=application.referred_by, company_context=company_context)
             cl_text = generate_cover_letter(profile_content, posting.company_name_raw, posting.job_title, jd_text, **cl_args)
             cl_facts = _cover_letter_facts(profile_content, resume_doc.get("experience"), resume_doc.get("projects"))
             bad_numbers = unsupported_numbers(cl_text, cl_facts)

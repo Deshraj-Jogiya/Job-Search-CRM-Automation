@@ -97,6 +97,14 @@ def _light_company_research(db: Session, company_name: str) -> str:
     """Best-effort, never raises -- an empty string means the
     company-specific prompt falls back to JD-only grounding, same
     graceful-degrade posture as every other optional integration here."""
+    # The research tailoring already did for this company (its own site first), when it is still fresh.
+    from ..models import Company
+    from .company_research_service import RESEARCH_MAX_AGE_DAYS
+    from datetime import timedelta
+    company = db.query(Company).filter(Company.name == company_name).first()
+    if company and company.research_brief and company.researched_at and \
+            utcnow() - company.researched_at < timedelta(days=RESEARCH_MAX_AGE_DAYS):
+        return "\n\n".join(f["text"] for f in json.loads(company.research_brief).get("facts", []))
     if not is_tavily_configured():
         return ""
     try:

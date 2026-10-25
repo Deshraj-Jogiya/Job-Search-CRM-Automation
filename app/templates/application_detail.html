@@ -154,6 +154,17 @@
                 <pre class="json-preview">{{ cl_doc.content }}</pre>
             </details>
             {% endif %}
+            {% if company_research and company_research.facts %}
+            <details class="sub-panel">
+                <summary>What the tailoring knew about {{ posting.company_name_raw }} ({{ company_research.facts|length }} sources{% if company_research.domain %}, site {{ company_research.domain }}{% endif %})</summary>
+                <p class="muted-note">Used to choose which projects lead, the summary's last sentence and the cover letter's reason for applying. Company-site lines are the company's own words.</p>
+                <ul>
+                {% for f in company_research.facts %}
+                    <li><strong>{{ "Company site" if f.own_site else "Outside source" }}:</strong> {{ f.text }} <a href="{{ f.url }}" target="_blank" rel="noopener">source</a></li>
+                {% endfor %}
+                </ul>
+            </details>
+            {% endif %}
             <details class="sub-panel"{% if application.recruiter_name or application.referred_by %} open{% endif %}>
                 <summary>Cover letter: addressee and referral</summary>
                 <form method="post" action="/jobs/{{ application.id }}/letter-details">
