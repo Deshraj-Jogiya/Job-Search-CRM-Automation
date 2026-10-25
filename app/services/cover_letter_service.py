@@ -36,14 +36,39 @@ def letter_date(today: date | None = None) -> str:
     return f"{d.strftime('%B')} {d.day}, {d.year}"
 
 
+_OWN_GREETING_RE = re.compile(r"^(dear|hello|hi|to whom)\b.{0,80}$", re.IGNORECASE)
+_OWN_CLOSING_RE = re.compile(r"^(sincerely|best regards|kind regards|warm regards|regards|respectfully|best|thank you)[,.!]?$",
+                             re.IGNORECASE)
+
+
+def letter_parts(body: str, recipient_name: str | None = None) -> tuple[str, list[str]]:
+    """(greeting line, body paragraphs). Letters written before the frame existed, or by hand, carry their own
+    greeting and sign-off: the sign-off is dropped so it is not printed twice, and their own greeting ("Dear Loenbro
+    Hiring Team,") is kept unless an addressee has been saved for the application."""
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", body or "") if p.strip()]
+    own_greeting = None
+    if paragraphs:
+        first, _, rest = paragraphs[0].partition("\n")
+        if _OWN_GREETING_RE.match(first.strip()):
+            own_greeting = first.strip()
+            paragraphs = ([rest.strip()] if rest.strip() else []) + paragraphs[1:]
+    for i, paragraph in enumerate(paragraphs):
+        if _OWN_CLOSING_RE.match(paragraph.splitlines()[0].strip()):
+            paragraphs = paragraphs[:i]
+            break
+    if (recipient_name or "").strip() or not own_greeting:
+        return greeting(recipient_name), paragraphs
+    return own_greeting, paragraphs
+
+
 def body_paragraphs(body: str) -> list[str]:
-    return [p.strip() for p in re.split(r"\n\s*\n", body or "") if p.strip()]
+    return letter_parts(body)[1]
 
 
 def full_text(body: str, candidate_name: str, recipient_name: str | None = None) -> str:
     """Greeting, body and sign-off: what gets pasted into an application form's cover-letter box."""
-    parts = [greeting(recipient_name)] + body_paragraphs(body) + [f"{CLOSING}\n{candidate_name or ''}".rstrip()]
-    return "\n\n".join(parts)
+    salutation, paragraphs = letter_parts(body, recipient_name)
+    return "\n\n".join([salutation] + paragraphs + [f"{CLOSING}\n{candidate_name or ''}".rstrip()])
 
 
 def plain_text(body: str, candidate_name: str, contact: dict | None = None, recipient_name: str | None = None,
@@ -66,8 +91,9 @@ def build_docx(body: str, candidate_name: str, contact: dict | None = None, reci
     if line:
         doc.add_paragraph(line)
     doc.add_paragraph(letter_date(today))
-    doc.add_paragraph(greeting(recipient_name))
-    for paragraph in body_paragraphs(body):
+    salutation, paragraphs = letter_parts(body, recipient_name)
+    doc.add_paragraph(salutation)
+    for paragraph in paragraphs:
         doc.add_paragraph(paragraph)
     doc.add_paragraph(CLOSING)
     doc.add_paragraph(candidate_name or "")

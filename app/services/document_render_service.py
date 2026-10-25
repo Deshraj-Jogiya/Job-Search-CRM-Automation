@@ -615,9 +615,10 @@ def render_cover_letter_pdf(cover_letter_text: str, candidate_name: str, contact
     flow = [Paragraph(_esc(candidate_name or ""), _name_style)]
     for line in _contact_lines(contact or {}):
         flow.append(Paragraph(line, _contact_style))
+    salutation, paragraphs = cover_letter_service.letter_parts(cover_letter_text, recipient_name)
     flow += [Spacer(1, 14), Paragraph(_esc(cover_letter_service.letter_date(today)), _body_style), Spacer(1, 10),
-             Paragraph(_esc(cover_letter_service.greeting(recipient_name)), _body_style), Spacer(1, 8)]
-    for paragraph in cover_letter_service.body_paragraphs(cover_letter_text):
+             Paragraph(_esc(salutation), _body_style), Spacer(1, 8)]
+    for paragraph in paragraphs:
         # Escape first, then insert our own literal <br/> markup --
         # doing it in this order means the <br/> tags we add can
         # never themselves get escaped away.

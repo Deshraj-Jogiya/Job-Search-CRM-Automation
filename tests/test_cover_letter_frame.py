@@ -32,6 +32,14 @@ class TestFrame:
         assert text.startswith("Dear Hiring Manager,\n\nFirst paragraph.")
         assert text.endswith("Third paragraph.\n\nSincerely,\nTest Candidate")
 
+    def test_a_letter_with_its_own_greeting_and_signoff_is_framed_once(self):
+        # The shape of the hand-written letters already stored (2026-10): own greeting, own sign-off.
+        own = "Dear Loenbro Hiring Team,\n\nFirst paragraph.\n\nThank you for your time.\n\nSincerely,\nTest Candidate"
+        text = cover_letter_service.full_text(own, "Test Candidate")
+        assert text == ("Dear Loenbro Hiring Team,\n\nFirst paragraph.\n\nThank you for your time.\n\n"
+                        "Sincerely,\nTest Candidate")
+        assert cover_letter_service.full_text(own, "Test Candidate", "Jordan Lee").startswith("Dear Jordan Lee,\n\nFirst")
+
     def test_plain_text_has_contact_line_and_date(self):
         text = cover_letter_service.plain_text(BODY, "Test Candidate", CONTACT, "Jordan Lee", today=date(2026, 10, 25))
         lines = text.splitlines()
