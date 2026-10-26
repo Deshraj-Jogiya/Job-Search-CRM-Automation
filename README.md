@@ -63,6 +63,8 @@ genuinely free at personal-job-search volume, full stop — this isn't
 a "free tier that quietly funnels you to paid" table, every row above
 is actually sufficient on its own.
 
+Measured results, each with the question, the test and the decision: [docs/FINDINGS.md](docs/FINDINGS.md).
+
 ## Quick start
 
 ```bash
