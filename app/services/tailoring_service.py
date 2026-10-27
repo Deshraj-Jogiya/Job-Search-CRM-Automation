@@ -28,7 +28,7 @@ from ..models import JobApplication, ProfileVariant, SearchKeyword, TailoredDocu
 from .activity_logger import log_activity, log_exception
 from .llm import get_llm_provider, llm_available, parse_json_response
 from .matching_service import MatchingServiceError, get_profile_content_for_application
-from . import company_research_service, fit_service, resume_rules
+from . import company_research_service, demo_usage_service, fit_service, resume_rules
 from .scoring_service import recompute_score_breakdown
 
 TARGET_ATS_SCORE = 90
@@ -816,6 +816,7 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
         extras = {"summary": profile_content.get("summary"), "skills": reordered_skills}
         final_score = rules["skills"]["score"] or 0
         initial_missing = remaining_missing = []
+        demo_usage_service.record_simulated_run(db, "tailor")
 
     resolved_keywords = [kw for kw in initial_missing if kw not in remaining_missing]
     unsupported = _find_unsupported_keywords(profile_content, resolved_keywords)

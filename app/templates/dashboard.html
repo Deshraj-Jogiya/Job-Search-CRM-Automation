@@ -105,8 +105,10 @@
     <h2>{{ "Sample LLM Usage" if showcase_mode else "Real LLM Usage" }}</h2>
     {% if showcase_mode %}
     <p class="muted-note">
-        Sample usage history for the demo candidate. On your own instance these are the real token counts from each
-        API response, with the cost computed from the app's pricing table.
+        Sample usage history for the demo candidate. The demo makes no AI calls, so each score, tailoring run or
+        outreach draft you start here adds the calls the same action makes on a real instance (scoring 1, tailoring 5,
+        a draft 1), with token counts drawn from the live deployment's own usage and priced from the app's pricing
+        table. On your own instance these are the real token counts from each API response.
     </p>
     {% else %}
     <p class="muted-note">

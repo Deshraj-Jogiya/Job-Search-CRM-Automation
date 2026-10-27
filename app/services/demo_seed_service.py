@@ -407,6 +407,9 @@ def seed_demo_data(db: Session) -> bool:
 
     settings = get_or_create_settings(db)
     settings.automation_enabled = False
+    from .demo_intake_service import ensure_demo_search_settings
+
+    ensure_demo_search_settings(db)
 
     companies = {}
     for name, field, slug, tier, approvals in _COMPANIES:

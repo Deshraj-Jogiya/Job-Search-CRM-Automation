@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 
 from ..database import utcnow
 from ..models import JobApplication, OutreachMessage
+from . import demo_usage_service
 from .activity_logger import log_activity
 from .email_utils import is_smtp_configured, send_email
 from .llm import get_llm_provider, llm_available
@@ -175,6 +176,8 @@ def draft_outreach_message(
         body = _draft_note_text(profile_content, posting, recipient_name, channel, context_note)
     except Exception as e:
         raise OutreachServiceError(f"Drafting failed: {e}") from e
+    if not llm_available():
+        demo_usage_service.record_simulated_run(db, "outreach")
 
     subject = (
         f"Interested in the {posting.job_title} role at {posting.company_name_raw}"

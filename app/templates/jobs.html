@@ -23,6 +23,23 @@
     /jobs/kanban still works, it redirects here with ?tab=board (see
     jobs.py), so no existing link/bookmark breaks.
 #}
+{% if showcase_mode %}
+<section class="settings-panel">
+    <div class="variant-header">
+        <h2>Run a job search</h2>
+        <form method="post" action="/jobs/intake/run" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit">Search now</button>
+        </form>
+    </div>
+    <p class="muted-note">
+        On a real instance this polls company job boards (Greenhouse, Lever, Ashby and four more) and job aggregators.
+        The demo pulls a few sample postings instead and puts them through the same steps: search keywords, seniority
+        and location filters, duplicate check, then scoring by the rules. Each run also adds the AI calls a real run
+        would make to the usage card on the dashboard.
+    </p>
+</section>
+{% endif %}
 <details class="settings-panel add-job-panel"{{ " open" if showcase_mode }}>
     <summary><strong>Add a job by pasting it</strong> <span class="muted-note">-- see how this profile fits any posting</span></summary>
     <form method="post" action="/jobs/add" class="add-job-form">

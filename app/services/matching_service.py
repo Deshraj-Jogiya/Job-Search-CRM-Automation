@@ -15,7 +15,7 @@ import json
 from sqlalchemy.orm import Session
 
 from ..models import JobApplication, ProfileVariant, ProfileVersion, SearchKeyword
-from . import fit_service, resume_rules
+from . import demo_usage_service, fit_service, resume_rules
 from .activity_logger import log_activity
 from .llm import get_llm_provider, llm_available, parse_json_response
 from .scoring_service import recompute_score_breakdown
@@ -168,6 +168,7 @@ def score_application(db: Session, application_id: int) -> JobApplication:
         visa = "Sponsors" if posting.sponsorship_signal else ("No Sponsorship" if posting.sponsorship_blocked else "Unknown")
         result = fit_service.analysis_from_rules(rules, visa)
         result["fit_cap_reason"] = rules["cap_reason"]
+        demo_usage_service.record_simulated_run(db, "score")
     result["evidence"] = {"role": rules["role"], "skills": rules["skills"], "years": rules["years"],
                           "rules_score": rules["score"]}
 

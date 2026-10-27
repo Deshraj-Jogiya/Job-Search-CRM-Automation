@@ -42,6 +42,7 @@ from ..models import (
     TailoredDocument,
     get_or_create_settings,
 )
+from ..app_mode import is_showcase_mode
 from ..services.llm import AI_REQUIRED_MESSAGE, llm_available
 from ..services import (
     adaptation_service,
@@ -325,6 +326,11 @@ def add_job_by_paste(
 
 @router.post("/intake/run")
 def run_intake_now(db: Session = Depends(get_db)):
+    if is_showcase_mode():
+        from ..services import demo_intake_service
+
+        counts = demo_intake_service.run_simulated_intake(db)
+        return _redirect(message="Sample intake run: " + demo_intake_service.summary_text(counts))
     settings = get_or_create_settings(db)
     if not settings.automation_enabled:
         return _redirect(error="Automation is currently disabled -- enable it first (toggle on the dashboard).")
@@ -757,7 +763,9 @@ def tailor_application_now(application_id: int, db: Session = Depends(get_db)):
         return _redirect_detail(application_id, error=f"Application is '{application.status}' -- can't re-tailor a finalized application.")
     threading.Thread(target=_tailor_in_background, args=(application_id,), daemon=True).start()
     return _redirect_detail(
-        application_id, message="Tailoring started -- this runs several AI passes, refresh in ~30-60s."
+        application_id,
+        message=("Tailoring started -- this runs several AI passes, refresh in ~30-60s." if llm_available()
+                 else "Tailoring started -- reordering the profile for this posting, refresh in a few seconds."),
     )
 
 

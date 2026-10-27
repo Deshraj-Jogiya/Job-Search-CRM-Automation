@@ -708,7 +708,8 @@ def _find_matching_posting(db: Session, company_id: int, raw) -> tuple[JobPostin
         if exact:
             return exact, False
 
-    exact_url = db.query(JobPosting).filter(JobPosting.job_url == raw.job_url).first()
+    # A listing with no URL must not match every other URL-less posting.
+    exact_url = db.query(JobPosting).filter(JobPosting.job_url == raw.job_url).first() if raw.job_url else None
     if exact_url:
         return exact_url, False
 
