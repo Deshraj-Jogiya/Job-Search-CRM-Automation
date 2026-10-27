@@ -273,3 +273,11 @@ def test_component_courses_stay_in_the_profile_but_are_never_listed_separately()
     plan = resume_rules.plan_certification_section([DATA_CERT, course], DATA_JD, STRONG)
     shown = plan["lines"] + plan["additional"] + [e["name"] for e in plan["entries"]]
     assert not any("Databases and SQL" in s for s in shown)
+
+
+def test_a_mention_line_does_not_repeat_an_issuer_already_in_the_name():
+    # Live 2026-10-25: "Guinness World Record - AI Training Hackathon (Kanz) (Kanz), Jul 2026"
+    entry = {"name": "AI Training Hackathon (Kanz)", "issuer": "Kanz", "status": "Completed", "date": "Jul 2026", "bullets": []}
+    assert resume_rules.certification_mention_line(entry) == "AI Training Hackathon (Kanz), Jul 2026"
+    plain = {"name": "Generative AI Mastermind", "issuer": "Outskill", "status": "Completed", "date": "Oct 2025", "bullets": []}
+    assert resume_rules.certification_mention_line(plain) == "Generative AI Mastermind (Outskill), Oct 2025"

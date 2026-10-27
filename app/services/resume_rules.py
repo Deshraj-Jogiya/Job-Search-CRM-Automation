@@ -850,7 +850,8 @@ def certification_mention_line(entry: dict) -> str:
     e = normalize_certification(entry)
     issuer = (e.get("issuer") or "").split("|")[0].strip()
     tail = "in progress" if e["status"] == "In progress" else (e.get("date") or "")
-    head = f"{e['name']} ({issuer})" if issuer else e["name"]
+    # a name that already carries its issuer ("... Hackathon (Kanz)") is not given it twice
+    head = f"{e['name']} ({issuer})" if issuer and issuer.lower() not in e["name"].lower() else e["name"]
     return f"{head}, {tail}" if tail else head
 
 
