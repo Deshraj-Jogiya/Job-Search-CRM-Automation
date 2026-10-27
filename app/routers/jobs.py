@@ -22,6 +22,7 @@ one misclick away.
 import io
 import json
 import threading
+from datetime import timedelta
 from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
@@ -29,7 +30,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
-from ..database import SessionLocal, get_db
+from ..database import SessionLocal, get_db, utcnow
 from ..models import (
     Company,
     JobApplication,
@@ -598,6 +599,9 @@ def review_bulk_reject(application_ids: list[int] = Form(...), db: Session = Dep
     return RedirectResponse(url=f"/jobs/review?message={quote(message)}", status_code=303)
 
 
+FOLLOWUP_DAYS = (4, 10)
+
+
 def _build_detail_context(application_id: int, request: Request, db: Session, discovered_contacts=None) -> dict:
     application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
     if not application:
@@ -621,6 +625,10 @@ def _build_detail_context(application_id: int, request: Request, db: Session, di
         .order_by(OutreachMessage.created_at.desc())
         .all()
     )
+    # The cadence the networking guidance follows: a follow-up on day 4 and day 10 after sending, then stop.
+    now = utcnow()
+    followup_dates = {m.id: [(m.sent_at + timedelta(days=d), m.sent_at + timedelta(days=d) <= now) for d in FOLLOWUP_DAYS]
+                      for m in outreach_messages if m.status == "Sent" and m.sent_at}
 
     active_prep = application.active_interview_prep
     general_prep = json.loads(active_prep.general_prep_json) if (
@@ -660,7 +668,8 @@ def _build_detail_context(application_id: int, request: Request, db: Session, di
         "interview_prep": active_prep,
         "prep_versions": prep_versions,
         "outreach_messages": outreach_messages,
-        "discovery_available": contact_discovery_service.is_tavily_configured(),
+        "followup_dates": followup_dates,
+        "discovery_available": is_showcase_mode() or contact_discovery_service.is_tavily_configured(),
         "discovered_contacts": discovered_contacts,
         "autofill_supported": autofill_service.is_supported(application.posting.source),
         "autofill_supported_sources": autofill_service.supported_sources(),
@@ -720,6 +729,18 @@ def discover_outreach_contacts(application_id: int, request: Request, db: Sessio
     application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
     if not application:
         raise HTTPException(status_code=404, detail="Application not found")
+
+    if is_showcase_mode():
+        from ..services import demo_networking_service
+
+        try:
+            profile_content, _ = matching_service.get_profile_content_for_application(db, application)
+        except matching_service.MatchingServiceError:
+            profile_content = None
+        discovered = demo_networking_service.discover(application.posting.company_name_raw,
+                                                      application.posting.job_title, profile_content)
+        return render(request, "application_detail.html",
+                      _build_detail_context(application_id, request, db, discovered_contacts=discovered))
 
     if not contact_discovery_service.is_tavily_configured():
         context = _build_detail_context(application_id, request, db)

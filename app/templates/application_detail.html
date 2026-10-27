@@ -550,7 +550,10 @@
                     </form>
                 </div>
                 {% elif msg.status == "Sent" %}
-                <p class="muted-note">Sent {{ msg.sent_at.strftime("%Y-%m-%d %H:%M") }} UTC.</p>
+                <p class="muted-note">Sent {{ msg.sent_at.strftime("%Y-%m-%d %H:%M") }} UTC.
+                    {% if followup_dates.get(msg.id) %}No reply? Follow up
+                    {% for when, due in followup_dates[msg.id] %}{{ when.strftime("%b %d") }}{% if due %} (due){% endif %}{{ " and " if not loop.last }}{% endfor %},
+                    each adding something new, then stop.{% endif %}</p>
                 {% endif %}
             </div>
             {% endfor %}

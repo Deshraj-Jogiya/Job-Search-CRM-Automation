@@ -188,7 +188,9 @@ def test_ai_only_routes_say_so_instead_of_failing(db, monkeypatch, path, form):
     from app.csrf import CSRF_COOKIE_NAME
     from app.main import app as web_app
 
-    monkeypatch.setenv("APP_MODE", "showcase")
+    # An instance with no AI provider says so; the showcase runs the same button by rules instead (see
+    # test_demo_networking_and_profile_helpers.py).
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     client = TestClient(web_app)
     client.get("/how-scoring-works")
     token = client.cookies.get(CSRF_COOKIE_NAME)
@@ -196,6 +198,10 @@ def test_ai_only_routes_say_so_instead_of_failing(db, monkeypatch, path, form):
     assert response.status_code == 303
     assert "error=" in response.headers["location"] and "AI%20provider" in response.headers["location"]
     assert db.query(models.ResearchAgentQuery).count() == 0
+
+    monkeypatch.setenv("APP_MODE", "showcase")
+    response = client.post(path, data={**form, "csrf_token": token}, follow_redirects=False)
+    assert "message=" in response.headers["location"] and "rules" in response.headers["location"]
 
 
 def test_showcase_answers_dashboard_questions_by_rules(db, monkeypatch):

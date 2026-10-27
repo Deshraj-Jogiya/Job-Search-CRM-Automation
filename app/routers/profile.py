@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
+from ..app_mode import is_showcase_mode
 from ..database import get_db
 from ..models import BehavioralStory, ProfileVariant
 from ..services.llm import AI_REQUIRED_MESSAGE, llm_available
@@ -286,6 +287,15 @@ def sync_portfolio(variant_id: int, db: Session = Depends(get_db)):
 
 @router.post("/variants/{variant_id}/linkedin-import")
 def linkedin_import(variant_id: int, pasted_text: str = Form(...), db: Session = Depends(get_db)):
+    if not llm_available() and is_showcase_mode():
+        from ..services import demo_profile_helpers
+
+        if not pasted_text.strip():
+            return _redirect(error="Pasted LinkedIn text is empty.")
+        version = profile_service.get_active_version(db, variant_id)
+        demo_profile_helpers.propose_linkedin_skills(db, variant_id, json.loads(version.content_json) if version else {},
+                                                     pasted_text)
+        return _redirect(message="Skills from the paste proposed by rules -- review and approve below.")
     if not llm_available():
         return _redirect(error=AI_REQUIRED_MESSAGE)
     try:
@@ -315,6 +325,16 @@ def reject_version(version_id: int, db: Session = Depends(get_db)):
 
 @router.post("/variants/{variant_id}/behavioral-stories/generate")
 def generate_behavioral_stories(variant_id: int, db: Session = Depends(get_db)):
+    if not llm_available() and is_showcase_mode():
+        from ..services import demo_profile_helpers
+
+        version = profile_service.get_active_version(db, variant_id)
+        if not version:
+            return _redirect(error="This profile variant has no active version yet.")
+        stories = demo_profile_helpers.draft_stories(db, variant_id, json.loads(version.content_json))
+        if not stories:
+            return _redirect(message="No new story drafts: every experience bullet with a number already has one.")
+        return _redirect(message=f"Drafted {len(stories)} story skeletons by rules -- add your own words, then confirm.")
     if not llm_available():
         return _redirect(error=AI_REQUIRED_MESSAGE)
     try:

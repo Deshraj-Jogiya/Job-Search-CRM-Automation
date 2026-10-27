@@ -113,8 +113,9 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <label class="visually-hidden" for="linkedin-paste-{{ variant.id }}">LinkedIn profile export text</label>
             <textarea id="linkedin-paste-{{ variant.id }}" name="pasted_text" rows="8" placeholder="Paste your LinkedIn profile export / copied text here..." required></textarea>
-            <button type="submit" {{ "" if ai_available else "disabled" }}>Propose Diff</button>
-            {% if not ai_available %}<span class="muted-note">Needs an AI provider, none configured here.</span>{% endif %}
+            <button type="submit" {{ "" if ai_available or showcase_mode else "disabled" }}>Propose Diff</button>
+            {% if showcase_mode and not ai_available %}<span class="muted-note">On this demo it runs by rules: it adds only the skills listed under the paste's Skills heading.</span>
+            {% elif not ai_available %}<span class="muted-note">Needs an AI provider, none configured here.</span>{% endif %}
         </form>
     </details>
 
@@ -292,8 +293,9 @@
         </p>
         <form method="post" action="/profile/variants/{{ variant.id }}/behavioral-stories/generate" class="inline-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button type="submit" {{ "" if ai_available else "disabled" }}>{{ "Draft More Stories" if entry.behavioral_stories else "Draft Stories From Profile" }}</button>
-            {% if not ai_available %}<span class="muted-note">Needs an AI provider, none configured here.</span>{% endif %}
+            <button type="submit" {{ "" if ai_available or showcase_mode else "disabled" }}>{{ "Draft More Stories" if entry.behavioral_stories else "Draft Stories From Profile" }}</button>
+            {% if showcase_mode and not ai_available %}<span class="muted-note">On this demo it runs by rules: a skeleton from each experience bullet with a number, for you to finish in your own words.</span>
+            {% elif not ai_available %}<span class="muted-note">Needs an AI provider, none configured here.</span>{% endif %}
         </form>
         {% if entry.behavioral_stories %}
         {% for story in entry.behavioral_stories %}
