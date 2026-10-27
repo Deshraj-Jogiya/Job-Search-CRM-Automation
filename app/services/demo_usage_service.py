@@ -24,6 +24,9 @@ _OPERATIONS = {
     # generate_interview_prep: process research, general + company prep, round outline, then Q&A per round (3 here).
     "interview_prep": [((3000, 6000), (500, 1200)), ((4000, 8000), (600, 1400)), ((3500, 7000), (400, 900)),
                        ((5000, 12000), (1200, 2400)), ((5000, 12000), (1200, 2400)), ((5000, 12000), (1200, 2400))],
+    # mock_interview_service: the interviewer's next line, and the debrief (transcript + full profile in).
+    "mock_turn": [((1500, 4000), (60, 200))],
+    "mock_debrief": [((6000, 12000), (1200, 2600))],
     # _draft_note_text: a connection note or a short email.
     "outreach": [((1800, 3200), (80, 260))],
 }

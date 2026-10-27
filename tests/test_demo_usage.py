@@ -120,3 +120,41 @@ class TestRulePrep:
         for prep in db.query(models.InterviewPrep):
             context = _json.loads(prep.company_prep_json)["company_context"]
             assert context in prep.application.posting.job_description
+
+
+class TestRuleMockInterview:
+    def _start(self, db, monkeypatch):
+        from app.services import demo_prep_service, mock_interview_service as mis
+        monkeypatch.setenv("APP_MODE", "showcase")
+        seed_demo_data(db)
+        app = _scoreable(db)
+        demo_prep_service.generate_rule_prep(db, app.id)
+        return mis, app, mis.start_session(db, app.id, "Technical: pipeline design", "guided")
+
+    def test_follow_ups_ask_for_what_the_answer_lacks(self, db, monkeypatch):
+        from app.services import demo_mock_interview as dm
+        mis, app, session = self._start(db, monkeypatch)
+        calls, *_ = _usage(db)
+        turn = mis.submit_answer(db, session.id, "I used it a lot.")
+        assert turn.content == dm.FOLLOW_UPS["short"] and turn.is_followup
+        long_no_number = "I built the ingestion layer and owned the schedule and the alerts. " * 6
+        turn = mis.submit_answer(db, session.id, long_no_number)
+        assert not turn.is_followup  # never two follow-ups in a row
+        turn = mis.submit_answer(db, session.id, long_no_number)
+        assert turn.content == dm.FOLLOW_UPS["no_number"]
+        assert _usage(db)[0] == calls + 3
+
+    def test_debrief_checks_numbers_against_the_profile(self, db, monkeypatch):
+        mis, app, session = self._start(db, monkeypatch)
+        good = ("I own ingestion pipelines processing roughly 500GB/day across 12 upstream sources in Airflow, and I "
+                "cut the nightly batch from 4 hours to 45 minutes by moving it to an incremental model that I designed.")
+        made_up = good.replace("500GB", "900GB")
+        mis.submit_answer(db, session.id, good)
+        mis.submit_answer(db, session.id, made_up)
+        done = mis.end_session(db, session.id)
+        import json as _json
+        d = _json.loads(done.debrief_json)
+        assert done.status == "completed" and d["scored_by_rules"]
+        assert any("900" in n for n in d["accuracy_notes"]) and not any("500" in n for n in d["accuracy_notes"])
+        assert d["scorecard"]["content_accuracy"] == 4
+        assert set(d["scorecard"].values()) <= {1, 2, 3, 4, 5}

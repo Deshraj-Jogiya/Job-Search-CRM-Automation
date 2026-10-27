@@ -47,8 +47,9 @@
             or stored; all analysis runs in your browser and only small numbers (not video) ever reach the app.
         </p>
 
-        <button type="submit" {{ "" if ai_available else "disabled" }}>Start Practice Session</button>
-        {% if not ai_available %}<span class="muted-note">Needs an AI provider, none configured here.</span>{% endif %}
+        <button type="submit" {{ "" if ai_available or showcase_mode else "disabled" }}>Start Practice Session</button>
+        {% if showcase_mode %}<span class="muted-note">In this demo the interviewer follows the prep's questions and picks follow-ups by rules; the debrief is scored by rules too.</span>
+        {% elif not ai_available %}<span class="muted-note">Needs an AI provider, none configured here.</span>{% endif %}
     </form>
     {% endif %}
 </section>

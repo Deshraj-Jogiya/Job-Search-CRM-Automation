@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
+from ..app_mode import is_showcase_mode
 from ..database import get_db
 from ..models import JobApplication, MockInterviewSession
 from ..services.llm import AI_REQUIRED_MESSAGE, llm_available
@@ -67,7 +68,7 @@ def start_mock_interview(
     camera_enabled: bool = Form(False),
     db: Session = Depends(get_db),
 ):
-    if not llm_available():
+    if not llm_available() and not is_showcase_mode():
         return _redirect(application_id, error=AI_REQUIRED_MESSAGE)
     try:
         session = mock_interview_service.start_session(db, application_id, round_name, tier, camera_enabled)
@@ -113,7 +114,7 @@ def respond_mock_interview(
     longest_pause_seconds: float = Form(0),
     db: Session = Depends(get_db),
 ):
-    if not llm_available():
+    if not llm_available() and not is_showcase_mode():
         return RedirectResponse(
             url=f"/jobs/{application_id}/mock-interview/{session_id}?error={quote(AI_REQUIRED_MESSAGE)}", status_code=303
         )
@@ -146,7 +147,7 @@ def end_mock_interview(
     movement_events: int = Form(0),
     db: Session = Depends(get_db),
 ):
-    if not llm_available():
+    if not llm_available() and not is_showcase_mode():
         return RedirectResponse(
             url=f"/jobs/{application_id}/mock-interview/{session_id}?error={quote(AI_REQUIRED_MESSAGE)}", status_code=303
         )

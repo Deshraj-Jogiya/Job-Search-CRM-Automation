@@ -61,7 +61,8 @@ from ..database import utcnow
 from ..models import InterviewPrep, JobApplication, MockInterviewSession, MockInterviewTurn
 from .activity_logger import log_activity
 from .interview_prep_service import InterviewPrepServiceError, resolve_grounding_profile
-from .llm import get_llm_provider, parse_json_response
+from . import demo_mock_interview, demo_usage_service
+from .llm import get_llm_provider, llm_available, parse_json_response
 
 
 class MockInterviewServiceError(Exception):
@@ -252,6 +253,18 @@ def submit_answer(
         if should_consider_wrap else ""
     )
 
+    if not llm_available():
+        last = turns[-2] if len(turns) >= 2 else None
+        decision = demo_mock_interview.next_line(candidate_answer, bool(last and last.is_followup), turns_so_far,
+                                                 remaining_pool)
+        demo_usage_service.record_simulated_run(db, "mock_turn")
+        interviewer_turn = MockInterviewTurn(session_id=session.id, turn_index=next_index + 1, speaker="interviewer",
+                                             content=decision["next_line"], is_followup=decision["is_followup"])
+        db.add(interviewer_turn)
+        db.commit()
+        db.refresh(interviewer_turn)
+        return interviewer_turn
+
     llm = get_llm_provider()
     raw = llm.complete_json(
         system=(
@@ -354,6 +367,13 @@ def end_session(db: Session, session_id: int, visual_metrics: dict = None) -> Mo
             "Compare honestly against it in the comparison field below.\n"
         )
 
+    if not llm_available():
+        prev = json.loads(previous.debrief_json) if previous and previous.debrief_json else None
+        debrief = demo_mock_interview.debrief(turns, profile_content,
+                                              _get_round(db, session.application_id, session.round_name), prev)
+        demo_usage_service.record_simulated_run(db, "mock_debrief")
+        return _finish_session(db, session, debrief, used_tailored_resume)
+
     llm = get_llm_provider()
     raw = llm.complete_json(
         system="You are an expert interview coach reviewing a completed practice interview. You return only raw JSON.",
@@ -386,8 +406,11 @@ def end_session(db: Session, session_id: int, visual_metrics: dict = None) -> Mo
         temperature=0.3,
         max_tokens=3000,
     )
-    debrief = parse_json_response(raw)
+    return _finish_session(db, session, parse_json_response(raw), used_tailored_resume)
 
+
+def _finish_session(db: Session, session: MockInterviewSession, debrief: dict,
+                    used_tailored_resume: bool) -> MockInterviewSession:
     session.debrief_json = json.dumps(debrief)
     session.status = "completed"
     session.ended_at = utcnow()
