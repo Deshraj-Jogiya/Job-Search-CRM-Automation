@@ -181,7 +181,7 @@ def test_outreach_draft_without_ai_uses_only_facts_on_record(monkeypatch):
 
 
 @pytest.mark.parametrize("path,form", [
-    ("/interview-prep/generate", {}),
+    ("/profile/variants/1/linkedin-import", {"pasted_text": "Data Engineer at Acme"}),
 ])
 def test_ai_only_routes_say_so_instead_of_failing(db, monkeypatch, path, form):
     from fastapi.testclient import TestClient

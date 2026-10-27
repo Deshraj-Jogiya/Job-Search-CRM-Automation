@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
+from ..app_mode import is_showcase_mode
 from ..database import get_db
 from ..models import get_or_create_settings
 from ..services.llm import AI_REQUIRED_MESSAGE, llm_available
@@ -55,6 +56,13 @@ def profile_prep_page(request: Request, db: Session = Depends(get_db)):
 @router.post("/generate")
 def generate_profile_prep_now(db: Session = Depends(get_db)):
     """The manual Refresh button: always runs (ignores the failure cooldown and the auto-refresh switch)."""
+    if not llm_available() and is_showcase_mode():
+        try:
+            profile_prep_service.generate_profile_prep(db, "manual")
+        except ProfilePrepServiceError as e:
+            return RedirectResponse(url=f"/interview-prep?error={quote(str(e))}", status_code=303)
+        return RedirectResponse(url="/interview-prep?message=" + quote(
+            "Rebuilt by rules from the latest profile and confirmed stories."), status_code=303)
     if not llm_available():
         return RedirectResponse(url=f"/interview-prep?error={quote(AI_REQUIRED_MESSAGE)}", status_code=303)
     try:

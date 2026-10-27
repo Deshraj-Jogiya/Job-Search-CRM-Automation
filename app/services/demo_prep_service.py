@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from ..database import utcnow
 from ..models import BehavioralStory, InterviewPrep, JobApplication, SearchKeyword
-from . import demo_usage_service, fit_service
+from . import demo_usage_service, fit_service, resume_rules
 from .activity_logger import log_activity
 from .matching_service import get_profile_content_for_application
 
@@ -88,7 +88,7 @@ def build_rule_prep(db: Session, application: JobApplication) -> dict:
         technical.append({
             "question": f"How have you used {term} in production?",
             "category": "technical",
-            "draft_answer": f"{src}: {bullet}",
+            "draft_answer": f"{src}, {_first_person(bullet)}",
             "quick_reference": _numbers(bullet) or term,
             "possible_follow_ups": [f"What went wrong with {term} and how did you fix it?",
                                     "What would you do differently now?"],
@@ -189,3 +189,63 @@ def generate_rule_prep(db: Session, application_id: int, generated_at=None) -> I
                          f"{application.posting.company_name_raw}.", "INFO")
     db.commit()
     return prep
+
+
+def _first_person(bullet: str) -> str:
+    """'Built X.' -> 'I built X.' (resume bullets drop the subject; a spoken answer needs it)."""
+    return f"I {bullet[0].lower()}{bullet[1:]}" if bullet else ""
+
+
+def _most_numbers(bullets: list[str]) -> str | None:
+    return max(bullets, key=lambda b: len(re.findall(r"\d", b)), default=None)
+
+
+def draft_profile_answers(profile: dict, stories: list) -> dict:
+    """The profile-wide prep (pitches + common questions) built by rules from the profile and confirmed stories.
+    Questions the profile cannot answer (motivation, weaknesses, plans) are left for the candidate, and listed."""
+    experience = profile.get("experience") or []
+    years = round(resume_rules.total_experience_months(experience) / 12)
+    first = experience[0] if experience else {}
+    best = _most_numbers(first.get("bullets", [])) or ""
+    title = profile.get("title") or first.get("role", "")
+    pitch_30 = f"I'm a {title.lower()} with about {years} years of experience. At {first.get('company')}, {_first_person(best)}"
+    pitch_90 = " ".join(
+        f"As {e.get('role')} at {e.get('company')} ({e.get('date')}), {_first_person(_most_numbers(e.get('bullets', [])) or '')}"
+        for e in experience[:3])
+    all_bullets = [b for e in experience for b in e.get("bullets", [])]
+    projects = profile.get("projects") or []
+    proud = projects[0] if projects else None
+    skills = profile.get("skills") or {}
+    first_group = next(iter(skills.values()), []) if isinstance(skills, dict) else skills
+    top_skill = first_group[0] if first_group else None
+    skill_bullet = _bullet_for(top_skill, profile) if top_skill else None
+
+    def story(trait: str):
+        return next((s for s in stories if trait in json.loads(s.traits_json or "[]")), None)
+
+    answers = [
+        {"question": "Tell me about yourself.", "draft_answer": pitch_30, "quick_reference": _numbers(best)},
+        {"question": "Walk me through your resume.", "draft_answer": pitch_90, "quick_reference": f"{len(experience)} roles"},
+    ]
+    if proud:
+        text = " ".join(proud.get("bullets", [])[:2]) or proud.get("description", "")
+        answers.append({"question": "Tell me about the project you are proudest of.",
+                        "draft_answer": f"{proud.get('name')}: {text}", "quick_reference": proud.get("name")})
+    if skill_bullet:
+        answers.append({"question": "What is your strongest technical skill, and where did you use it?",
+                        "draft_answer": f"{top_skill}. {skill_bullet[1]}: {skill_bullet[0]}", "quick_reference": top_skill})
+    for trait, q in (("reliability", "Tell me about a time something you built failed or you made a mistake. What did you do?"),
+                     ("collaboration", "Tell me about a time you disagreed with someone or had to work with a difficult stakeholder.")):
+        s = story(trait)
+        if s:
+            answers.append({"question": q, "draft_answer": f"{s.situation} {s.task} {s.action} {s.result}",
+                            "quick_reference": s.title})
+    return {
+        "pitch_30_seconds": pitch_30,
+        "pitch_90_seconds": pitch_90,
+        "answers": answers,
+        "strengths_to_steer_toward": [b for b in sorted(all_bullets, key=lambda b: -len(re.findall(r"\d", b)))[:3]],
+        "honest_gaps": [],
+        "authored_note": "Built by rules in this demo from the profile and confirmed stories; questions about motivation, "
+                         "weaknesses and plans are left for you to answer in your own words.",
+    }

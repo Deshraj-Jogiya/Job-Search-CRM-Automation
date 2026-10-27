@@ -229,41 +229,6 @@ def _cover_letter(posting: tuple) -> str:
     )
 
 
-_PROFILE_PREP = {
-    "pitch_30_seconds": "I'm a data engineer with four years of building pipelines people rely on. At Fictional Analytics Co I "
-                        "own ingestion for 12 sources, about 500GB a day, and I cut our nightly batch from 4 hours to 45 "
-                        "minutes. I'm looking for a team where data reliability is visible to the business.",
-    "pitch_90_seconds": "I started on a retail analytics team, building dbt models and dashboards for six regional teams, "
-                        "which taught me that the hard part is agreeing on one number. At Fictional Analytics Co I own "
-                        "ingestion end to end: 12 upstream sources, roughly 500GB a day, orchestrated in Airflow. The work I'm "
-                        "proudest of is moving our nightly reporting to incremental models, from 4 hours to 45 minutes, and "
-                        "adding schema and freshness checks so upstream changes stop the load instead of breaking dashboards. "
-                        "Next I want to go deeper on streaming in production.",
-    "answers": [
-        {"question": "Tell me about yourself.",
-         "draft_answer": "Four years in data engineering, most recently owning ingestion for 12 sources at Fictional Analytics "
-                         "Co. I like being the person who knows why a number changed.",
-         "quick_reference": "4 yrs, 12 sources, 500GB/day"},
-        {"question": "What's your biggest technical achievement?",
-         "draft_answer": "Moving the nightly reporting batch to incremental models, cutting runtime from 4 hours to 45 minutes "
-                         "without new hardware, with a weekly full rebuild as a safety net.",
-         "quick_reference": "4h to 45m, incremental + weekly rebuild"},
-        {"question": "Why are you looking to move?",
-         "draft_answer": "I've built the platform I was hired to build. I want a larger data volume and production streaming work.",
-         "quick_reference": "scale + streaming"},
-    ],
-    "strengths_to_steer_toward": ["End-to-end pipeline ownership", "Data quality as a habit, not a project",
-                                  "Clear communication with analysts"],
-    "honest_gaps": [
-        {"gap": "Production streaming", "honest_answer": "My streaming work is a learning project with Kafka and Spark. I know "
-                                                         "the trade-offs and I'm looking for a team where I can run it for real."},
-    ],
-    "authored_note": "Sample prep for the demo candidate.",
-    "grounding_warnings": [],
-    "missing_questions": [],
-}
-
-
 def _clear(db: Session) -> None:
     for model in (MockInterviewTurn, MockInterviewSession, InterviewPrep, OutreachMessage, TailoredDocument,
                   JobApplication, JobPosting, Company, LlmUsageLog, ActivityLog, BehavioralStory, SavedAnswer,
@@ -496,9 +461,13 @@ def seed_demo_data(db: Session) -> bool:
 
     version = db.query(ProfileVersion).filter(ProfileVersion.variant_id == variant_id,
                                               ProfileVersion.is_active == True).first()  # noqa: E712
+    db.flush()
+    from .demo_prep_service import draft_profile_answers
+
+    stories = db.query(BehavioralStory).filter(BehavioralStory.variant_id == variant_id).all()
     db.add(ProfileInterviewPrep(variant_id=variant_id, profile_version_id=version.id if version else None,
                                 is_active=True, trigger="initial", generated_at=now - timedelta(days=5),
-                                content_json=json.dumps(_PROFILE_PREP)))
+                                content_json=json.dumps(draft_profile_answers(profile, stories))))
 
     db.add(ResearchAgentQuery(
         question="Which of my applications are waiting on a reply for more than a week?",

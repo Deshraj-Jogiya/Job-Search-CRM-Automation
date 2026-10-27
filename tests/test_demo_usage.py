@@ -107,7 +107,7 @@ class TestRulePrep:
         bullets |= {b for p in profile["projects"] for b in p.get("bullets", []) + [p.get("description") or ""] if b}
         rounds = _json.loads(prep.predicted_rounds_json)["rounds"]
         technical = [q for q in rounds[1]["qa_pairs"] if q["category"] == "technical"]
-        assert technical and all(any(b in q["draft_answer"] for b in bullets) for q in technical)
+        assert technical and all(any(b[1:] in q["draft_answer"] for b in bullets) for q in technical)
         assert rounds[2]["qa_pairs"], "confirmed STAR stories become behavioral answers"
         jd = app.posting.job_description
         for point in _json.loads(prep.company_prep_json)["why_this_company_talking_points"]:
@@ -174,3 +174,17 @@ class TestRuleAsk:
         text, steps = dr.answer(db, "Which applications are waiting on a reply?")
         assert steps[0]["action"] == "waiting_on_reply"
         assert dr.answer(db, "Write me a poem")[0] == dr.HELP
+
+
+class TestRuleProfilePrep:
+    def test_refresh_builds_from_the_profile_and_passes_the_grounding_check(self, db, monkeypatch):
+        import json as _json
+        from app.services import profile_prep_service
+        monkeypatch.setenv("APP_MODE", "showcase")
+        seed_demo_data(db)
+        prep = profile_prep_service.generate_profile_prep(db, "manual")
+        drafted = _json.loads(prep.content_json)
+        assert drafted["grounding_warnings"] == []  # every figure in the pitches and answers is in the profile
+        assert "years of experience" in drafted["pitch_30_seconds"]
+        assert "Tell me about yourself." in {a["question"] for a in drafted["answers"]}
+        assert "What is your biggest weakness?" in drafted["missing_questions"]  # left for the candidate

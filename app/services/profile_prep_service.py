@@ -40,7 +40,7 @@ from ..models import ProfileInterviewPrep, ProfileVariant, ProfileVersion, get_o
 from . import behavioral_story_service, resume_rules
 from .activity_logger import log_activity
 from .interview_prep_service import check_answer_grounding
-from .llm import get_llm_provider, parse_json_response
+from .llm import get_llm_provider, llm_available, parse_json_response
 from .profile_service import strip_confidential_projects
 
 
@@ -262,7 +262,12 @@ def generate_profile_prep(db: Session, trigger: str = "manual") -> ProfileInterv
     version_id = _active_version(db, variant.id).id
     stories = behavioral_story_service.list_stories(db, variant.id, confirmed_only=True)
     try:
-        drafted = _draft_answers(profile, stories)
+        if llm_available():
+            drafted = _draft_answers(profile, stories)
+        else:
+            from .demo_prep_service import draft_profile_answers
+
+            drafted = draft_profile_answers(profile, stories)
     except Exception as e:
         raise ProfilePrepServiceError(f"Profile interview prep generation failed: {e}") from e
 
