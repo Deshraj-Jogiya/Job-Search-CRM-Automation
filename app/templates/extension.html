@@ -1,0 +1,100 @@
+{% extends "_base.html" %}
+
+{% block title %}Career Pilot -- Browser Extension{% endblock %}
+
+{% block header_title %}<a href="/" class="plain-link">Career Pilot</a> / Browser Extension{% endblock %}
+
+{% block content %}
+<style>
+.sample-form { display: grid; gap: 12px; max-width: 40rem; }
+.sample-form .field { display: flex; flex-direction: column; gap: 4px; }
+.sample-form .options { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.sample-form .filled input, .sample-form .filled select, .sample-form .filled textarea { outline: 2px solid #3fa66b; outline-offset: 1px; }
+.sample-form .tag { font-size: 0.8em; }
+</style>
+{% if showcase_mode %}
+<div class="flash flash-ok" role="status">Demo: the sample form below is filled from the fictional candidate's profile.
+    The extension itself is installed in your own Chrome and talks to your own instance.</div>
+{% endif %}
+<section class="variant-block">
+    <h2>Browser extension{% if version %} <span class="badge">v{{ version }}</span>{% endif %}</h2>
+    <p class="muted-note">On an employer's application page, the extension finds the form's fields (including ones
+        inside iframes and shadow DOM), asks this instance for answers grounded in your profile, fills them, and
+        attaches the tailored resume and cover letter as PDFs. It runs in your own browser on your own connection,
+        which is how it gets past the bot blocking that stops server-side autofill on some employer sites. It never
+        submits: you review every field and press Submit yourself.</p>
+    <p class="muted-note">Left for you on purpose: open-ended questions ("why do you want to work here"), consent and
+        legal acknowledgments, hidden honeypot fields meant for bots, and any choice whose options don't clearly match a
+        fact on record.</p>
+</section>
+
+<section class="variant-block">
+    <h3>Tested on real postings</h3>
+    <div class="table-scroll">
+        <table class="review-table">
+            <thead><tr><th>Platform</th><th>What it had to handle</th></tr></thead>
+            <tbody>
+                {% for name, note in platforms %}<tr><td>{{ name }}</td><td>{{ note }}</td></tr>{% endfor %}
+                <tr><td>Workday</td><td>Its anti-bot honeypot field is skipped. The questions sit behind Workday's
+                    own account sign-up, so sign in there first.</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="variant-block" id="sample">
+    <h3>Try it on a sample form</h3>
+    <p class="muted-note">Pick an application and press Fill. The answers come from the same service the extension
+        calls on a real page. Highlighted fields were filled; the rest are left for you.</p>
+    {% if applications %}
+    <form method="post" action="/extension/sample-fill#sample" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label for="sample-app">Application</label>
+        <select id="sample-app" name="application_id">
+            {% for a in applications %}<option value="{{ a.id }}"{{ ' selected' if a.id == selected_id }}>{{ a.posting.job_title }} at {{ a.posting.company_name_raw }} ({{ a.status }})</option>{% endfor %}
+        </select>
+        <button type="submit">Fill the sample form</button>
+    </form>
+    {% else %}
+    <p class="muted-note">Add a job first: the answers come from an application's profile.</p>
+    {% endif %}
+
+    {% if answers is not none %}
+    <p class="muted-note" role="status">Filled {{ answers|length }} of {{ fields|length }} fields.{% if answers|length < fields|length %} Left for you:
+        {% for f in fields if f.field_id not in answers %}{{ f.label }}{{ '; ' if not loop.last }}{% endfor %}.{% endif %}</p>
+    {% endif %}
+    <form class="sample-form" onsubmit="return false" aria-label="Sample application form">
+        {% for f in fields %}
+        {% set value = answers.get(f.field_id) if answers else None %}
+        <div class="field{{ ' filled' if value }}">
+            {% if f.type == "radio" %}
+            <span id="lbl-{{ f.field_id }}">{{ f.label }}{% if value %} <span class="badge tag">filled</span>{% endif %}</span>
+            <div class="options" role="radiogroup" aria-labelledby="lbl-{{ f.field_id }}">
+                {% for o in f.options %}<label><input type="radio" id="s-{{ f.field_id }}-{{ loop.index }}" name="{{ f.field_id }}" value="{{ o }}"{{ ' checked' if value == o }}> {{ o }}</label>{% endfor %}
+            </div>
+            {% else %}
+            <label for="s-{{ f.field_id }}">{{ f.label }}{% if value %} <span class="badge tag">filled</span>{% endif %}</label>
+            {% if f.type == "select" %}
+            <select id="s-{{ f.field_id }}" name="{{ f.field_id }}">
+                <option value="">Select...</option>
+                {% for o in f.options %}<option{{ ' selected' if value == o }}>{{ o }}</option>{% endfor %}
+            </select>
+            {% elif f.type == "textarea" %}
+            <textarea id="s-{{ f.field_id }}" name="{{ f.field_id }}" rows="3">{{ value or '' }}</textarea>
+            {% else %}
+            <input type="text" id="s-{{ f.field_id }}" name="{{ f.field_id }}" value="{{ value or '' }}">
+            {% endif %}
+            {% endif %}
+        </div>
+        {% endfor %}
+    </form>
+</section>
+
+<section class="variant-block">
+    <h3>Install (one time)</h3>
+    <p class="muted-note">In Chrome open <code>chrome://extensions</code>, turn on Developer mode, choose Load unpacked
+        and select the repository's <code>extension/</code> folder. Click its toolbar icon, enter this instance's
+        address and Save, and stay signed in here in the same browser: the extension uses that session, so there is no
+        separate sign-in or key. After that, opening an Approved application's page fills it on its own. Full steps and the reason for its permissions are in <code>extension/README.md</code>.</p>
+</section>
+{% endblock %}

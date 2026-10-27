@@ -7,7 +7,10 @@
     "phone": "555-0100",
     "location": "Austin, TX",
     "linkedin": "https://linkedin.com/in/jordan-ellis-demo",
-    "github": "https://github.com/jordan-ellis-demo"
+    "github": "https://github.com/jordan-ellis-demo",
+    "city": "Austin",
+    "state": "TX",
+    "zip": "78701"
   },
   "skills": {
     "languages": ["Python", "SQL", "Java"],
@@ -20,7 +23,7 @@
       "role": "Data Engineer",
       "company": "Fictional Analytics Co",
       "location": "Austin, TX",
-      "date": "2022 - Present",
+      "date": "Mar 2022 – Present",
       "bullets": [
         "Own ingestion pipelines processing roughly 500GB/day across 12 upstream sources, orchestrated with Airflow.",
         "Migrated a batch reporting pipeline to an incremental model, cutting nightly runtime from 4 hours to 45 minutes.",
@@ -31,7 +34,7 @@
       "role": "Junior Data Engineer",
       "company": "Sample Retail Group",
       "location": "Remote",
-      "date": "2020 - 2022",
+      "date": "Jul 2020 – Feb 2022",
       "bullets": [
         "Built and maintained dbt models powering weekly sales and inventory dashboards for 6 regional teams.",
         "Wrote a reusable Python framework for validating CSV vendor feeds before they entered the warehouse."
@@ -65,5 +68,6 @@
   ],
   "certifications": [
     "AWS Certified Data Analytics - Specialty (demo entry)"
-  ]
+  ],
+  "application_preferences": {"work_authorization": "Yes", "visa_sponsorship": "Yes", "willing_to_relocate": "Yes"}
 }

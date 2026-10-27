@@ -274,6 +274,12 @@ _RECENT_EMPLOYER_RE = re.compile(r"(most recent|current|last) employer|employer 
 _PREVIOUSLY_WORKED_RE = re.compile(r"previously work(ed)? (at|for|here)|worked (at|for|here) before", re.I)
 _US_PHONE_RE = re.compile(r"^\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}$")
 _ZIP_RE = re.compile(r"zip code|postal code|\bzip\b", re.I)
+# Whole-label matches only (checked against the stripped label), like _COUNTRY_RE: "State" must not catch "authorized to
+# work in the United States", and "Location" must not catch "willing to work at our location".
+_CITY_RE = re.compile(r"^(current\s+)?(city|town)(\s+of residence)?$|^(stadt|ort|wohnort)$", re.I)
+_STATE_RE = re.compile(r"^(state|province|state\s*(/|or)\s*province|bundesland)$", re.I)
+_LOCATION_RE = re.compile(r"^(current\s+)?location(\s*\(city(,\s*state)?\))?$|^where are you (currently )?(located|based)\??$",
+                          re.I)
 
 
 def _contact_answer(label: str, profile: dict) -> str | None:
@@ -319,6 +325,17 @@ def _contact_answer(label: str, profile: dict) -> str | None:
     # via the Profile page, without needing another round of this.
     if _ZIP_RE.search(label):
         return contact.get("zip") or contact.get("zip_code") or contact.get("postal_code") or None
+    # contact.city/state come from the Profile page's Contact Details form; an older profile may only have the free-text
+    # contact.location ("Tempe, Arizona"), split on its first comma.
+    location = (contact.get("location") or "").strip()
+    loc_city, _, loc_state = (part.strip() for part in location.partition(","))
+    city, state = contact.get("city") or loc_city, contact.get("state") or loc_state
+    if _CITY_RE.match(stripped_label):
+        return city or None
+    if _STATE_RE.match(stripped_label):
+        return state or None
+    if _LOCATION_RE.match(stripped_label):
+        return ", ".join(p for p in (city, state) if p) or location or None
     return None
 
 
@@ -339,8 +356,8 @@ def _recent_employer_answer(label: str, profile: dict) -> str | None:
 _EDUCATION_LEVEL_RE = re.compile(r"highest level of education|education level|level of education", re.I)
 _DEGREE_LEVEL_KEYWORDS = (
     (re.compile(r"ph\.?d|doctorate", re.I), "Doctorate"),
-    (re.compile(r"master", re.I), "Master's Degree"),
-    (re.compile(r"bachelor", re.I), "Bachelor's Degree"),
+    (re.compile(r"master|\bm\.?sc?\b|\bm\.a\.|\bmba\b|\bm\.?eng\b|\bm\.?tech\b", re.I), "Master's Degree"),
+    (re.compile(r"bachelor|\bb\.?sc?\b|\bb\.a\.|\bb\.e\.|\bb\.?eng\b|\bb\.?tech\b", re.I), "Bachelor's Degree"),
     (re.compile(r"associate", re.I), "Associate's Degree"),
     (re.compile(r"high school", re.I), "High School Diploma"),
 )

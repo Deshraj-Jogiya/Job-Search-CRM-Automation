@@ -1018,3 +1018,30 @@ class TestScoreAndTailorNewApplication:
 
         mock_score.assert_not_called()
         mock_tailor.assert_not_called()
+
+
+class TestLocationAndDegreeAbbreviations:
+    PROFILE = {"name": "A B", "contact": {"location": "Tempe, Arizona", "phone": "480-555-0100"}}
+
+    def test_city_state_and_location_fields_are_answered_from_contact(self):
+        from app.services.extension_service import _contact_answer
+
+        assert _contact_answer("City *", self.PROFILE) == "Tempe"
+        assert _contact_answer("State/Province", self.PROFILE) == "Arizona"
+        assert _contact_answer("Current location", self.PROFILE) == "Tempe, Arizona"
+        stored = {"contact": {"city": "Austin", "state": "TX", "location": "Somewhere else"}}
+        assert _contact_answer("City", stored) == "Austin" and _contact_answer("Location", stored) == "Austin, TX"
+
+    def test_questions_that_only_mention_a_state_or_location_are_not_answered(self):
+        from app.services.extension_service import _contact_answer
+
+        assert _contact_answer("Are you legally authorized to work in the United States?", self.PROFILE) is None
+        assert _contact_answer("Are you willing to work at our location?", self.PROFILE) is None
+
+    def test_abbreviated_degrees_map_to_a_level(self):
+        from app.services.extension_service import _education_level_answer
+
+        level = lambda d: _education_level_answer("Highest level of education", {"education": [{"degree": d}]})
+        assert level("B.S. in Computer Science") == level("BSc Physics") == level("B.Tech") == "Bachelor's Degree"
+        assert level("M.S. Information Systems") == level("MBA") == "Master's Degree"
+        assert level("Business Studies") is None and level("Mass Communication diploma") is None
