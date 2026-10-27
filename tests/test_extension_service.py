@@ -1045,3 +1045,23 @@ class TestLocationAndDegreeAbbreviations:
         assert level("B.S. in Computer Science") == level("BSc Physics") == level("B.Tech") == "Bachelor's Degree"
         assert level("M.S. Information Systems") == level("MBA") == "Master's Degree"
         assert level("Business Studies") is None and level("Mass Communication diploma") is None
+
+
+class TestWorkAuthorizedAnswer:
+    def test_authorized_now_with_future_sponsorship_answers_yes(self):
+        from app.services.autofill.common_answers import mechanical_common_answer
+
+        profile = {"application_preferences": {
+            "work_authorization": "Authorized to work in the US now (OPT / STEM OPT EAD); will require sponsorship in the future",
+            "visa_sponsorship": "Yes, in the future"}}
+        assert mechanical_common_answer("Are you legally authorized to work in the United States?", profile) == "Yes"
+        assert mechanical_common_answer("Will you now or in the future require visa sponsorship?", profile) == "Yes, in the future"
+
+    def test_each_stored_status_maps_to_yes_no_or_no_answer(self):
+        from app.services.autofill.common_answers import work_authorized_answer
+
+        assert work_authorized_answer("US Citizen") == work_authorized_answer("Yes") == "Yes"
+        assert work_authorized_answer("Authorized to work in the US without sponsorship") == "Yes"
+        assert work_authorized_answer("Not authorized to work in the US") == "No"
+        # Says nothing about today, so it is left for the candidate.
+        assert work_authorized_answer("Will require sponsorship now or in the future") is None

@@ -88,7 +88,29 @@ def mechanical_common_answer(label: str, profile: dict) -> str | None:
         return _salary_answer(profile)
     for pattern, section, key in _COMMON_QUESTION_PATTERNS:
         if pattern.search(label):
-            return (profile.get(section) or {}).get(key) or None
+            value = (profile.get(section) or {}).get(key) or None
+            if key == "work_authorization":
+                return work_authorized_answer(value)
+            return value
+    return None
+
+
+# The Profile page stores work authorization as a status sentence; "are you authorized to work in the US?" needs a
+# Yes or No. "Will require sponsorship now or in the future" says nothing about today, so it gets no answer.
+_AUTHORIZED_NOW = ("us citizen", "permanent resident", "authorized to work in the us without sponsorship",
+                   "authorized to work in the us now")
+
+
+def work_authorized_answer(stored: str | None) -> str | None:
+    if not stored:
+        return None
+    text = stored.strip().lower()
+    if text in ("yes", "no"):
+        return stored.strip().capitalize()
+    if text.startswith("not authorized"):
+        return "No"
+    if text.startswith(_AUTHORIZED_NOW):
+        return "Yes"
     return None
 
 
