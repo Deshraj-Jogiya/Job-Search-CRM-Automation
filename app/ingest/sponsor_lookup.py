@@ -66,7 +66,31 @@ def _cap_exempt(name: str, naics_university: bool) -> tuple[bool, str | None]:
 
 def _key(name: str) -> str:
     name = re.split(r"\b(?:d/?b/?a|doing business as)\b", name or "", maxsplit=1, flags=re.IGNORECASE)[0]
+    # "The University of Arizona" and "University of Arizona" are the same employer in the files.
+    name = re.sub(r"^\s*the\s+", "", name, flags=re.IGNORECASE)
     return normalize_company_name(name)
+
+
+# H-1B-dependent alone does not mean staffing: Meta and other large employers declare it too. Staffing and IT-consulting firms
+# are the dependent employers in computer systems design and programming services (NAICS 5415) or employment services (5613).
+STAFFING_NAICS = ("5415", "5613")
+
+
+def staffing_share(filings: list[dict]) -> float:
+    if not filings:
+        return 0.0
+    staffing = sum(1 for f in filings if str(f.get("h1b_dependent", "")).upper().startswith("Y")
+                   and str(f.get("naics", "")).startswith(STAFFING_NAICS))
+    return staffing / len(filings)
+
+
+def _closest(k: str, keys, limit: int = 3) -> list[str]:
+    """Employer keys that contain every word of k, shortest first: shown when there is no exact match, to be checked by eye."""
+    words = k.split()
+    if not words:
+        return []
+    found = [x for x in keys if all(w in x.split() for w in words)]
+    return sorted(found, key=len)[:limit]
 
 
 def is_data_role(soc_code: str, job_title: str) -> bool:
@@ -165,6 +189,9 @@ def _summary(name: str, uscis: dict, lca: dict, alerts: dict) -> dict:
     naics_university = any(str(f.get("naics", "")).startswith("6113") for f in filings)
     cap_exempt, reason = _cap_exempt(filings[0]["employer"] if filings else (u["name"] if u else name), naics_university)
     dependent = sum(1 for f in filings if str(f.get("h1b_dependent", "")).upper().startswith("Y"))
+    if cap_exempt and not filings and not initial:
+        # A name that looks cap-exempt with nothing on file is no evidence the employer sponsors.
+        cap_exempt, reason = False, f"{reason}; but no H-1B filings on record"
     alert = alerts.get(k)
     if alert:
         verdict = f"alert: {alert.get('kind') or alert.get('type') or 'see sponsorship_alerts.json'}"
@@ -178,6 +205,9 @@ def _summary(name: str, uscis: dict, lca: dict, alerts: dict) -> dict:
         verdict = "no sponsorship on record"
     return {
         "name": name, "matched": u["name"] if u else None, "verdict": verdict,
+        # Always listed: a short name ("Lucid") can match the wrong employer, so the alternatives are shown to be checked by eye.
+        "other_matches": [uscis[x]["name"] for x in _closest(k, [y for y in uscis.keys() if y != k])],
+        "staffing_share": round(staffing_share(filings), 2) if filings else None,
         "uscis_initial_approvals": initial, "uscis_continuing_approvals": continuing, "uscis_by_year": years,
         "data_role_lcas": len(filings), "wage_levels": dict(levels),
         "az_data_role_lcas": sum(1 for f in filings if f.get("worksite_state") == "AZ"),
@@ -211,8 +241,7 @@ def data_sponsors(state: str | None = None, limit: int = 50, min_filings: int = 
         pool = [f for f in filings if not state or f.get("worksite_state") == state]
         if len(pool) < min_filings:
             continue
-        dependent = sum(1 for f in filings if str(f.get("h1b_dependent", "")).upper().startswith("Y")) / len(filings)
-        if dependent > 0.5 and not include_dependent:
+        if staffing_share(filings) > 0.5 and not include_dependent:
             continue
         s = _summary(name, uscis, lca, alerts)
         if s["verdict"].startswith("alert") or (cap_exempt_only and not s["cap_exempt"]):

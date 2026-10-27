@@ -63,3 +63,23 @@ def test_for_profit_and_corporate_universities_are_not_cap_exempt():
     assert sl._cap_exempt("Arizona State University", False)[0] is True
     assert sl._cap_exempt("Acme University Holdings LLC", False)[0] is False
     assert sl._cap_exempt("Princeton University", False)[0] is True  # "inc" inside a word is not a corporate suffix
+
+
+def test_leading_the_matches_and_close_names_are_offered_when_nothing_matches(tmp_path):
+    uscis, lca = sl.load_uscis(_uscis(tmp_path)), sl.load_lca(_lca(tmp_path))
+    assert sl.lookup(["The Arizona State University"], uscis, lca)[0]["uscis_initial_approvals"] == 40
+    miss = sl.lookup(["Acme"], uscis, lca)[0]
+    assert miss["matched"] is None and miss["other_matches"] == ["ACME ANALYTICS INC"]
+    assert sl.lookup(["Acme Analytics"], uscis, lca)[0]["other_matches"] == []
+
+
+def test_dependent_employers_outside_staffing_codes_are_kept():
+    meta_like = [{"h1b_dependent": "Yes", "naics": "519130"}] * 3
+    staffing = [{"h1b_dependent": "Yes", "naics": "541511"}] * 3
+    assert sl.staffing_share(meta_like) == 0 and sl.staffing_share(staffing) == 1
+
+
+def test_a_cap_exempt_name_with_nothing_on_file_is_not_cap_exempt(tmp_path):
+    uscis, lca = sl.load_uscis(_uscis(tmp_path)), sl.load_lca(_lca(tmp_path))
+    r = sl.lookup(["Maricopa County Community College District"], uscis, lca)[0]
+    assert r["cap_exempt"] is False and r["verdict"] == "no sponsorship on record"
