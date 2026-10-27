@@ -269,6 +269,20 @@ def ask_research_agent(question: str = Form(...)):
     in a background thread like every other LLM-backed action here (up
     to 6 sequential calls), result lands in ResearchAgentQuery for the
     dashboard to show after a refresh."""
+    if not llm_available() and is_showcase_mode():
+        from .services import demo_research_service, demo_usage_service
+
+        db = SessionLocal()
+        try:
+            text, steps = demo_research_service.answer(db, question)
+            db.add(ResearchAgentQuery(question=question.strip(), answer=text, steps_json=json.dumps(steps)))
+            if steps:
+                demo_usage_service.record_simulated_run(db, "research")
+            db.commit()
+        finally:
+            db.close()
+        return RedirectResponse(url="/?message=" + quote("Answered by rules (this demo has no AI provider)."),
+                                status_code=303)
     if not llm_available():
         return RedirectResponse(url="/?error=" + quote(AI_REQUIRED_MESSAGE), status_code=303)
     db = SessionLocal()

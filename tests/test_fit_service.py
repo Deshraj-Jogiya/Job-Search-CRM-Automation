@@ -181,7 +181,6 @@ def test_outreach_draft_without_ai_uses_only_facts_on_record(monkeypatch):
 
 
 @pytest.mark.parametrize("path,form", [
-    ("/research-agent/ask", {"question": "How many applied?"}),
     ("/interview-prep/generate", {}),
 ])
 def test_ai_only_routes_say_so_instead_of_failing(db, monkeypatch, path, form):
@@ -197,6 +196,22 @@ def test_ai_only_routes_say_so_instead_of_failing(db, monkeypatch, path, form):
     assert response.status_code == 303
     assert "error=" in response.headers["location"] and "AI%20provider" in response.headers["location"]
     assert db.query(models.ResearchAgentQuery).count() == 0
+
+
+def test_showcase_answers_dashboard_questions_by_rules(db, monkeypatch):
+    from fastapi.testclient import TestClient
+    from app.csrf import CSRF_COOKIE_NAME
+    from app.main import app as web_app
+
+    monkeypatch.setenv("APP_MODE", "showcase")
+    client = TestClient(web_app)
+    client.get("/how-scoring-works")
+    token = client.cookies.get(CSRF_COOKIE_NAME)
+    response = client.post("/research-agent/ask", data={"question": "How many applied?", "csrf_token": token},
+                           follow_redirects=False)
+    assert response.status_code == 303 and "message=" in response.headers["location"]
+    query = db.query(models.ResearchAgentQuery).one()
+    assert query.answer == "0 application(s) with status 'applied'."
 
 
 def test_how_scoring_works_page_shows_the_real_cap(db):

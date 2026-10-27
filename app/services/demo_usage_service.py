@@ -27,6 +27,8 @@ _OPERATIONS = {
     # mock_interview_service: the interviewer's next line, and the debrief (transcript + full profile in).
     "mock_turn": [((1500, 4000), (60, 200))],
     "mock_debrief": [((6000, 12000), (1200, 2600))],
+    # research_agent: a ReAct loop, usually a tool step and a final-answer step.
+    "research": [((900, 1600), (40, 120)), ((1100, 2200), (60, 220))],
     # _draft_note_text: a connection note or a short email.
     "outreach": [((1800, 3200), (80, 260))],
 }

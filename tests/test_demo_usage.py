@@ -158,3 +158,19 @@ class TestRuleMockInterview:
         assert any("900" in n for n in d["accuracy_notes"]) and not any("500" in n for n in d["accuracy_notes"])
         assert d["scorecard"]["content_accuracy"] == 4
         assert set(d["scorecard"].values()) <= {1, 2, 3, 4, 5}
+
+
+class TestRuleAsk:
+    def test_answers_come_from_the_agent_tools(self, db, monkeypatch):
+        from app.services import demo_research_service as dr
+        from app.services.models_access import count_applications_by_status
+        monkeypatch.setenv("APP_MODE", "showcase")
+        seed_demo_data(db)
+        text, steps = dr.answer(db, "How many applications are marked applied?")
+        assert steps[0]["action"] == "count_applications"
+        assert text.lower() == count_applications_by_status(db, "applied").lower()
+        text, steps = dr.answer(db, "What's the status of Northwind Logistics?")
+        assert steps[0]["action"] == "search_company" and "Interviewing" in text
+        text, steps = dr.answer(db, "Which applications are waiting on a reply?")
+        assert steps[0]["action"] == "waiting_on_reply"
+        assert dr.answer(db, "Write me a poem")[0] == dr.HELP
