@@ -229,114 +229,6 @@ def _cover_letter(posting: tuple) -> str:
     )
 
 
-def _interview_prep(posting: tuple) -> dict:
-    company = posting[0]
-    return {
-        "general_prep_json": {
-            "strengths_to_emphasize": [
-                "Ingestion ownership at 500GB/day across 12 sources, with Airflow orchestration.",
-                "Batch-to-incremental migration: 4 hours down to 45 minutes.",
-                "A data quality framework that catches upstream breakages before analysts do.",
-            ],
-            "potential_gaps_to_address": [
-                "Streaming experience is from a learning project, not production. Say so plainly and show what you learned.",
-                f"No prior {company.split()[1].lower()} domain experience; connect it to the shipment-like event volumes you already handle.",
-            ],
-        },
-        "company_prep_json": {
-            "company_context": f"{company} (fictional, for this demo). {posting[4]}",
-            "recent_publications": [],
-            "why_this_company_talking_points": [
-                f"The team's data directly drives {posting[5]}, so reliability is visible to the business every day.",
-                "The stack matches what you run today, so you can contribute in the first month.",
-            ],
-            "questions_to_ask_them": [
-                "What does the on-call rotation look like for the data platform?",
-                "Which pipeline causes the most pages today, and why?",
-                "How do analysts report a data issue, and how fast is it usually fixed?",
-            ],
-            "grounded_in_real_research": False,
-        },
-        "process_research_json": {
-            "summary": "Demo data: no real interview-process research is run for fictional companies.",
-            "sources": [],
-        },
-        "predicted_rounds_json": {
-            "rounds": [
-                {
-                    "round_name": "Recruiter screen",
-                    "what_it_tests": "Motivation, role fit, salary range and work authorisation.",
-                    "likely_interviewer": "Technical recruiter",
-                    "prep_focus": ["A 60-second story of your current role", "Why this team, specifically"],
-                    "qa_pairs": [
-                        {
-                            "question": "Walk me through your current role.",
-                            "category": "background",
-                            "draft_answer": "I'm a data engineer at Fictional Analytics Co, where I own ingestion for 12 upstream "
-                                            "sources, about 500GB a day, orchestrated in Airflow. The project I'm proudest of "
-                                            "moved our nightly reporting batch to an incremental model, from 4 hours to 45 minutes.",
-                            "quick_reference": "12 sources, 500GB/day, 4h to 45m",
-                            "possible_follow_ups": ["What made the migration hard?", "Who uses that data?"],
-                        },
-                    ],
-                    "other_possible_questions": ["What are you looking for in your next role?"],
-                    "questions_to_ask_them": ["What does success look like in the first 90 days?"],
-                },
-                {
-                    "round_name": "Technical: pipeline design",
-                    "what_it_tests": "Designing a reliable pipeline end to end, including failure handling.",
-                    "likely_interviewer": "Senior data engineer",
-                    "prep_focus": ["Idempotent loads", "Late-arriving data", "Backfills", "Data quality checks"],
-                    "qa_pairs": [
-                        {
-                            "question": "Design a pipeline that ingests carrier tracking events and keeps an ETA table fresh.",
-                            "category": "system design",
-                            "draft_answer": "Land raw events in object storage partitioned by event date, stream them through "
-                                            "Kafka into an incremental model keyed on shipment ID, and merge late events with "
-                                            "a watermark. Add freshness and volume checks that page before dispatchers notice.",
-                            "quick_reference": "raw zone, Kafka, incremental merge, watermark, freshness alerts",
-                            "possible_follow_ups": ["How do you backfill a week of bad data?", "What if a carrier sends duplicates?"],
-                        },
-                        {
-                            "question": "Tell me about a time a pipeline broke in production.",
-                            "category": "behavioral",
-                            "draft_answer": "An upstream vendor renamed a column without notice and our dashboards went blank. "
-                                            "I added schema checks at ingestion so the next change stopped the load and alerted "
-                                            "us instead of silently loading nulls.",
-                            "quick_reference": "vendor schema change, schema checks at ingestion",
-                            "possible_follow_ups": ["How did you communicate it to analysts?"],
-                        },
-                    ],
-                    "other_possible_questions": ["How do you test dbt models?", "Batch or streaming for this use case?"],
-                    "questions_to_ask_them": ["How do you handle schema changes from upstream teams today?"],
-                },
-                {
-                    "round_name": "Hiring manager",
-                    "what_it_tests": "Ownership, prioritisation and how you work with analysts.",
-                    "likely_interviewer": "Data engineering manager",
-                    "prep_focus": ["Prioritising requests", "Saying no with a reason"],
-                    "qa_pairs": [
-                        {
-                            "question": "How do you decide what to work on when every team says their request is urgent?",
-                            "category": "behavioral",
-                            "draft_answer": "I ask what decision the data feeds and when it's made. A dashboard read in Monday's "
-                                            "ops meeting beats a nice-to-have report, and I write the trade-off down so the "
-                                            "requester sees why.",
-                            "quick_reference": "decision + deadline, write the trade-off down",
-                            "possible_follow_ups": ["Give an example where you pushed back."],
-                        },
-                    ],
-                    "other_possible_questions": ["Where do you want to be in two years?"],
-                    "questions_to_ask_them": ["What would you want this hire to fix first?"],
-                },
-            ],
-            "answering_method_guidance": "Use STAR for behavioral questions: one concrete situation, your own actions, and a number in the result.",
-            "grounded_in_real_research": False,
-            "grounding_warnings": [],
-        },
-    }
-
-
 _PROFILE_PREP = {
     "pitch_30_seconds": "I'm a data engineer with four years of building pipelines people rely on. At Fictional Analytics Co I "
                         "own ingestion for 12 sources, about 500GB a day, and I cut our nightly batch from 4 hours to 45 "
@@ -492,11 +384,6 @@ def seed_demo_data(db: Session) -> bool:
             db.add(TailoredDocument(application_id=app.id, document_type="cover_letter",
                                     content=_cover_letter(p), generated_at=created + timedelta(minutes=5)))
 
-    for i in (0, 2):
-        prep = _interview_prep(_POSTINGS[i])
-        db.add(InterviewPrep(application_id=apps[i].id, is_active=True, used_tailored_resume=True,
-                             generated_at=now - timedelta(days=3 + i),
-                             **{k: json.dumps(v) for k, v in prep.items()}))
 
     session = MockInterviewSession(
         application_id=apps[0].id, round_name="Technical: pipeline design", tier="guided", status="completed",
@@ -573,6 +460,12 @@ def seed_demo_data(db: Session) -> bool:
     ]:
         db.add(BehavioralStory(variant_id=variant_id, title=title, situation=s, task=t, action=a, result=r,
                                traits_json=json.dumps(traits), source_reference=src, status="confirmed"))
+    db.flush()
+
+    from .demo_prep_service import generate_rule_prep
+
+    for i in (0, 2):
+        generate_rule_prep(db, apps[i].id, generated_at=now - timedelta(days=3 + i))
 
     for q, ans, n in [
         ("Are you legally authorized to work in the United States?", "Yes", 9),

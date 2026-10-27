@@ -935,6 +935,11 @@ def generate_interview_prep_now(application_id: int, db: Session = Depends(get_d
         raise HTTPException(status_code=404, detail="Application not found")
     if application.status == "Rejected":
         return _redirect_detail(application_id, error="Can't generate interview prep for a Rejected application.")
+    if not llm_available() and is_showcase_mode():
+        from ..services import demo_prep_service
+
+        demo_prep_service.generate_rule_prep(db, application_id)
+        return _redirect_detail(application_id, message="Interview prep built by rules from the posting and the profile.")
     if not llm_available():
         return _redirect_detail(application_id, error=AI_REQUIRED_MESSAGE)
     threading.Thread(target=_interview_prep_in_background, args=(application_id,), daemon=True).start()

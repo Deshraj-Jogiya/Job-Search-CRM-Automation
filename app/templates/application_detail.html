@@ -195,8 +195,9 @@
                     {% if not is_closed %}
                     <form method="post" action="/jobs/{{ application.id }}/interview-prep" class="inline-form">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        <button type="submit" {{ "" if ai_available else "disabled" }}>{{ "Regenerate" if interview_prep else "Generate Interview Prep" }}</button>
-                        {% if not ai_available %}<span class="muted-note">Needs an AI provider, none configured here.</span>{% endif %}
+                        <button type="submit" {{ "" if ai_available or showcase_mode else "disabled" }}>{{ "Regenerate" if interview_prep else "Generate Interview Prep" }}</button>
+                        {% if showcase_mode %}<span class="muted-note">Built by rules in this demo: the posting's requirements, the profile's evidence and its STAR stories.</span>
+                        {% elif not ai_available %}<span class="muted-note">Needs an AI provider, none configured here.</span>{% endif %}
                     </form>
                     {% endif %}
                     {% if predicted_rounds and predicted_rounds.rounds %}
@@ -369,7 +370,9 @@
             {% endfor %}
             {% endif %}
             {% else %}
-            {% if ai_available %}
+            {% if showcase_mode %}
+            <p class="muted-note">Not generated yet -- click "Generate Interview Prep" to build a round-by-round plan from this posting and the profile.</p>
+            {% elif ai_available %}
             <p class="muted-note">Not generated yet -- click "Generate Interview Prep" for a full round-by-round plan with drafted answers, grounded in real research when Tavily is configured, JD-only otherwise.</p>
             {% else %}
             <p class="muted-note">Not generated: interview prep is written by an AI provider, and none is configured on this instance.</p>

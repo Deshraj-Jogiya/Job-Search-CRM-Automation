@@ -89,3 +89,34 @@ class TestSimulatedIntake:
         monkeypatch.setenv("APP_MODE", "personal")
         with pytest.raises(RuntimeError):
             demo_intake_service.run_simulated_intake(db)
+
+
+class TestRulePrep:
+    def test_prep_quotes_only_the_profile_and_the_posting(self, db, monkeypatch):
+        import json as _json
+        from app.services import demo_prep_service
+        monkeypatch.setenv("APP_MODE", "showcase")
+        seed_demo_data(db)
+        app = _scoreable(db)
+        calls, *_ = _usage(db)
+        demo_prep_service.generate_rule_prep(db, app.id)
+        assert _usage(db)[0] == calls + 6
+        prep = db.query(models.InterviewPrep).filter_by(application_id=app.id, is_active=True).one()
+        profile = _json.loads(db.query(models.ProfileVersion).filter_by(is_active=True).one().content_json)
+        bullets = {b for e in profile["experience"] for b in e["bullets"]}
+        bullets |= {b for p in profile["projects"] for b in p.get("bullets", []) + [p.get("description") or ""] if b}
+        rounds = _json.loads(prep.predicted_rounds_json)["rounds"]
+        technical = [q for q in rounds[1]["qa_pairs"] if q["category"] == "technical"]
+        assert technical and all(any(b in q["draft_answer"] for b in bullets) for q in technical)
+        assert rounds[2]["qa_pairs"], "confirmed STAR stories become behavioral answers"
+        jd = app.posting.job_description
+        for point in _json.loads(prep.company_prep_json)["why_this_company_talking_points"]:
+            assert point.removeprefix("From the posting: ") in jd
+
+    def test_seeded_preps_match_their_own_posting(self, db, monkeypatch):
+        import json as _json
+        monkeypatch.setenv("APP_MODE", "showcase")
+        seed_demo_data(db)
+        for prep in db.query(models.InterviewPrep):
+            context = _json.loads(prep.company_prep_json)["company_context"]
+            assert context in prep.application.posting.job_description

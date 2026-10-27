@@ -21,6 +21,9 @@ _OPERATIONS = {
     # run_multi_pass_tailoring (tailor, ATS check, one refine pass), summary/skills, cover letter.
     "tailor": [((5000, 14000), (1200, 2400)), ((4000, 9000), (150, 400)), ((5000, 13000), (900, 1900)),
                ((2500, 5000), (300, 700)), ((3000, 6000), (450, 800))],
+    # generate_interview_prep: process research, general + company prep, round outline, then Q&A per round (3 here).
+    "interview_prep": [((3000, 6000), (500, 1200)), ((4000, 8000), (600, 1400)), ((3500, 7000), (400, 900)),
+                       ((5000, 12000), (1200, 2400)), ((5000, 12000), (1200, 2400)), ((5000, 12000), (1200, 2400))],
     # _draft_note_text: a connection note or a short email.
     "outreach": [((1800, 3200), (80, 260))],
 }
