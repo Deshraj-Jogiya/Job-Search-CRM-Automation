@@ -1,0 +1,82 @@
+{% extends "_base.html" %}
+
+{% block title %}Career Pilot -- Sponsors{% endblock %}
+
+{% block header_title %}<a href="/" class="plain-link">Career Pilot</a> / Sponsors{% endblock %}
+
+{% block content %}
+<style>
+.sponsor-search { display: flex; flex-wrap: wrap; align-items: end; gap: 12px 16px; }
+.sponsor-search .field { display: flex; flex-direction: column; gap: 4px; }
+.sponsor-search #sponsor-q { min-width: 14rem; }
+.sponsor-search .check { display: flex; align-items: center; gap: 6px; }
+</style>
+{% if showcase_mode %}
+<div class="flash flash-ok" role="status">Demo: these are the demo's fictional companies, so every record below is
+    sample data in the same fields. Your own instance shows the real USCIS H-1B Employer Data Hub and DOL LCA records
+    loaded for every company it tracks.</div>
+{% endif %}
+<section class="variant-block">
+    <h2>Sponsors</h2>
+    <p class="muted-note">Each company's H-1B record: USCIS approvals and denials, certified LCA filings for data roles
+        (SOC 15-*) and the highest wage level filed, cap-exempt status (universities and their research affiliates hire
+        outside the lottery), and any current DOL debarment or suspension. The tier (A to X) is what scoring uses;
+        <a href="/how-scoring-works">how scoring works</a> explains it.</p>
+    <p class="muted-note">
+        {% for t in tiers %}Tier {{ t }}: {{ counts[t] }}{{ ' · ' if not loop.last }}{% endfor %}{% if counts.unknown %} · not rated: {{ counts.unknown }}{% endif %}
+    </p>
+    <form method="get" action="/sponsors" class="inline-form sponsor-search">
+        <div class="field"><label for="sponsor-q">Employer</label>
+        <input type="text" id="sponsor-q" name="q" value="{{ q }}" placeholder="Company name"></div>
+        <div class="field"><label for="sponsor-tier">Tier</label>
+        <select id="sponsor-tier" name="tier">
+            <option value="">Any</option>
+            {% for t in tiers %}<option value="{{ t }}"{{ ' selected' if tier == t }}>{{ t }}</option>{% endfor %}
+        </select></div>
+        <label class="check"><input type="checkbox" id="sponsor-cap" name="cap_exempt" value="1"{{ ' checked' if cap_exempt }}> Cap-exempt only</label>
+        <label class="check"><input type="checkbox" id="sponsor-alerts" name="alerts" value="1"{{ ' checked' if alerts }}> With an alert</label>
+        <button type="submit">Search</button>
+    </form>
+</section>
+
+<section class="variant-block">
+    <h3>{{ total }} compan{{ 'y' if total == 1 else 'ies' }}{% if total > page_size %}, strongest {{ page_size }} shown{% endif %}</h3>
+    {% if rows %}
+    <div class="table-scroll">
+        <table class="review-table">
+            <thead>
+                <tr>
+                    <th>Company</th>
+                    <th>Tier</th>
+                    <th>H-1B approvals</th>
+                    <th>Denials</th>
+                    <th>Last FY</th>
+                    <th>Data-role LCAs</th>
+                    <th>Top wage level</th>
+                    <th>Alert</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in rows %}
+                <tr>
+                    <td>{{ c.name }}</td>
+                    <td><span class="badge{{ ' badge-active' if c.tier in ('A', 'B') else '' }}">{{ c.tier or 'not rated' }}</span>{% if c.is_cap_exempt %} <span class="badge" title="{{ c.cap_exempt_reason or '' }}">cap-exempt</span>{% endif %}</td>
+                    <td>{{ c.h1b_approvals_total if c.h1b_approvals_total is not none else '--' }}</td>
+                    <td>{{ c.h1b_denials_total if c.h1b_denials_total is not none else '--' }}</td>
+                    <td>{{ c.h1b_last_fiscal_year or '--' }}</td>
+                    <td>{{ c.lca_filings_total if c.lca_filings_total is not none else '--' }}</td>
+                    <td>{{ c.max_wage_level_15xx or '--' }}</td>
+                    <td>{% if c.sponsorship_alert %}<span class="badge badge-warn">{{ {'debarred': 'debarred', 'perm_suspended': 'green card suspended', 'paused': 'paused visa hiring'}.get(c.sponsorship_alert_kind, 'alert') }}</span>
+                        <span class="muted-note">{{ c.sponsorship_alert }}{% if c.sponsorship_alert_until %} (until {{ c.sponsorship_alert_until }}){% endif %}</span>{% else %}--{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="muted-note">No company matches. Only companies this instance tracks are listed; a new one is added when a
+        posting from it comes in.</p>
+    {% endif %}
+    <p class="muted-note">"--" means the company has no record in the loaded files, not that it never sponsors.</p>
+</section>
+{% endblock %}

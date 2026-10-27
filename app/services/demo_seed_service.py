@@ -275,7 +275,9 @@ def seed_demo_data(db: Session) -> bool:
                     h1b_last_fiscal_year=2025 if approvals else None, created_at=now - timedelta(days=45))
         if field:
             setattr(c, field, slug)
-        c.max_wage_level_15xx = {"A": "III", "B": "II", "C": "II", "X": "I"}[tier]
+        # Data-role LCA filings scale with approvals; a company with no filings has no wage level on record.
+        c.lca_filings_total = max(1, approvals // 3) if approvals else None
+        c.max_wage_level_15xx = {"A": "III", "B": "II", "C": "II", "X": "I"}[tier] if approvals else None
         if name in _CAP_EXEMPT:
             c.is_cap_exempt, c.cap_exempt_reason = True, _CAP_EXEMPT[name]
         db.add(c)

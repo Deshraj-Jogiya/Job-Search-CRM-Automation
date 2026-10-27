@@ -29,6 +29,7 @@ from .routers import jobs as jobs_router
 from .routers import mock_interview as mock_interview_router
 from .routers import profile_prep as profile_prep_router
 from .routers import upgrades as upgrades_router
+from .routers import sponsors as sponsors_router
 from .routers import confirmation as confirmation_router
 from .routers import outreach as outreach_router
 from .routers import analytics as analytics_router
@@ -133,6 +134,7 @@ app.include_router(jobs_router.router, dependencies=app_dependencies)
 app.include_router(mock_interview_router.router, dependencies=app_dependencies)
 app.include_router(profile_prep_router.router, dependencies=app_dependencies)
 app.include_router(upgrades_router.router, dependencies=app_dependencies)
+app.include_router(sponsors_router.router, dependencies=app_dependencies)
 # NOT behind HTTPBasic: these routes are reached from a one-click email
 # link opened on whatever device the user has in hand (see confirmation.py's
 # docstring and confirmation_tokens.py) -- they carry their own signed
