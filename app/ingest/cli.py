@@ -23,6 +23,7 @@ in sync -- idempotent, safe to re-run any time, no LLM calls.
 """
 
 import argparse
+import json
 import sys
 
 
@@ -178,7 +179,30 @@ def main(argv=None) -> int:
     )
     compare_parser.add_argument("--limit", type=int, default=20)
 
+    # Sponsorship lookups straight from the raw government files (no database): any employer, not only tracked companies.
+    subparsers.add_parser("build-lca-slim", help="Extract certified H-1B data-role filings from the LCA XLSX into data/raw/dol/lca_data_roles.csv")
+    lookup_parser = subparsers.add_parser("sponsor-lookup", help="H-1B approvals, data-role LCAs, wage levels and cap-exempt status for employers")
+    lookup_parser.add_argument("names", nargs="+")
+    sponsors_parser = subparsers.add_parser("data-sponsors", help="Employers ranked by certified data-role LCA filings, cap-exempt first")
+    sponsors_parser.add_argument("--state", help='worksite state, e.g. "AZ"')
+    sponsors_parser.add_argument("--limit", type=int, default=50)
+    sponsors_parser.add_argument("--min-filings", type=int, default=3)
+    sponsors_parser.add_argument("--cap-exempt", action="store_true", help="cap-exempt employers only")
+    sponsors_parser.add_argument("--include-dependent", action="store_true", help="keep H-1B-dependent (mostly staffing) employers")
+
     args = parser.parse_args(argv)
+
+    if args.command in ("build-lca-slim", "sponsor-lookup", "data-sponsors"):
+        from . import sponsor_lookup as sl
+
+        if args.command == "build-lca-slim":
+            result = {"kept_filings": sl.build_slim_lca(), "path": str(sl.LCA_SLIM)}
+        elif args.command == "sponsor-lookup":
+            result = sl.lookup(args.names)
+        else:
+            result = sl.data_sponsors(args.state, args.limit, args.min_filings, args.cap_exempt, args.include_dependent)
+        print(json.dumps(result, indent=2, default=str))
+        return 0
 
     db = SessionLocal()
     try:
