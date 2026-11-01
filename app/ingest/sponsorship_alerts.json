@@ -1,5 +1,5 @@
 {
-  "_checked": "2026-10-23. Debarments from the DOL Wage and Hour H-1B list (effective 2026-10-01) and the OFLC program debarment list (2026-10-13). PERM suspensions announced 2026-10-08 at a White House briefing by the Labor Secretary; no written DOL notice yet. Re-check both lists before relying on this file.",
+  "_checked": "2026-11-01 (re-checked: WHD list unchanged, effective 2026-10-01; no new PERM suspensions or written notice found; OFLC page now serves a file download). First checked 2026-10-23. Debarments from the DOL Wage and Hour H-1B list (effective 2026-10-01) and the OFLC program debarment list (2026-10-13). PERM suspensions announced 2026-10-08 at a White House briefing by the Labor Secretary; no written DOL notice yet. Re-check both lists before relying on this file.",
   "alerts": [
     {"name": "GowraTech, LLC", "kind": "debarred", "until": "2027-05-11", "note": "H-1B willful violator, debarred 2025-05-12 to 2027-05-11", "source": "https://www.dol.gov/agencies/whd/immigration/h1b/debarment"},
     {"name": "Renotek Group LLC", "kind": "debarred", "until": "2027-08-07", "note": "H-1B willful violator, debarred 2025-08-08 to 2027-08-07", "source": "https://www.dol.gov/agencies/whd/immigration/h1b/debarment"},
