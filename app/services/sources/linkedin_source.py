@@ -45,6 +45,11 @@ def _parse_posted_at(datetime_text: str) -> datetime | None:
         return None
 
 
+# Default: last 30 days by relevance. The morning search overrides these for newest-first.
+SEARCH_WINDOW = "r2592000"
+SEARCH_SORT = ""
+
+
 def cheap_scan(keywords: list[str], location: str, limit: int = 15) -> list[RawPosting]:
     location_exclusions = get_active_location_exclusions()
     postings: list[RawPosting] = []
@@ -52,7 +57,7 @@ def cheap_scan(keywords: list[str], location: str, limit: int = 15) -> list[RawP
         url = (
             "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
             f"?keywords={urllib.parse.quote(keyword)}&location={urllib.parse.quote(location)}"
-            "&f_TPR=r2592000&start=0"
+            f"&f_TPR={SEARCH_WINDOW}{SEARCH_SORT}&start=0"
         )
         req = urllib.request.Request(url, headers=_HEADERS)
         try:

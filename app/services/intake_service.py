@@ -39,6 +39,7 @@ from .llm import get_llm_provider, parse_json_response
 from .profile_service import get_default_profile_content
 from .source_visibility import is_source_visible_here
 from .sponsorship_signals import detect_sponsorship_signals
+from .sources.base import as_naive_utc
 from .sources import (
     adzuna_source,
     ashby_source,
@@ -748,6 +749,10 @@ def _ingest_raw_posting(db: Session, module, raw) -> JobPosting | None:
 
     if matched and not is_repost:
         matched.last_seen_at = utcnow()
+        # Rows added before a source reported its publish date hold the
+        # ingest time here, which made old jobs look new.
+        if raw.posted_at and as_naive_utc(raw.posted_at) < matched.first_seen_at:
+            matched.first_seen_at = as_naive_utc(raw.posted_at)
         db.commit()
         return None
 
@@ -765,7 +770,7 @@ def _ingest_raw_posting(db: Session, module, raw) -> JobPosting | None:
         job_description=job_description,
         source=raw.source,
         external_id=raw.external_id,
-        first_seen_at=raw.posted_at or utcnow(),
+        first_seen_at=as_naive_utc(raw.posted_at) if raw.posted_at else utcnow(),
         last_seen_at=utcnow(),
         repost_count=(matched.repost_count + 1) if is_repost else 0,
         scam_flag_reason=_detect_scam_patterns(job_description),

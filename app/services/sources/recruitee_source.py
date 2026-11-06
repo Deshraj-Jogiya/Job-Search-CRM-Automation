@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from ...database import SessionLocal
 from ...models import Company
-from .base import RawPosting
+from .base import RawPosting, parse_posted_at
 from .keyword_matching import get_active_location_exclusions, get_active_seniority_exclusions, location_allowed, posting_matches
 
 SOURCE_NAME = "recruitee"
@@ -85,6 +85,7 @@ def cheap_scan(keywords: list[str], location: str, limit: int = 15) -> list[RawP
                     job_url=offer.get("careers_url", ""),
                     job_description=_clean_html(offer.get("highlight", "")) or None,
                     location=offer_location,
+                    posted_at=parse_posted_at(offer.get("published_at") or offer.get("created_at")),
                 )
             )
             if len(postings) >= limit * max(len(companies), 1):

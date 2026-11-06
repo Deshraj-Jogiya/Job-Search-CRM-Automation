@@ -27,7 +27,29 @@ Each source module (linkedin_source.py, adzuna_source.py, ...) exposes:
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+def as_naive_utc(value: datetime) -> datetime:
+    """Stored datetimes are naive UTC; some sources parse aware ones."""
+    return value.astimezone(timezone.utc).replace(tzinfo=None) if value.tzinfo else value
+
+
+def parse_posted_at(value) -> datetime | None:
+    """A board's own publish date as naive UTC, matching utcnow(). Accepts the
+    shapes the ATS APIs return: ISO 8601 (with Z or an offset), epoch
+    milliseconds (Lever), and "YYYY-MM-DD HH:MM:SS UTC" (Recruitee). Returns
+    None for anything else, so a bad date never drops a posting."""
+    if value is None or value == "":
+        return None
+    try:
+        if isinstance(value, (int, float)):
+            return datetime.fromtimestamp(value / 1000, tz=timezone.utc).replace(tzinfo=None)
+        text = str(value).strip().replace(" UTC", "+00:00").replace("Z", "+00:00")
+        parsed = datetime.fromisoformat(text)
+    except (ValueError, OverflowError, OSError):
+        return None
+    return as_naive_utc(parsed)
 
 
 @dataclass

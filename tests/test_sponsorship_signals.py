@@ -101,3 +101,26 @@ class TestEmptyInput:
     def test_none_returns_all_false(self):
         result = detect_sponsorship_signals(None)
         assert result["sponsorship_blocked"] is False
+
+
+class TestRefusalWording:
+    def test_not_open_to_visa_sponsorship_blocks(self):
+        assert detect_sponsorship_signals("This position is not open to visa sponsorship.")["sponsorship_blocked"] is True
+
+    def test_sponsorship_not_available_blocks(self):
+        assert detect_sponsorship_signals("Visa sponsorship is not available for this role.")["sponsorship_blocked"] is True
+
+    def test_without_need_for_employer_sponsorship_blocks(self):
+        text = "Must be legally authorized to work in the United States without the need for employer sponsorship, now or at any time in the future."
+        assert detect_sponsorship_signals(text)["sponsorship_blocked"] is True
+
+
+def test_real_refusal_wordings_found_on_live_postings_block():
+    for line in (
+        "At this time, Capital One will not sponsor a new applicant for employment authorization.",
+        "No immigration sponsorship (ex. H-1B) is available for this role.",
+        "This is not a position for which sponsorship will be provided.",
+        "This role does not qualify for employer sponsored work authorization.",
+        "Individuals with temporary visas or who need sponsorship for work authorization now or in the future, are not eligible for hire.",
+    ):
+        assert detect_sponsorship_signals(line)["sponsorship_blocked"], line
