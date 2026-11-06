@@ -61,6 +61,22 @@ python -m app.ingest.cli alerts
 python -m app.ingest.cli backfill-signals
 ```
 
+## 3c. Hiring signals (freezes, layoffs, job-board activity)
+
+Public trackers exist (ShouldApply's Hiring Freeze Tracker, AfterLayoff) but they go stale: ShouldApply listed Canva and HubSpot as active in March and both cut staff by November. So they are one input, marked `tracker`, and never drop an employer alone. Monthly hand check: ShouldApply, Intellizence, Inside Higher Ed's monthly cuts, the Chronicle's campus finance blog, Becker's and Fierce Healthcare's trackers. `python -m app.ingest.cli hiring-refresh` reads the measured sources (job boards including Workday, LinkedIn job cards, WARN files, SEC filings, NIH awards, his own record). LinkedIn Insights needs the signed-in browser: save the figures to a JSON file and run `hiring-insights <file>`. `hiring-market` prints Indeed's index for data and software roles.
+A freeze goes into `app/ingest/hiring_alerts.json` only when someone inside said so or credible reporting named it, and each entry ends on its `until` date. Layoffs come from company news and trackers
+(<https://news.crunchbase.com/startups/tech-layoffs/>, <https://www.informationweek.com/it-staffing-careers/2026-tech-company-layoffs>),
+WARN notices from the state list. Check them monthly, edit the file, then apply it. The second command reads each employer's public
+Greenhouse, Lever, Ashby or Workday board for US data roles. It is free, and the morning job search refreshes it weekly on its own:
+
+```bash
+python -m app.ingest.cli hiring-alerts
+python -m app.ingest.cli hiring-boards
+```
+
+A layoff alone does not stop the effort: new data roles on the board count for more. An empty board proves nothing, because the
+employer may have moved systems. `services/hiring_signal.py` holds the rules.
+
 New companies on the list are flagged as soon as intake creates them.
 
 ## 4. Cap-exempt sweep (no file needed)

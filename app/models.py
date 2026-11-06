@@ -174,6 +174,40 @@ class Company(Base):
     sponsorship_alert_until = Column(Date, nullable=True)
     sponsorship_alert_source = Column(String, nullable=True)
 
+    # Is this employer really hiring? The alert comes from ingest/hiring_alerts.json (freeze, layoff or warn; scope company or part);
+    # the board_* counts are US data roles read from its public job board. services/hiring_signal.py turns them into one state.
+    hiring_alert_kind = Column(String, nullable=True)
+    hiring_alert_scope = Column(String, nullable=True)
+    hiring_alert_percent = Column(Float, nullable=True)
+    hiring_alert = Column(String, nullable=True)
+    hiring_alert_until = Column(Date, nullable=True)
+    hiring_alert_source = Column(String, nullable=True)
+    board_open_total = Column(Integer, nullable=True)
+    board_data_open = Column(Integer, nullable=True)
+    board_data_new_30d = Column(Integer, nullable=True)
+    board_data_new_90d = Column(Integer, nullable=True)
+    board_checked_at = Column(DateTime, nullable=True)
+    hiring_alert_evidence = Column(String, nullable=True)  # insider, confirmed, reported, tracker, filing
+    workday_board = Column(String, nullable=True)  # "tenant|wd5|site" when the employer's jobs are on Workday
+    board_new_30d_all = Column(Integer, nullable=True)  # every job published in 30 days, data or not
+    board_new_31_90d_all = Column(Integer, nullable=True)
+    board_falling = Column(Boolean, nullable=True)
+    linkedin_data_new_30d = Column(Integer, nullable=True)
+    linkedin_checked_at = Column(DateTime, nullable=True)
+    li_openings = Column(Integer, nullable=True)  # LinkedIn company Insights
+    li_openings_3m_pct = Column(Float, nullable=True)
+    li_openings_6m_pct = Column(Float, nullable=True)
+    li_tech_openings_3m_pct = Column(Float, nullable=True)  # Engineering, or Information Technology when Engineering is not listed
+    li_tech_openings_6m_pct = Column(Float, nullable=True)
+    li_checked_at = Column(DateTime, nullable=True)
+    roles_pulled_120d = Column(Integer, nullable=True)
+    own_silent_applied = Column(Integer, nullable=True)
+
+    @property
+    def hiring(self) -> dict:
+        from .services.hiring_signal import for_company
+        return for_company(self)
+
     __table_args__ = (
         CheckConstraint("tier IN ('A', 'B', 'C', 'X')", name="ck_companies_tier"),
         CheckConstraint("max_wage_level_15xx IN ('I', 'II', 'III', 'IV')", name="ck_companies_max_wage_level"),
@@ -1062,3 +1096,33 @@ class ResearchAgentQuery(Base):
     steps_json = Column(Text, nullable=True)
     error = Column(Text, nullable=True)
     created_at = Column(DateTime, default=utcnow)
+
+
+class HiringEvidence(Base):
+    """One dated fact about an employer's hiring: a role cancelled after he applied, a WARN notice, an SEC filing. Personal facts
+    stay here, never in the public alert list."""
+    __tablename__ = "hiring_evidence"
+    __table_args__ = (UniqueConstraint("company_name", "kind", "event_date", "note", name="uq_hiring_evidence"),)
+
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=True, index=True)
+    company_name = Column(String, nullable=False)
+    kind = Column(String, nullable=False)  # cancelled, warn, filing, funding, contact
+    event_date = Column(Date, nullable=False)
+    note = Column(String, nullable=False)
+    source = Column(String, nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+
+
+class CompanyBoardSnapshot(Base):
+    """A board's counts on one day. Postings that disappear only show up by comparing days."""
+    __tablename__ = "company_board_snapshots"
+    __table_args__ = (UniqueConstraint("company_id", "taken_on", name="uq_company_board_snapshot"),)
+
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False, index=True)
+    taken_on = Column(Date, nullable=False)
+    open_total = Column(Integer, nullable=False)
+    data_open = Column(Integer, nullable=False)
+    new_30d = Column(Integer, nullable=False)
+    new_90d = Column(Integer, nullable=False)

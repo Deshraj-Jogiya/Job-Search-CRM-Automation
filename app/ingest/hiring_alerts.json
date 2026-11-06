@@ -1,0 +1,823 @@
+{
+  "_checked": "2026-11-06. Public freeze trackers exist (ShouldApply, AfterLayoff) but go stale, so they are one input, marked evidence 'tracker'. Also read: Intellizence, Inside Higher Ed monthly cuts, Chronicle campus finance, Becker's and Fierce Healthcare trackers, company news, state WARN listings. Re-check monthly (SETUP.md 3c).",
+  "_kinds": "freeze = hiring stopped; tracker = a public tracker lists it as frozen, not confirmed; layoff = job cuts; warn = a state WARN notice. scope: company or part (only some groups). evidence: insider, confirmed, reported, tracker. An alert stops counting after 'until'.",
+  "alerts": [
+    {
+      "names": [
+        "Microchip Technology",
+        "Microchip Technology Inc",
+        "Microchip"
+      ],
+      "kind": "freeze",
+      "scope": "part",
+      "evidence": "insider",
+      "date": "2026-11-05",
+      "until": "2027-02-05",
+      "note": "A contact inside says there are no data engineering roles on that team and hiring is frozen elsewhere. LinkedIn still shows 749 openings, up 4% in 3 months, so this is treated as part of the company",
+      "source": "https://www.datacenterdynamics.com/en/news/microchip-technology-to-cut-2000-chip-jobs-will-close-arizona-fab-earlier-than-planned/"
+    },
+    {
+      "names": [
+        "University of Maryland",
+        "University of Maryland College Park"
+      ],
+      "kind": "freeze",
+      "scope": "company",
+      "evidence": "reported",
+      "date": "2026-05-08",
+      "until": "2027-02-08",
+      "note": "Cutting up to 150 jobs and freezing all new hiring",
+      "source": "https://www.washingtontimes.com/news/2026/may/8/university-maryland-cut-150-jobs-state-federal-funds-dwindle/"
+    },
+    {
+      "names": [
+        "Microsoft"
+      ],
+      "kind": "freeze",
+      "scope": "part",
+      "evidence": "reported",
+      "date": "2026-03-26",
+      "until": "2027-04-26",
+      "note": "Hiring paused in the cloud unit and North American sales; other groups such as Copilot still hiring. Also 4,800 cut in July and exit offers to 60,000 staff on Oct 26",
+      "source": "https://finance.yahoo.com/markets/stocks/articles/microsoft-freezes-hiring-major-cloud-174645618.html"
+    },
+    {
+      "names": [
+        "Oracle"
+      ],
+      "kind": "freeze",
+      "scope": "part",
+      "evidence": "reported",
+      "date": "2026-09-17",
+      "until": "2027-03-17",
+      "note": "Hiring freeze reported in the cloud division; about 21,000 jobs gone over the past year (13%), including 800 more in Seattle and Redwood City in September",
+      "percent": 13,
+      "source": "https://www.tomshardware.com/tech-industry/artificial-intelligence/oracle-reportedly-set-to-axe-thousands-of-jobs-and-freeze-hiring-for-cloud-division-ai-datacenter-bets-ignite-financial-perfect-storm"
+    },
+    {
+      "names": [
+        "Canva"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "confirmed",
+      "date": "2026-11-03",
+      "until": "2027-05-03",
+      "note": "1,271 jobs cut (22%)",
+      "percent": 22,
+      "source": "https://www.informationweek.com/it-staffing-careers/2026-tech-company-layoffs"
+    },
+    {
+      "names": [
+        "Fiserv"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "reported",
+      "date": "2026-11-03",
+      "until": "2027-05-03",
+      "note": "3,000 employee and contractor jobs cut under a new CEO",
+      "source": "https://intellizence.com/insights/layoff-downsizing/major-companies-that-announced-mass-layoffs/"
+    },
+    {
+      "names": [
+        "Squarespace"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "reported",
+      "date": "2026-11-04",
+      "until": "2027-05-04",
+      "note": "About 300 jobs cut (19%)",
+      "percent": 19,
+      "source": "https://news.crunchbase.com/startups/tech-layoffs/"
+    },
+    {
+      "names": [
+        "Amazon",
+        "Amazon.com Services LLC",
+        "Amazon Web Services (AWS)",
+        "Amazon Web Services"
+      ],
+      "kind": "layoff",
+      "scope": "part",
+      "evidence": "confirmed",
+      "date": "2026-11-01",
+      "until": "2027-05-01",
+      "note": "250 cut in devices and services, 95 more by Jan 25; 16,000 corporate jobs cut in January. New postings keep appearing",
+      "source": "https://news.crunchbase.com/startups/tech-layoffs/"
+    },
+    {
+      "names": [
+        "Intel"
+      ],
+      "kind": "layoff",
+      "scope": "part",
+      "evidence": "confirmed",
+      "date": "2026-10-28",
+      "until": "2027-04-28",
+      "note": "California site cuts: 67 in Folsom, 52 in Santa Clara. No 2026 Arizona notice found. ShouldApply listed it as frozen in March",
+      "source": "https://news.crunchbase.com/startups/tech-layoffs/"
+    },
+    {
+      "names": [
+        "Dropbox"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "confirmed",
+      "date": "2026-10-28",
+      "until": "2027-04-28",
+      "note": "About 200 jobs cut (9%). ShouldApply listed it as frozen in March",
+      "percent": 9,
+      "source": "https://www.informationweek.com/it-staffing-careers/2026-tech-company-layoffs"
+    },
+    {
+      "names": [
+        "Barclays"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "reported",
+      "date": "2026-10-22",
+      "until": "2027-04-22",
+      "note": "5,000 jobs cut (5%)",
+      "percent": 5,
+      "source": "https://www.informationweek.com/it-staffing-careers/2026-tech-company-layoffs"
+    },
+    {
+      "names": [
+        "eBay"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "confirmed",
+      "date": "2026-10-22",
+      "until": "2027-04-22",
+      "note": "1,000 jobs cut (9%), after 800 in February",
+      "percent": 9,
+      "source": "https://www.informationweek.com/it-staffing-careers/2026-tech-company-layoffs"
+    },
+    {
+      "names": [
+        "PandaDoc"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "reported",
+      "date": "2026-10-20",
+      "until": "2027-04-20",
+      "note": "103 jobs cut (15%)",
+      "percent": 15,
+      "source": "https://skillsyncer.com/layoffs-tracker"
+    },
+    {
+      "names": [
+        "Netflix"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "confirmed",
+      "date": "2026-10-14",
+      "until": "2027-04-14",
+      "note": "Nearly 1,000 jobs cut (6%)",
+      "percent": 6,
+      "source": "https://www.informationweek.com/it-staffing-careers/2026-tech-company-layoffs"
+    },
+    {
+      "names": [
+        "Flock Safety"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "reported",
+      "date": "2026-10-08",
+      "until": "2027-04-08",
+      "note": "About 270 jobs (18%) through voluntary exits, as customers drop it. Not Flock Freight",
+      "percent": 18,
+      "source": "https://allwork.space/2026/10/flock-safety-reportedly-plans-to-cut-18-of-its-workforce-as-surveillance-backlash-grows/"
+    },
+    {
+      "names": [
+        "HubSpot"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "reported",
+      "date": "2026-10-06",
+      "until": "2027-04-06",
+      "note": "660 jobs cut (7%)",
+      "percent": 7,
+      "source": "https://skillsyncer.com/layoffs-tracker"
+    },
+    {
+      "names": [
+        "Anchorage Digital",
+        "Anchorage"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "reported",
+      "date": "2026-10-02",
+      "until": "2027-04-02",
+      "note": "68 jobs cut (17%)",
+      "percent": 17,
+      "source": "https://skillsyncer.com/layoffs-tracker"
+    },
+    {
+      "names": [
+        "Workday"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "reported",
+      "date": "2026-09-29",
+      "until": "2027-03-29",
+      "note": "525 jobs cut (2.5%)",
+      "percent": 2.5,
+      "source": "https://skillsyncer.com/layoffs-tracker"
+    },
+    {
+      "names": [
+        "Trustly"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "reported",
+      "date": "2026-09-17",
+      "until": "2027-03-17",
+      "note": "200 jobs cut (25%)",
+      "percent": 25,
+      "source": "https://skillsyncer.com/layoffs-tracker"
+    },
+    {
+      "names": [
+        "Uber"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "confirmed",
+      "date": "2026-09-02",
+      "until": "2027-03-02",
+      "note": "3,300 jobs cut (10%)",
+      "percent": 10,
+      "source": "https://www.informationweek.com/it-staffing-careers/2026-tech-company-layoffs"
+    },
+    {
+      "names": [
+        "University of Arizona"
+      ],
+      "kind": "layoff",
+      "scope": "part",
+      "evidence": "confirmed",
+      "date": "2026-08-01",
+      "until": "2027-02-01",
+      "note": "28 positions cut in finance, administration and communications",
+      "source": "https://casrai.org/news/university-layoffs-budget-cuts-summer-2026"
+    },
+    {
+      "names": [
+        "Etsy"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "confirmed",
+      "date": "2026-08-05",
+      "until": "2027-02-05",
+      "note": "220 jobs cut (12%)",
+      "percent": 12,
+      "source": "https://www.informationweek.com/it-staffing-careers/2026-tech-company-layoffs"
+    },
+    {
+      "names": [
+        "Johns Hopkins University",
+        "The Johns Hopkins University"
+      ],
+      "kind": "layoff",
+      "scope": "part",
+      "evidence": "confirmed",
+      "date": "2026-06-26",
+      "until": "2027-01-26",
+      "note": "About 110 cut in public health, business and central administration after federal research funding fell; a staff hiring freeze began in 2025. The Applied Physics Lab is separate",
+      "source": "https://www.universityherald.com/articles/80385/20260626/johns-hopkins-university-lays-off-110-employees-due-cuts-federal-research-funding.htm"
+    },
+    {
+      "names": [
+        "University of Minnesota"
+      ],
+      "kind": "layoff",
+      "scope": "part",
+      "evidence": "reported",
+      "date": "2026-06-30",
+      "until": "2027-01-30",
+      "note": "230 positions eliminated in a $44 million budget cut",
+      "source": "https://casrai.org/news/university-layoffs-budget-cuts-summer-2026"
+    },
+    {
+      "names": [
+        "Brown University"
+      ],
+      "kind": "layoff",
+      "scope": "part",
+      "evidence": "reported",
+      "date": "2026-06-30",
+      "until": "2027-01-30",
+      "note": "48 positions cut against a $30 million gap",
+      "source": "https://casrai.org/news/university-layoffs-budget-cuts-summer-2026"
+    },
+    {
+      "names": [
+        "Groupon"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "confirmed",
+      "date": "2026-05-27",
+      "until": "2026-12-27",
+      "note": "400 jobs cut (23%)",
+      "percent": 23,
+      "source": "https://www.informationweek.com/it-staffing-careers/2026-tech-company-layoffs"
+    },
+    {
+      "names": [
+        "Wix",
+        "Wix.com"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "reported",
+      "date": "2026-05-26",
+      "until": "2026-12-26",
+      "note": "1,000 jobs cut (20%)",
+      "percent": 20,
+      "source": "https://www.informationweek.com/it-staffing-careers/2026-tech-company-layoffs"
+    },
+    {
+      "names": [
+        "ClickUp"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "reported",
+      "date": "2026-05-21",
+      "until": "2026-12-21",
+      "note": "22% cut",
+      "percent": 22,
+      "source": "https://www.informationweek.com/it-staffing-careers/2026-tech-company-layoffs"
+    },
+    {
+      "names": [
+        "Intuit"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "reported",
+      "date": "2026-05-20",
+      "until": "2026-12-20",
+      "note": "About 3,000 jobs cut (17%)",
+      "percent": 17,
+      "source": "https://www.informationweek.com/it-staffing-careers/2026-tech-company-layoffs"
+    },
+    {
+      "names": [
+        "Cisco"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "confirmed",
+      "date": "2026-05-14",
+      "until": "2026-12-14",
+      "note": "About 4,000 jobs cut (5%)",
+      "percent": 5,
+      "source": "https://www.informationweek.com/it-staffing-careers/2026-tech-company-layoffs"
+    },
+    {
+      "names": [
+        "LinkedIn"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "reported",
+      "date": "2026-05-13",
+      "until": "2026-12-13",
+      "note": "5% cut",
+      "percent": 5,
+      "source": "https://www.informationweek.com/it-staffing-careers/2026-tech-company-layoffs"
+    },
+    {
+      "names": [
+        "Coinbase"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "confirmed",
+      "date": "2026-05-06",
+      "until": "2026-12-06",
+      "note": "700 jobs cut (14%)",
+      "percent": 14,
+      "source": "https://www.informationweek.com/it-staffing-careers/2026-tech-company-layoffs"
+    },
+    {
+      "names": [
+        "Meta",
+        "Meta Platforms"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "reported",
+      "date": "2026-05-20",
+      "until": "2026-12-20",
+      "note": "8,000 jobs cut (10%) and plans dropped to fill 6,000 open roles. ShouldApply listed it as frozen in March",
+      "percent": 10,
+      "source": "https://intellizence.com/insights/layoff-downsizing/major-companies-that-announced-mass-layoffs/"
+    },
+    {
+      "names": [
+        "Snap Inc.",
+        "Snap"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "confirmed",
+      "date": "2026-04-15",
+      "until": "2026-11-30",
+      "note": "1,000 jobs cut (16%) and more than 300 open roles closed",
+      "percent": 16,
+      "source": "https://www.informationweek.com/it-staffing-careers/2026-tech-company-layoffs"
+    },
+    {
+      "names": [
+        "Block, Inc.",
+        "Block"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "confirmed",
+      "date": "2026-02-27",
+      "until": "2026-12-31",
+      "note": "Over 4,000 of 10,000 jobs cut (40%), with more cuts reported in November",
+      "percent": 40,
+      "source": "https://www.informationweek.com/it-staffing-careers/2026-tech-company-layoffs"
+    },
+    {
+      "names": [
+        "Pinterest"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "confirmed",
+      "date": "2026-01-27",
+      "until": "2026-11-30",
+      "note": "Up to 15% cut in January",
+      "percent": 15,
+      "source": "https://www.informationweek.com/it-staffing-careers/2026-tech-company-layoffs"
+    },
+    {
+      "names": [
+        "AssistRX"
+      ],
+      "kind": "warn",
+      "scope": "part",
+      "evidence": "confirmed",
+      "date": "2026-09-30",
+      "until": "2027-03-30",
+      "note": "WARN notice, Tempe, 107 workers",
+      "source": "https://usefootnote.com/layoffs/arizona"
+    },
+    {
+      "names": [
+        "Regional Acceptance Corporation"
+      ],
+      "kind": "warn",
+      "scope": "part",
+      "evidence": "confirmed",
+      "date": "2026-09-15",
+      "until": "2027-03-15",
+      "note": "WARN notice, Tempe, 120 workers",
+      "source": "https://usefootnote.com/layoffs/arizona"
+    },
+    {
+      "names": [
+        "Becton Dickinson",
+        "Becton, Dickinson and Company",
+        "BD"
+      ],
+      "kind": "warn",
+      "scope": "part",
+      "evidence": "confirmed",
+      "date": "2026-09-08",
+      "until": "2027-03-08",
+      "note": "WARN notice, Tempe, 57 workers",
+      "source": "https://usefootnote.com/layoffs/arizona"
+    },
+    {
+      "names": [
+        "West Pharmaceutical Services"
+      ],
+      "kind": "warn",
+      "scope": "part",
+      "evidence": "confirmed",
+      "date": "2026-09-03",
+      "until": "2027-03-03",
+      "note": "WARN notice, Scottsdale",
+      "source": "https://usefootnote.com/layoffs/arizona"
+    },
+    {
+      "names": [
+        "Amentum"
+      ],
+      "kind": "warn",
+      "scope": "part",
+      "evidence": "confirmed",
+      "date": "2026-08-21",
+      "until": "2027-02-21",
+      "note": "WARN notice, Chandler",
+      "source": "https://usefootnote.com/layoffs/arizona"
+    },
+    {
+      "names": [
+        "Infineon Technologies",
+        "Infineon Technologies Americas Corp",
+        "Infineon"
+      ],
+      "kind": "warn",
+      "scope": "part",
+      "evidence": "confirmed",
+      "date": "2026-08-03",
+      "until": "2027-02-03",
+      "note": "WARN notice, Mesa",
+      "source": "https://usefootnote.com/layoffs/arizona"
+    },
+    {
+      "names": [
+        "Ingram Micro"
+      ],
+      "kind": "warn",
+      "scope": "part",
+      "evidence": "confirmed",
+      "date": "2026-06-24",
+      "until": "2026-12-24",
+      "note": "WARN notice, Chandler",
+      "source": "https://usefootnote.com/layoffs/arizona"
+    },
+    {
+      "names": [
+        "Lucid Motors",
+        "Lucid USA",
+        "Lucid"
+      ],
+      "kind": "warn",
+      "scope": "part",
+      "evidence": "confirmed",
+      "date": "2026-06-22",
+      "until": "2026-12-22",
+      "note": "WARN notice, Casa Grande",
+      "source": "https://usefootnote.com/layoffs/arizona"
+    },
+    {
+      "names": [
+        "Honeywell"
+      ],
+      "kind": "warn",
+      "scope": "part",
+      "evidence": "confirmed",
+      "date": "2026-05-27",
+      "until": "2026-11-27",
+      "note": "WARN notice, Chandler",
+      "source": "https://usefootnote.com/layoffs/arizona"
+    },
+    {
+      "names": [
+        "Salesforce"
+      ],
+      "kind": "freeze",
+      "scope": "part",
+      "evidence": "confirmed",
+      "date": "2026-05-28",
+      "until": "2027-02-28",
+      "note": "CEO said no new engineers were hired in FY2026 and none are planned; sales still hiring. LinkedIn engineering openings rose 67% in 6 months, so watch for a thaw",
+      "source": "https://www.fortune.com/2026/05/28/ai-slashes-white-collar-jobs-salesforce-ceo-marc-benioff-one-department-still-hiring-sales/"
+    },
+    {
+      "names": [
+        "PayPal"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "reported",
+      "date": "2026-05-05",
+      "until": "2027-05-05",
+      "note": "About 20% of jobs to go over 2-3 years; engineering openings down 65% in 6 months",
+      "source": "https://www.crowdfundinsider.com/2026/05/278546-paypals-job-cuts-highlight-fintechs-cost-cutting-efforts-but-recent-recalls-raise-questions/",
+      "percent": 20
+    },
+    {
+      "names": [
+        "Dell Technologies",
+        "Dell"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "reported",
+      "date": "2026-03-20",
+      "until": "2026-12-31",
+      "note": "Headcount down 10% to about 97,000, partly by limiting outside hiring",
+      "source": "https://www.entrepreneur.com/business-news/how-dell-shrunk-its-workforce-by-10-third-year-in-a-row",
+      "percent": 10
+    },
+    {
+      "names": [
+        "Apple"
+      ],
+      "kind": "tracker",
+      "scope": "company",
+      "evidence": "tracker",
+      "date": "2026-03-31",
+      "until": "2026-12-31",
+      "note": "ShouldApply lists it as frozen (March); no 2026 confirmation found",
+      "source": "https://shouldapply.com/tools/hiring-freeze-tracker"
+    },
+    {
+      "names": [
+        "Twilio"
+      ],
+      "kind": "tracker",
+      "scope": "company",
+      "evidence": "tracker",
+      "date": "2026-03-31",
+      "until": "2026-12-31",
+      "note": "ShouldApply lists it as frozen (March); no 2026 layoff found, headcount 5,625 in its Q3 filing",
+      "source": "https://shouldapply.com/tools/hiring-freeze-tracker"
+    },
+    {
+      "names": [
+        "Zoom",
+        "Zoom Video Communications"
+      ],
+      "kind": "tracker",
+      "scope": "company",
+      "evidence": "tracker",
+      "date": "2026-03-31",
+      "until": "2026-12-31",
+      "note": "ShouldApply lists it as frozen (March); nothing current found",
+      "source": "https://shouldapply.com/tools/hiring-freeze-tracker"
+    },
+    {
+      "names": [
+        "DocuSign"
+      ],
+      "kind": "tracker",
+      "scope": "company",
+      "evidence": "tracker",
+      "date": "2026-03-31",
+      "until": "2026-12-31",
+      "note": "ShouldApply lists it as frozen (March); nothing current found",
+      "source": "https://shouldapply.com/tools/hiring-freeze-tracker"
+    },
+    {
+      "names": [
+        "X",
+        "X Corp"
+      ],
+      "kind": "tracker",
+      "scope": "company",
+      "evidence": "tracker",
+      "date": "2026-03-31",
+      "until": "2026-12-31",
+      "note": "ShouldApply lists it as frozen (March); nothing current found",
+      "source": "https://shouldapply.com/tools/hiring-freeze-tracker"
+    },
+    {
+      "names": [
+        "Rutgers University"
+      ],
+      "kind": "freeze",
+      "scope": "company",
+      "evidence": "reported",
+      "date": "2026-07-10",
+      "until": "2027-01-10",
+      "note": "University-wide hiring freeze",
+      "source": "https://www.forbes.com/sites/michaeltnietzel/2026/07/10/budget-woes-bring-more-university-buyouts-layoffs-and-hiring-freezes/"
+    },
+    {
+      "names": [
+        "University of Utah"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "reported",
+      "date": "2026-09-15",
+      "until": "2027-06-30",
+      "note": "285 to 855 positions to go by June 2027",
+      "source": "https://www.insidehighered.com/news/business/cost-cutting/2026/10/06/some-campuses-announced-massive-personnel-cuts-september"
+    },
+    {
+      "names": [
+        "University of Southern California"
+      ],
+      "kind": "layoff",
+      "scope": "part",
+      "evidence": "reported",
+      "date": "2026-09-15",
+      "until": "2027-03-15",
+      "note": "65 cut at the Viterbi engineering school, mostly IT roles",
+      "source": "https://www.insidehighered.com/news/business/cost-cutting/2026/10/06/some-campuses-announced-massive-personnel-cuts-september"
+    },
+    {
+      "names": [
+        "Howard University"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "reported",
+      "date": "2026-08-15",
+      "until": "2027-02-15",
+      "note": "600 jobs cut",
+      "source": "https://intellizence.com/insights/layoff-downsizing/leading-companies-announcing-layoffs-and-hiring-freezes/"
+    },
+    {
+      "names": [
+        "ServiceNow"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "reported",
+      "date": "2026-08-15",
+      "until": "2027-02-15",
+      "note": "1,000 jobs cut",
+      "source": "https://intellizence.com/insights/layoff-downsizing/leading-companies-announcing-layoffs-and-hiring-freezes/"
+    },
+    {
+      "names": [
+        "Zillow"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "reported",
+      "date": "2026-08-15",
+      "until": "2027-02-15",
+      "note": "500 jobs cut",
+      "source": "https://intellizence.com/insights/layoff-downsizing/leading-companies-announcing-layoffs-and-hiring-freezes/"
+    },
+    {
+      "names": [
+        "Rapid7"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "reported",
+      "date": "2026-08-15",
+      "until": "2027-02-15",
+      "note": "313 jobs cut",
+      "source": "https://intellizence.com/insights/layoff-downsizing/leading-companies-announcing-layoffs-and-hiring-freezes/"
+    },
+    {
+      "names": [
+        "Verizon"
+      ],
+      "kind": "layoff",
+      "scope": "part",
+      "evidence": "reported",
+      "date": "2026-07-15",
+      "until": "2027-01-15",
+      "note": "500 jobs cut",
+      "source": "https://intellizence.com/insights/layoff-downsizing/leading-companies-announcing-layoffs-and-hiring-freezes/"
+    },
+    {
+      "names": [
+        "Kroger"
+      ],
+      "kind": "layoff",
+      "scope": "part",
+      "evidence": "reported",
+      "date": "2026-10-15",
+      "until": "2027-04-15",
+      "note": "3,000 jobs cut",
+      "source": "https://intellizence.com/insights/layoff-downsizing/leading-companies-announcing-layoffs-and-hiring-freezes/"
+    },
+    {
+      "names": [
+        "Omnicom"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "reported",
+      "date": "2026-09-15",
+      "until": "2027-03-15",
+      "note": "15,000 jobs cut",
+      "source": "https://intellizence.com/insights/layoff-downsizing/leading-companies-announcing-layoffs-and-hiring-freezes/"
+    },
+    {
+      "names": [
+        "Conifer Health Solutions"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "evidence": "reported",
+      "date": "2026-09-15",
+      "until": "2027-03-15",
+      "note": "1,037 jobs cut",
+      "source": "https://intellizence.com/insights/layoff-downsizing/leading-companies-announcing-layoffs-and-hiring-freezes/"
+    }
+  ]
+}

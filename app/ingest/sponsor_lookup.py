@@ -25,6 +25,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from ..services.company_utils import normalize_company_name
+from ..services.hiring_signal import for_name
 from .cap_exempt import classify_cap_exempt
 
 REPO = Path(__file__).resolve().parents[2]
@@ -176,6 +177,12 @@ def _alerts(path: Path = ALERTS_PATH) -> dict:
     return {_key(a.get("employer") or a.get("name", "")): a for a in items if isinstance(a, dict)}
 
 
+def _hiring_alert(name: str) -> dict | None:
+    """Any freeze, layoff or WARN notice on file, so a sponsorship check also says whether the effort is worth it."""
+    signal = for_name(name)
+    return {"state": signal["state"], "label": signal["label"], "note": signal["note"], "source": signal["source"]} if signal["note"] else None
+
+
 def _summary(name: str, uscis: dict, lca: dict, alerts: dict) -> dict:
     k = _key(name)
     u = uscis.get(k)
@@ -215,6 +222,7 @@ def _summary(name: str, uscis: dict, lca: dict, alerts: dict) -> dict:
         "cap_exempt": cap_exempt, "cap_exempt_reason": reason,
         "h1b_dependent_share": round(dependent / len(filings), 2) if filings else None,
         "data_year": "USCIS FY2024-2026; DOL LCA FY2026 Q1-Q3",
+        "hiring_alert": _hiring_alert(name),
     }
 
 

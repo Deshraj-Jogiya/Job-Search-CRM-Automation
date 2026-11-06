@@ -78,6 +78,11 @@
             {% if co and co.sponsorship_alert %}
             <p class="flag-warning">Sponsorship alert for {{ co.name }}: {{ co.sponsorship_alert }}. <a href="{{ co.sponsorship_alert_source }}" target="_blank" rel="noopener">Source</a></p>
             {% endif %}
+            {% if co and co.hiring.rank >= 3 %}
+            <p class="flag-warning">{{ co.hiring.label }} at {{ co.name }}{% if co.hiring.note %}: {{ co.hiring.note }}{% endif %}.{% if co.hiring.source %} <a href="{{ co.hiring.source }}" target="_blank" rel="noopener">Source</a>{% endif %}</p>
+            {% elif co and co.hiring.board %}
+            <p class="muted-note">Hiring now: {{ co.hiring.board }}.</p>
+            {% endif %}
             <p class="muted-note"><strong>Strengths:</strong> {{ match_analysis.strengths }}</p>
             <p class="muted-note"><strong>Gaps:</strong> {{ match_analysis.gaps_analysis }}</p>
             {% if ev.skills %}

@@ -28,6 +28,7 @@ _RLS_MIGRATION_FILES = [
     "a7d4e2f6c9b1_add_saved_answers_table.py",
     "b3e9d7a1c4f2_add_profile_interview_prep_table.py",
     "d5f1a8c3e7b2_add_upgrade_reports_table.py",
+    "e9c1d4f7a2b8_add_hiring_evidence_and_board_snapshots.py",
 ]
 
 

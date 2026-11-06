@@ -22,7 +22,7 @@ TIERS = ("A", "B", "C", "X")
 _TIER_ORDER = case({"A": 0, "B": 1, "C": 2, "X": 3}, value=Company.tier, else_=4)
 
 
-def search_companies(db: Session, q: str = "", tier: str = "", cap_exempt: bool = False, alerts: bool = False):
+def search_companies(db: Session, q: str = "", tier: str = "", cap_exempt: bool = False, alerts: bool = False, hiring: bool = False):
     """Matching companies, strongest sponsor first, and the total number that matched."""
     query = db.query(Company)
     q = (q or "").strip()
@@ -38,6 +38,8 @@ def search_companies(db: Session, q: str = "", tier: str = "", cap_exempt: bool 
         query = query.filter(Company.is_cap_exempt.is_(True))
     if alerts:
         query = query.filter(Company.sponsorship_alert.isnot(None))
+    if hiring:
+        query = query.filter(Company.board_data_new_30d > 0)
     total = query.count()
     rows = (query.order_by(_TIER_ORDER, func.coalesce(Company.h1b_approvals_total, 0).desc(),
                            func.coalesce(Company.lca_filings_total, 0).desc(), Company.name)
@@ -51,9 +53,9 @@ def tier_counts(db: Session) -> dict:
 
 
 @router.get("", response_class=HTMLResponse)
-def sponsors_page(request: Request, q: str = "", tier: str = "", cap_exempt: str = "", alerts: str = "",
+def sponsors_page(request: Request, q: str = "", tier: str = "", cap_exempt: str = "", alerts: str = "", hiring: str = "",
                   db: Session = Depends(get_db)):
-    rows, total = search_companies(db, q, tier, bool(cap_exempt), bool(alerts))
+    rows, total = search_companies(db, q, tier, bool(cap_exempt), bool(alerts), bool(hiring))
     return render(request, "sponsors.html", {
         "rows": rows,
         "total": total,
@@ -62,6 +64,7 @@ def sponsors_page(request: Request, q: str = "", tier: str = "", cap_exempt: str
         "tier": tier if tier in TIERS else "",
         "cap_exempt": bool(cap_exempt),
         "alerts": bool(alerts),
+        "hiring": bool(hiring),
         "tiers": TIERS,
         "counts": tier_counts(db),
     })

@@ -60,7 +60,11 @@ def _score_of(application: JobApplication) -> int:
 
 
 def _sorted_by_score(applications: list[JobApplication]) -> list[JobApplication]:
-    return sorted(applications, key=_score_of, reverse=True)
+    # A frozen employer goes last whatever its score: the job may be posted, but nobody is being hired.
+    def key(application):
+        company = application.posting.company if application.posting else None
+        return (not (company and company.hiring["state"] == "frozen"), _score_of(application))
+    return sorted(applications, key=key, reverse=True)
 
 
 def build_queue(db: Session) -> dict:

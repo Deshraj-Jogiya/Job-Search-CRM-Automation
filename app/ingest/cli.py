@@ -147,6 +147,7 @@ def main(argv=None) -> int:
 
     from ..database import SessionLocal
     from .cap_exempt import apply_cap_exempt_flags
+    from .hiring import apply_hiring_alerts, market_pulse, refresh_all, refresh_board_activity, save_insights
     from .sponsors import load_dol_lca_data, load_sponsorship_alerts, load_uscis_h1b_data
     from .wages import load_oews_wage_data
 
@@ -157,6 +158,14 @@ def main(argv=None) -> int:
     uscis_parser.add_argument("csv_path")
     uscis_parser.add_argument("--reset", action="store_true", help="Clear every company's H-1B counts first (when replacing the years on record)")
     subparsers.add_parser("alerts", help="Apply ingest/sponsorship_alerts.json (debarments, PERM suspensions, hiring pauses)")
+
+    subparsers.add_parser("hiring-alerts", help="Apply ingest/hiring_alerts.json (freezes, layoffs, WARN notices)")
+    subparsers.add_parser("hiring-refresh", help="Refresh every free hiring source: boards, LinkedIn cards, WARN, SEC, NIH, own record")
+    subparsers.add_parser("hiring-market", help="Indeed's US posting index for data and software roles")
+    insights_parser = subparsers.add_parser("hiring-insights", help="Save LinkedIn Insights figures from a JSON file")
+    insights_parser.add_argument("path")
+    board_parser = subparsers.add_parser("hiring-boards", help="Read employers' public job boards for US data roles (free)")
+    board_parser.add_argument("--max-age-days", type=int, default=0, help="Keep reads newer than this")
 
     lca_parser = subparsers.add_parser("lca", help="Load one DOL OFLC LCA Disclosure quarterly XLSX")
     lca_parser.add_argument("xlsx_path")
@@ -210,6 +219,16 @@ def main(argv=None) -> int:
             result = load_uscis_h1b_data(db, args.csv_path, reset=args.reset)
         elif args.command == "alerts":
             result = load_sponsorship_alerts(db)
+        elif args.command == "hiring-alerts":
+            result = apply_hiring_alerts(db)
+        elif args.command == "hiring-refresh":
+            result = refresh_all(db)
+        elif args.command == "hiring-market":
+            result = market_pulse()
+        elif args.command == "hiring-insights":
+            result = save_insights(db, json.load(open(args.path, encoding="utf-8")))
+        elif args.command == "hiring-boards":
+            result = refresh_board_activity(db, args.max_age_days)
         elif args.command == "lca":
             result = load_dol_lca_data(db, args.xlsx_path, args.fiscal_quarter, reset=args.reset)
         elif args.command == "oews":

@@ -20,7 +20,8 @@
     <h2>Sponsors</h2>
     <p class="muted-note">Each company's H-1B record: USCIS approvals and denials, certified LCA filings for data roles
         (SOC 15-*) and the highest wage level filed, cap-exempt status (universities and their research affiliates hire
-        outside the lottery), and any current DOL debarment or suspension. The tier (A to X) is what scoring uses;
+        outside the lottery), any current DOL debarment or suspension, and whether the employer is really hiring: its job
+        board's US data roles, plus any freeze, layoff or WARN notice on file. The tier (A to X) is what scoring uses;
         <a href="/how-scoring-works">how scoring works</a> explains it.</p>
     <p class="muted-note">
         {% for t in tiers %}Tier {{ t }}: {{ counts[t] }}{{ ' · ' if not loop.last }}{% endfor %}{% if counts.unknown %} · not rated: {{ counts.unknown }}{% endif %}
@@ -35,6 +36,7 @@
         </select></div>
         <label class="check"><input type="checkbox" id="sponsor-cap" name="cap_exempt" value="1"{{ ' checked' if cap_exempt }}> Cap-exempt only</label>
         <label class="check"><input type="checkbox" id="sponsor-alerts" name="alerts" value="1"{{ ' checked' if alerts }}> With an alert</label>
+        <label class="check"><input type="checkbox" id="sponsor-hiring" name="hiring" value="1"{{ ' checked' if hiring }}> New data role in 30 days</label>
         <button type="submit">Search</button>
     </form>
 </section>
@@ -53,6 +55,7 @@
                     <th>Last FY</th>
                     <th>Data-role LCAs</th>
                     <th>Top wage level</th>
+                    <th>Hiring now</th>
                     <th>Alert</th>
                 </tr>
             </thead>
@@ -66,6 +69,7 @@
                     <td>{{ c.h1b_last_fiscal_year or '--' }}</td>
                     <td>{{ c.lca_filings_total if c.lca_filings_total is not none else '--' }}</td>
                     <td>{{ c.max_wage_level_15xx or '--' }}</td>
+                    <td>{% set h = c.hiring %}{% if h.state != 'unknown' %}<span class="badge{{ ' badge-active' if h.rank == 0 else (' badge-warn' if h.rank >= 3 else '') }}">{{ h.label }}</span>{% else %}--{% endif %}{% if h.board %} <span class="muted-note">{{ h.board }}</span>{% endif %}{% if h.note %} <span class="muted-note">{{ h.note }}</span>{% endif %}</td>
                     <td>{% if c.sponsorship_alert %}<span class="badge badge-warn">{{ {'debarred': 'debarred', 'perm_suspended': 'green card suspended', 'paused': 'paused visa hiring'}.get(c.sponsorship_alert_kind, 'alert') }}</span>
                         <span class="muted-note">{{ c.sponsorship_alert }}{% if c.sponsorship_alert_until %} (until {{ c.sponsorship_alert_until }}){% endif %}</span>{% else %}--{% endif %}</td>
                 </tr>

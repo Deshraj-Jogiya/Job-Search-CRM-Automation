@@ -57,6 +57,9 @@
                     {% if app.posting.company.sponsorship_alert %}
                     <span class="badge badge-warn" title="{{ app.posting.company.sponsorship_alert }}">{{ {'debarred': 'debarred', 'perm_suspended': 'green card suspended', 'paused': 'paused visa hiring'}.get(app.posting.company.sponsorship_alert_kind, 'alert') }}</span>
                     {% endif %}
+                    {% if app.posting.company.hiring.rank >= 3 %}
+                    <span class="badge badge-warn" title="{{ app.posting.company.hiring.note or app.posting.company.hiring.board or '' }}">{{ app.posting.company.hiring.label }}</span>
+                    {% endif %}
                     {% else %}
                     <span class="badge">unknown</span>
                     {% endif %}
