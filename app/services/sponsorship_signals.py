@@ -33,6 +33,7 @@ import re
 # (queue_service.py), not here -- both sponsorship_blocked and
 # sponsorship_signal are independent booleans, see detect_sponsorship_signals.
 _NEGATIVE_PATTERNS = [
+    (r"\bwill not pursue (?:\w+ ){0,2}sponsorship\b", "will not pursue sponsorship"),
     (r"\bno visa sponsorship\b", "no visa sponsorship"),
     (r"\bnot able to sponsor\b", "not able to sponsor"),
     (r"\bunable to sponsor\b", "unable to sponsor"),
