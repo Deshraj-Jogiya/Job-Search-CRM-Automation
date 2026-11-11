@@ -65,6 +65,80 @@ def body_paragraphs(body: str) -> list[str]:
     return letter_parts(body)[1]
 
 
+# A letter body that passes these reads like a letter, not a list of "you ask X, I did X" matches. Career-office
+# guidance (one page, 3-5 paragraphs, about 250-400 words, a specific reason for this company, the story behind one
+# achievement rather than a restated resume line, a close that asks for the interview) turned into rules a machine
+# can check. They judge shape, not truth: unsupported_numbers in tailoring_service still guards the facts.
+MIN_WORDS, MAX_WORDS = 250, 450
+MIN_PARAGRAPHS, MAX_PARAGRAPHS = 4, 5
+STORY_MIN_WORDS = 70
+_STOCK_PHRASES = (
+    "i am applying for", "i'm applying for", "i am writing to apply", "i am excited to apply",
+    "the posting asks", "the posting describes", "the posting names", "the job description asks", "the role asks for",
+    "please find my resume", "please find attached", "i work the same way", "that is the kind of work i do",
+    "i believe i would be a great fit", "i am confident that i", "to whom it may concern",
+)
+_ASK_RE = re.compile(r"\b(interview|conversation|talk|discuss|speak|chat|meet)\b", re.IGNORECASE)
+_NUMBER_IN_TEXT_RE = re.compile(r"\d")
+_LEGAL_SUFFIX_RE = re.compile(r",?\s+(inc\.?|llc|l\.l\.c\.|ltd\.?|corp\.?|corporation|co\.|company|holdings|lp|llp)$",
+                              re.IGNORECASE)
+
+
+_GENERIC_TAIL_RE = re.compile(r"(\s+(services|technologies|technology|solutions|systems|group|labs|industries|university|"
+                              r"software|international))+$", re.IGNORECASE)
+
+
+def _company_names(company_name: str) -> list[str]:
+    """Ways a letter can name the company: the full name, without its legal suffix or a parenthetical
+    ("Amazon Web Services (AWS)" -> also "Amazon Web Services", "AWS"), and without a leading "The"."""
+    name = (company_name or "").strip()
+    names = {name}
+    paren = re.search(r"\(([^)]+)\)", name)
+    if paren:
+        names.add(paren.group(1).strip())
+        name = re.sub(r"\s*\([^)]*\)", "", name).strip()
+        names.add(name)
+    bare = _LEGAL_SUFFIX_RE.sub("", name).strip()
+    bare = re.sub(r"\.(com|io|ai|co)(?=\s|$)", "", bare, flags=re.IGNORECASE).strip()  # "Amazon.com Services" -> "Amazon Services"
+    if bare.lower().startswith("the "):
+        bare = bare[4:]
+    names.add(bare)
+    # "Amazon Services", "The Johns Hopkins University", "CHAOS Industries": letters say "Amazon", "Johns Hopkins", "CHAOS".
+    short = _GENERIC_TAIL_RE.sub("", bare).strip()
+    if short and short != bare:
+        names.add(short)
+    return [n for n in names if len(n) >= 2]
+
+
+def quality_issues(body: str, company_name: str) -> list[str]:
+    """Plain-language reasons a letter body is not ready, empty when it is."""
+    paragraphs = body_paragraphs(body)
+    text = "\n\n".join(paragraphs)
+    lower = text.lower()
+    issues = []
+    words = len(text.split())
+    if words < MIN_WORDS:
+        issues.append(f"too short ({words} words, needs at least {MIN_WORDS})")
+    elif words > MAX_WORDS:
+        issues.append(f"too long ({words} words, keep it under {MAX_WORDS})")
+    if not MIN_PARAGRAPHS <= len(paragraphs) <= MAX_PARAGRAPHS:
+        issues.append(f"{len(paragraphs)} paragraphs (needs {MIN_PARAGRAPHS}-{MAX_PARAGRAPHS})")
+    variants = sorted(_company_names(company_name), key=len, reverse=True)  # longest first: one mention counts once
+    mentions = len(re.findall(r"(?<!\w)(?:" + "|".join(re.escape(n.lower()) for n in variants) + r")(?!\w)", lower)) \
+        if variants else 0
+    if mentions < 2:
+        issues.append(f"names {company_name or 'the company'} {mentions} time(s); say why this company, not any company")
+    stock = [p for p in _STOCK_PHRASES if p in lower]
+    if stock:
+        issues.append("stock phrasing: " + ", ".join(f'"{p}"' for p in stock))
+    if not any(len(p.split()) >= STORY_MIN_WORDS and _NUMBER_IN_TEXT_RE.search(p) for p in paragraphs[1:-1] or paragraphs):
+        issues.append(f"no story paragraph (one body paragraph of {STORY_MIN_WORDS}+ words telling one piece of work "
+                      "and its measured result)")
+    if paragraphs and not _ASK_RE.search(paragraphs[-1]):
+        issues.append("last paragraph does not ask for an interview or conversation")
+    return issues
+
+
 def full_text(body: str, candidate_name: str, recipient_name: str | None = None) -> str:
     """Greeting, body and sign-off: what gets pasted into an application form's cover-letter box."""
     salutation, paragraphs = letter_parts(body, recipient_name)

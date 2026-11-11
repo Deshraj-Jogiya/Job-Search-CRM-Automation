@@ -28,7 +28,7 @@ from ..models import JobApplication, ProfileVariant, SearchKeyword, TailoredDocu
 from .activity_logger import log_activity, log_exception
 from .llm import get_llm_provider, llm_available, parse_json_response
 from .matching_service import MatchingServiceError, get_profile_content_for_application
-from . import company_research_service, demo_usage_service, fit_service, resume_rules
+from . import company_research_service, cover_letter_service, demo_usage_service, fit_service, resume_rules
 from .scoring_service import recompute_score_breakdown
 
 TARGET_ATS_SCORE = 90
@@ -691,12 +691,13 @@ def generate_cover_letter(profile_content: dict, company_name: str, job_title: s
     llm = get_llm_provider()
     text = llm.complete_text(
         system=(
-            "You are a professional cover letter writer. You return ONLY the 3 body paragraphs -- no "
+            "You are a professional cover letter writer. You return ONLY the 4 body paragraphs -- no "
             "greeting, no closing, no signature, since the template supplies those."
         ),
         prompt=(
-            "Write a tailored cover letter body (exactly 3 paragraphs, under 300 words total) for this candidate "
-            "applying to this job.\n\n"
+            "Write a tailored cover letter body (exactly 4 paragraphs, 280-400 words total) for this candidate "
+            "applying to this job. A hiring manager should finish it knowing why this candidate wants this company, "
+            "one piece of work they did in real detail, and what they would bring to this team.\n\n"
             f"Candidate: {profile_content.get('name')}\n"
             f"Profile summary: {profile_content.get('summary')}\n"
             f"Evidence (the only facts you may use about the candidate):\n{evidence}\n"
@@ -705,22 +706,27 @@ def generate_cover_letter(profile_content: dict, company_name: str, job_title: s
             f"{referral}"
             f"Job Description:\n{jd_text}\n\n"
             + (f"{company_context}\n\n" if company_context else "") +
-            f"Paragraph 1: name the exact role ('{job_title}') and {company_name}. Give one specific reason for "
-            "interest in this company (its product, customers, mission or an engineering problem), taken from the "
-            "company context or the job description, preferring the company's own words; never state a company "
-            "fact that is in neither. End the paragraph with one sentence saying who the candidate is and what "
-            "they bring to that.\n"
-            "Paragraph 2: two concrete examples from the evidence, each matched to a requirement the job "
-            "description names, each with its measured result. Use only numbers that appear in the evidence, "
-            "exactly as written; never invent, estimate or round one.\n"
-            "Paragraph 3: restate interest in the role, then a direct call to action asking for a conversation "
-            "or interview.\n\n"
-            "No generic template phrases ('I am excited to apply', 'please find my resume attached'). No "
-            "greetings or sign-offs -- start directly with paragraph 1's body text."
+            f"Paragraph 1 (3-4 sentences): open with the problem or stakes of {company_name}'s work that this role "
+            "exists for (its product, customers, mission or an engineering problem), taken from the company context "
+            "or the job description, preferring the company's own words; never state a company fact that is in "
+            f"neither. Name the exact role ('{job_title}') and end with one sentence on who the candidate is and "
+            "what they bring to that problem.\n"
+            "Paragraph 2 (the story, 90-140 words): ONE piece of work from the evidence that matches the job's most "
+            "important requirement, told as a short story: the situation and what was at stake, what the candidate "
+            "did and the decisions they made, and the measured result. Explain how, not just what.\n"
+            "Paragraph 3 (60-100 words): two more examples matched to other requirements the job description "
+            "names, each tied to what this team will need, each with its result.\n"
+            f"Paragraph 4 (2-3 sentences): what the candidate would bring to {company_name}'s team in particular, "
+            "then a direct request for an interview.\n"
+            "Use only numbers that appear in the evidence, exactly as written; never invent, estimate or round one. "
+            "Do not paste resume bullets: rephrase them as prose with context.\n\n"
+            "Banned: 'I am applying for', 'The posting asks/describes', 'I am excited to apply', 'I work the same "
+            "way', 'please find my resume', 'I am confident that', or any sentence that could be sent to another "
+            "company unchanged. No greetings or sign-offs -- start directly with paragraph 1's body text."
             + (f"\n\nYour previous draft broke a rule; fix it: {correction}" if correction else "")
         ),
         temperature=0.5,
-        max_tokens=700,
+        max_tokens=1000,
     )
     return clean_cover_letter(text)
 
@@ -999,12 +1005,17 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
             cl_text = generate_cover_letter(profile_content, posting.company_name_raw, posting.job_title, jd_text, **cl_args)
             cl_facts = _cover_letter_facts(profile_content, resume_doc.get("experience"), resume_doc.get("projects"))
             bad_numbers = unsupported_numbers(cl_text, cl_facts)
-            if bad_numbers:
+            letter_issues = cover_letter_service.quality_issues(cl_text, posting.company_name_raw)
+            if bad_numbers or letter_issues:
+                problems = list(letter_issues)
+                if bad_numbers:
+                    problems.append(f"these numbers are not in the evidence: {', '.join(bad_numbers)}; remove them "
+                                    "or use only numbers the evidence states")
                 cl_text = generate_cover_letter(
                     profile_content, posting.company_name_raw, posting.job_title, jd_text, **cl_args,
-                    correction=f"these numbers are not in the evidence: {', '.join(bad_numbers)}. Remove them or use "
-                               "only numbers the evidence states.")
+                    correction="; ".join(problems) + ".")
                 bad_numbers = unsupported_numbers(cl_text, cl_facts)
+                letter_issues = cover_letter_service.quality_issues(cl_text, posting.company_name_raw)
             cl_score = score_cover_letter(cl_text, jd_text)
         except Exception as e:
             raise MatchingServiceError(f"Cover letter generation failed: {e}") from e
@@ -1018,7 +1029,7 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
     else:
         # A cover letter is new writing; without an AI provider none is made rather than a template
         # passed off as tailored. An earlier one from an AI run stays as it was.
-        cl_text, cl_score, bad_numbers = "", application.cover_letter_score, []
+        cl_text, cl_score, bad_numbers, letter_issues = "", application.cover_letter_score, [], []
 
     # Independent check: which JD keywords does the cover letter (a
     # separate LLM call/prompt from the resume loop) actually claim,
@@ -1052,9 +1063,13 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
     # mechanically safe auto-rewrite -- blocking automation on any of
     # these was real, unnecessary manual burden with no matching safety
     # benefit. All three still get logged, just never as a hard stop.
-    hard_stop_violations = all_unsupported or structural_violations or years_claim_violations or bullet_fabrications
+    # A letter still weak after its one rewrite is not a fabrication, but it is not ready to send either.
+    hard_stop_violations = (all_unsupported or structural_violations or years_claim_violations or bullet_fabrications
+                            or letter_issues)
     if hard_stop_violations:
         reason_parts = []
+        if letter_issues:
+            reason_parts.append(f"The cover letter still needs work after one rewrite: {'; '.join(letter_issues)}.")
         if all_unsupported:
             reason_parts.append(
                 "Possible fabrication: the AI tailoring may have claimed experience with "

@@ -56,6 +56,18 @@ from app.database import Base, SessionLocal, engine  # noqa: E402
 from app import models  # noqa: E402,F401  -- registers every table on Base.metadata
 
 
+@pytest.fixture(autouse=True)
+def _placeholder_letters_pass_the_shape_check(request, monkeypatch):
+    """Most tailoring tests stub the cover letter as "A cover letter." because the letter is not what they test;
+    the letter-shape check (cover_letter_service.quality_issues) would send every one to Needs Review. The tests
+    that are about that check (test_cover_letter_quality.py, and test_cover_letter_frame.py, which mocks it per
+    test) get the real one."""
+    if request.module.__name__.rsplit(".", 1)[-1] in ("test_cover_letter_quality", "test_cover_letter_frame"):
+        return
+    from app.services import cover_letter_service
+    monkeypatch.setattr(cover_letter_service, "quality_issues", lambda body, company_name: [])
+
+
 def pytest_addoption(parser):
     # Part F: the golden resume fixture (test_golden_resume.py) never
     # auto-updates on a mismatch -- regenerating it requires this

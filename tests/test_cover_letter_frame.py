@@ -88,10 +88,12 @@ class TestPrompt:
 
 
 class TestTailoringRetriesAnInventedNumber:
-    def _run(self, db, letters):
+    def _run(self, db, letters, quality=None):
         application = _application(db, _BASE_PROFILE)
         generate = MagicMock(side_effect=letters)
+        quality = quality or MagicMock(return_value=[])  # these tests are about numbers; the letter-shape check is mocked
         with (
+            patch("app.services.cover_letter_service.quality_issues", quality),
             patch("app.services.tailoring_service.run_multi_pass_tailoring",
                   return_value=(_BASE_PROFILE["experience"], [], 90, [], [])),
             patch("app.services.tailoring_service._tailor_summary_skills", return_value={"summary": "Data engineer.", "skills": {}}),
@@ -108,6 +110,18 @@ class TestTailoringRetriesAnInventedNumber:
     def test_a_number_still_invented_after_the_rewrite_needs_review(self, db):
         result, _ = self._run(db, ["I cut costs by 40%.", "I cut costs by 40%."])
         assert result.attention_reason and "cover letter number 40%" in result.attention_reason
+
+    def test_a_weak_letter_is_rewritten_with_the_reasons(self, db):
+        quality = MagicMock(side_effect=[["too short (5 words, needs at least 250)"], []])
+        result, generate = self._run(db, ["I built pipelines.", "A full letter."], quality=quality)
+        assert generate.call_count == 2 and "too short" in generate.call_args.kwargs["correction"]
+        assert result.attention_reason is None
+
+    def test_a_letter_still_weak_after_the_rewrite_needs_review(self, db):
+        quality = MagicMock(return_value=["no story paragraph"])
+        result, _ = self._run(db, ["I built pipelines.", "I built pipelines."], quality=quality)
+        assert result.attention_reason and "cover letter still needs work after one rewrite: no story paragraph" in result.attention_reason
+        assert "fabrication" not in result.attention_reason.lower()
 
 
 @pytest.fixture()
