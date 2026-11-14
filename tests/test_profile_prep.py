@@ -396,3 +396,49 @@ def test_filler_words_are_dropped_but_real_time_stays():
 
     out = split_bullet("Pipeline: Built a real PySpark job, real-time inference on real-world data, actually ran it")
     assert out == {"label": "Pipeline", "text": "Built a PySpark job, real-time inference on real-world data, ran it"}
+
+
+GENERAL = {
+    "role_tracks": [{"role": "Data Engineer", "covers": "DE roles", "what_they_test": ["SQL depth"],
+                     "your_proof": ["Cut ingestion time by 60%."], "study_list": ["Window functions"],
+                     "likely_questions": [{"question": "Walk me through a pipeline.", "draft_answer": "Acme.",
+                                           "quick_reference": "Acme 60%"}]}],
+    "fundamentals": [{"topic": "SQL", "must_know": ["Joins"], "your_example": "Acme"}],
+    "design_drills": [{"prompt": "Design a daily pipeline.", "outline": ["Ask questions"], "cite": "Acme"}],
+    "story_bank": [{"competency": "Ownership", "amazon_principle": "Ownership", "story": "Acme pipeline"}],
+    "logistics": [{"question": "Notice period?", "answer": "Two weeks."}],
+    "only_you": ["Your references"],
+    "how_to_use": ["Read the role track."],
+    "questions_by_interviewer": [{"interviewer": "Recruiter", "questions": ["What are the next rounds?"]}],
+}
+
+
+def test_answer_refresh_keeps_the_hand_written_general_sections(db):
+    variant = make_variant(db, content=PROFILE)
+    with patch.object(profile_prep_service, "_draft_answers", lambda p, s: _stub_answers()):
+        first = profile_prep_service.generate_profile_prep(db)
+    first.content_json = json.dumps({**json.loads(first.content_json), **GENERAL})
+    db.commit()
+    with patch.object(profile_prep_service, "_draft_answers", lambda p, s: _stub_answers(pitch_30_seconds="New.")):
+        profile_prep_service.generate_profile_prep(db)
+
+    _, drafted = profile_prep_service.get_active_prep(db, variant.id)
+    assert drafted["pitch_30_seconds"] == "New."
+    for key in profile_prep_service.GENERAL_PREP_KEYS:
+        assert drafted[key] == GENERAL[key]
+
+
+def test_page_renders_the_general_sections_when_present(db):
+    variant = make_variant(db, content=PROFILE)
+    with patch.object(profile_prep_service, "_draft_answers", lambda p, s: _stub_answers(**GENERAL)):
+        prep = profile_prep_service.generate_profile_prep(db)
+    profile, v = profile_prep_service.load_profile(db)
+    ref = profile_prep_service.build_reference(db, profile, v.id)
+    _, drafted = profile_prep_service.get_active_prep(db, variant.id)
+
+    html = env.get_template("profile_prep.html").render(**_ctx(setup_error=None, reference=ref, prep=prep, drafted=drafted))
+
+    for text in ("Role-by-role prep", "Walk me through a pipeline.", "Window functions", "Technical fundamentals",
+                 "Design a daily pipeline.", "Story bank", "Acme pipeline", "Notice period?", "Your references",
+                 "Read the role track.", "What are the next rounds?"):
+        assert text in html

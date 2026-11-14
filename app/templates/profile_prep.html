@@ -55,6 +55,12 @@
     <nav class="prep-jump" aria-label="Sections on this page">
         <a href="#pitch">Pitch</a>
         <a href="#questions">Common questions</a>
+        {% if drafted and drafted.how_to_use %}<a href="#how-to-use">How to use</a>{% endif %}
+        {% if drafted and drafted.role_tracks %}<a href="#roles">By role</a>{% endif %}
+        {% if drafted and drafted.fundamentals %}<a href="#fundamentals">Fundamentals</a>{% endif %}
+        {% if drafted and drafted.design_drills %}<a href="#design">Design drills</a>{% endif %}
+        {% if drafted and drafted.story_bank %}<a href="#story-bank">Story bank</a>{% endif %}
+        {% if drafted and drafted.only_you %}<a href="#only-you">Only you</a>{% endif %}
         <a href="#stories">Stories</a>
         <a href="#projects">Projects</a>
         <a href="#quick">Quick answers</a>
@@ -136,6 +142,120 @@
     <p class="muted-note">Nothing drafted yet. Use Refresh answers above.</p>
     {% endif %}
 </section>
+
+{% if drafted and drafted.how_to_use %}
+<section class="variant-block prep-section" id="how-to-use">
+    <h2>Before a tailored interview</h2>
+    <p class="muted-note">How this page and an application's own prep work together.</p>
+    <ol class="prep-list">{% for s in drafted.how_to_use %}<li>{{ s }}</li>{% endfor %}</ol>
+</section>
+{% endif %}
+
+{% if drafted and drafted.role_tracks %}
+<section class="variant-block prep-section" id="roles">
+    <h2>Role-by-role prep</h2>
+    <p class="muted-note">One track for each kind of role you apply to: what interviews test, your proof, likely questions and what to study.</p>
+    {% for t in drafted.role_tracks %}
+    <details class="prep-more">
+        <summary><strong>{{ t.role }}</strong>{% if t.covers %} <span class="prep-date">{{ t.covers }}</span>{% endif %}</summary>
+        <div class="prep-two-col">
+            <div>
+                <h3>What they test</h3>
+                <ul class="prep-list">{% for x in t.what_they_test %}<li>{{ x }}</li>{% endfor %}</ul>
+            </div>
+            <div>
+                <h3>Your proof</h3>
+                <ul class="prep-list">{% for x in t.your_proof %}<li>{{ x }}</li>{% endfor %}</ul>
+            </div>
+        </div>
+        <h3>Likely questions</h3>
+        <ol class="prep-qa">
+            {% for a in t.likely_questions %}
+            <li>
+                <details>
+                    <summary>{{ a.question }}</summary>
+                    <div class="prep-answer">
+                        {% if a.quick_reference %}<p class="prep-cue"><span>Cue</span> {{ a.quick_reference }}</p>{% endif %}
+                        <p>{{ a.draft_answer }}</p>
+                    </div>
+                </details>
+            </li>
+            {% endfor %}
+        </ol>
+        {% if t.study_list %}
+        <h3>Study before the technical round</h3>
+        <ul class="prep-list">{% for x in t.study_list %}<li>{{ x }}</li>{% endfor %}</ul>
+        {% endif %}
+    </details>
+    {% endfor %}
+</section>
+{% endif %}
+
+{% if drafted and drafted.fundamentals %}
+<section class="variant-block prep-section" id="fundamentals">
+    <h2>Technical fundamentals</h2>
+    <p class="muted-note">Topics that come up across these roles, with your own example for each.</p>
+    {% for f in drafted.fundamentals %}
+    <details class="prep-more-item">
+        <summary>{{ f.topic }}</summary>
+        <ul class="prep-list">{% for x in f.must_know %}<li>{{ x }}</li>{% endfor %}</ul>
+        {% if f.your_example %}<p class="prep-cue"><span>Your example</span> {{ f.your_example }}</p>{% endif %}
+    </details>
+    {% endfor %}
+</section>
+{% endif %}
+
+{% if drafted and drafted.design_drills %}
+<section class="variant-block prep-section" id="design">
+    <h2>System design drills</h2>
+    <p class="muted-note">Practise each out loud in 10 minutes: ask questions first, then walk the steps, then cite your own work.</p>
+    {% for d in drafted.design_drills %}
+    <details class="prep-more-item">
+        <summary>{{ d.prompt }}</summary>
+        <ol class="prep-list">{% for x in d.outline %}<li>{{ x }}</li>{% endfor %}</ol>
+        {% if d.cite %}<p class="prep-cue"><span>Cite</span> {{ d.cite }}</p>{% endif %}
+    </details>
+    {% endfor %}
+</section>
+{% endif %}
+
+{% if drafted and drafted.story_bank %}
+<section class="variant-block prep-section" id="story-bank">
+    <h2>Story bank</h2>
+    <p class="muted-note">Which story to tell for each competency, with the matching Amazon Leadership Principle.</p>
+    <dl class="prep-facts">
+        {% for s in drafted.story_bank %}
+        <div><dt>{{ s.competency }}{% if s.amazon_principle %} <span class="prep-date">{{ s.amazon_principle }}</span>{% endif %}</dt><dd>{{ s.story }}</dd></div>
+        {% endfor %}
+    </dl>
+</section>
+{% endif %}
+
+{% if drafted and (drafted.logistics or drafted.questions_by_interviewer) %}
+<section class="variant-block prep-section" id="logistics">
+    {% if drafted.logistics %}
+    <h2>Logistics answers</h2>
+    <dl class="prep-facts">
+        {% for l in drafted.logistics %}<div><dt>{{ l.question }}</dt><dd>{{ l.answer }}</dd></div>{% endfor %}
+    </dl>
+    {% endif %}
+    {% if drafted.questions_by_interviewer %}
+    <h3>Questions to ask, by interviewer</h3>
+    {% for g in drafted.questions_by_interviewer %}
+    <h4>{{ g.interviewer }}</h4>
+    <ul class="prep-list">{% for q in g.questions %}<li>{{ q }}</li>{% endfor %}</ul>
+    {% endfor %}
+    {% endif %}
+</section>
+{% endif %}
+
+{% if drafted and drafted.only_you %}
+<section class="variant-block prep-section" id="only-you">
+    <h2>Only you can fill these</h2>
+    <p class="muted-note">Facts that are not in your profile. Have them ready before any interview.</p>
+    <ul class="prep-list">{% for x in drafted.only_you %}<li>{{ x }}</li>{% endfor %}</ul>
+</section>
+{% endif %}
 
 {# ---- 3. Stories ---- #}
 <section class="variant-block prep-section" id="stories">

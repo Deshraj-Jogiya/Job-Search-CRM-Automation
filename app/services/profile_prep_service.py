@@ -288,6 +288,7 @@ def generate_profile_prep(db: Session, trigger: str = "manual") -> ProfileInterv
     asked = {a.get("question", "").strip() for a in answers}
     drafted["missing_questions"] = [q for q in COMMON_QUESTIONS if q not in asked]
 
+    carry_over_general_prep(db, variant.id, drafted)
     db.query(ProfileInterviewPrep).filter(
         ProfileInterviewPrep.variant_id == variant.id, ProfileInterviewPrep.is_active == True  # noqa: E712
     ).update({"is_active": False})
@@ -306,6 +307,21 @@ def generate_profile_prep(db: Session, trigger: str = "manual") -> ProfileInterv
         "INFO",
     )
     return prep
+
+
+# Role-by-role prep, fundamentals, design drills, the story bank and the rest are written by hand against the
+# profile and the roles being applied for; the answer refresh does not produce them, so it must not drop them.
+GENERAL_PREP_KEYS = (
+    "role_tracks", "fundamentals", "design_drills", "story_bank", "logistics", "only_you", "how_to_use",
+    "questions_by_interviewer",
+)
+
+
+def carry_over_general_prep(db: Session, variant_id: int, drafted: dict) -> None:
+    _, previous = get_active_prep(db, variant_id)
+    for key in GENERAL_PREP_KEYS:
+        if not drafted.get(key) and previous and previous.get(key):
+            drafted[key] = previous[key]
 
 
 def get_active_prep(db: Session, variant_id: int) -> tuple[ProfileInterviewPrep | None, dict | None]:
