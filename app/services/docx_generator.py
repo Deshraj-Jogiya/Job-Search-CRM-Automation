@@ -26,7 +26,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 
-from . import resume_rules
+from . import resume_ats, resume_rules
 from .document_render_service import _humanize_skill_category
 
 # Real w:hyperlink XML -- python-docx has no built-in hyperlink support, and a
@@ -273,6 +273,7 @@ def _add_education_section(doc: Document, resume_doc: dict) -> None:
         return
     doc.add_heading("Education", level=1)
     for edu in education:
+        edu = resume_ats.education_for_display(edu)  # a GPA not on the 4.0 scale is left out
         bits = [b for b in (edu.get("degree"), edu.get("school"), edu.get("date")) if b]
         doc.add_paragraph(" | ".join(bits))
 

@@ -100,6 +100,7 @@ def _validate(data: dict) -> None:
     require(pf, "min_body_font_pt", float, min=1.0)
     require(pf, "min_margin_in", float, min=0.0)
     require(pf, "max_pages", int, min=1)
+    require(pf, "new_grad_max_pages", int, min=1, required=False)
     require(pf, "line_spacing_step_pt", float, min=0.01)
     require(pf, "margin_step_in", float, min=0.01)
     require(pf, "font_step_pt", float, min=0.01)

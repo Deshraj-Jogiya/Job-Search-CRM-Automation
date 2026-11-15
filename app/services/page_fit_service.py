@@ -41,7 +41,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.platypus import BaseDocTemplate, Frame, PageTemplate
 
-from . import adaptation_service, document_render_service, resume_rules
+from . import adaptation_service, document_render_service, resume_ats, resume_rules
 
 _TALL_PAGE_HEIGHT_IN = 100  # an arbitrarily tall single "page" for height measurement, never actually rendered
 
@@ -200,6 +200,25 @@ def _apply_content_reduction(resume_content: dict, reduction_id: str, config: di
     return content
 
 
+def _one_page_fine_trim(resume_content: dict) -> dict | None:
+    """The smallest next cut for a one-page resume, or None when nothing is left to cut this way: the last bullet of
+    the last project that has two, then the second project, then the last bullet of the oldest role that has two."""
+    content = copy.deepcopy(resume_content)
+    projects = content.get("projects") or []
+    for project in reversed(projects):
+        if len(project.get("bullets") or []) > 1:
+            project["bullets"] = project["bullets"][:-1]
+            return content
+    if len(projects) > 1:
+        content["projects"] = projects[:1]
+        return content
+    for entry in reversed(content.get("experience") or []):
+        if len(entry.get("bullets") or []) > 1:
+            entry["bullets"] = entry["bullets"][:-1]
+            return content
+    return None
+
+
 def _apply_visual_reduction(params: _RenderParams, reduction_id: str, config: dict) -> _RenderParams:
     """Returns a NEW _RenderParams with one visual reduction applied,
     floor-bounded by config's page_fit section."""
@@ -294,6 +313,10 @@ def render_resume_pdf_with_fit(db, resume_content: dict, config: dict | None = N
     weight_by_id = {entry["id"]: entry["content_value_weight"] for entry in catalog}
 
     content = copy.deepcopy(resume_content)
+    # A resume can carry its own limit (one page for a new-grad posting, see resume_ats.page_limit_for_posting).
+    max_pages = int(content.get("page_limit") or pf["max_pages"])
+    if max_pages == 1 and content.get("page_limit"):
+        content = resume_ats.trim_for_one_page(content)
     params = _RenderParams(
         body_font_pt=8.7, line_leading_pt=10.3, margin_top_in=0.4, margin_bottom_in=0.35, margin_side_in=0.55,
     )
@@ -305,7 +328,7 @@ def render_resume_pdf_with_fit(db, resume_content: dict, config: dict | None = N
         # docstring for why the continuous-frame estimate below can't be
         # trusted for this decision) -- height_pt/overflow_pt are kept only
         # as an approximate signal for ranking which reduction to try next.
-        if _real_page_count(content, params) <= pf["max_pages"]:
+        if _real_page_count(content, params) <= max_pages:
             break
         if content.get("additional_certifications"):
             # The one-line "Additional certificates" mention is the least valuable content on the page: it goes before any other reduction.
@@ -314,7 +337,7 @@ def render_resume_pdf_with_fit(db, resume_content: dict, config: dict | None = N
             reductions_applied.append("drop_additional_certificates")
             continue
         height_pt = _measure_flow_height_pt(content, params)
-        overflow_pt = height_pt - _usable_page_height_pt(params) * pf["max_pages"]
+        overflow_pt = height_pt - _usable_page_height_pt(params) * max_pages
 
         candidates = [
             rid for rid in catalog_order
@@ -322,7 +345,7 @@ def render_resume_pdf_with_fit(db, resume_content: dict, config: dict | None = N
         ]
         if not candidates:
             lines_over = _lines_over(overflow_pt, params)
-            target_lines = _usable_page_height_pt(params) * pf["max_pages"] / params.line_leading_pt
+            target_lines = _usable_page_height_pt(params) * max_pages / params.line_leading_pt
             raise PageFitExhaustedError(lines_over, target_lines, reductions_applied, _longest_bullets(content))
 
         # Cold start (b3.4): no reduction anywhere has a learned average
@@ -344,6 +367,12 @@ def render_resume_pdf_with_fit(db, resume_content: dict, config: dict | None = N
         else:
             next_id = candidates[0]  # first untried-anywhere candidate, in catalog order
 
+        fine = _one_page_fine_trim(content) if (max_pages == 1 and content.get("page_limit") and next_id in _CONTENT_REDUCTION_IDS) else None
+        if fine is not None:
+            # One page: cut one bullet at a time, projects before roles, instead of a bullet from every role at once.
+            content = fine
+            reductions_applied.append("one_page_trim")
+            continue
         if next_id in _CONTENT_REDUCTION_IDS:
             new_content = _apply_content_reduction(content, next_id, config)
             new_params = params
@@ -361,7 +390,7 @@ def render_resume_pdf_with_fit(db, resume_content: dict, config: dict | None = N
 
     else:
         lines_over = _lines_over(overflow_pt, params)
-        target_lines = _usable_page_height_pt(params) * pf["max_pages"] / params.line_leading_pt
+        target_lines = _usable_page_height_pt(params) * max_pages / params.line_leading_pt
         raise PageFitExhaustedError(lines_over, target_lines, reductions_applied, _longest_bullets(content))
 
     pdf_bytes = document_render_service.render_resume_pdf(

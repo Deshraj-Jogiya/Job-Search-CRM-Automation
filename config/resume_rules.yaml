@@ -236,6 +236,9 @@ page_fit:
   # this periodically rather than letting it go stale the way it did
   # before anyone verified it.
   max_pages: 2
+  # One page for new-grad / entry-level postings (resume_ats.page_limit_for_posting). NACE's employer survey:
+  # 66% of employers say one page suits new college graduates, 31% for experienced candidates (added 2026-11-15).
+  new_grad_max_pages: 1
   # Step sizes for the three visual reductions (b1.1) -- how much one
   # application of each moves the corresponding render parameter.
   line_spacing_step_pt: 0.3

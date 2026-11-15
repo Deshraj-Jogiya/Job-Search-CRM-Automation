@@ -47,7 +47,7 @@ from reportlab.platypus import (
     SimpleDocTemplate, Spacer, Table, TableStyle,
 )
 
-from . import resume_rules
+from . import resume_ats, resume_rules
 
 _styles = getSampleStyleSheet()
 
@@ -407,6 +407,7 @@ def build_resume_flow(
         flow.append(SECTION_GAP)
         flow += _section_header("Education")
         for is_first, edu in _entries(education):
+            edu = resume_ats.education_for_display(edu)  # a GPA not on the 4.0 scale is left out
             if not is_first:
                 flow.append(ENTRY_GAP)
             flow.append(KeepTogether([

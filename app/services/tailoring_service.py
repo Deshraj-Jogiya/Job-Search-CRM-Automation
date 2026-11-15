@@ -28,7 +28,7 @@ from ..models import JobApplication, ProfileVariant, SearchKeyword, TailoredDocu
 from .activity_logger import log_activity, log_exception
 from .llm import get_llm_provider, llm_available, parse_json_response
 from .matching_service import MatchingServiceError, get_profile_content_for_application
-from . import company_research_service, cover_letter_service, demo_usage_service, fit_service, resume_rules
+from . import company_research_service, cover_letter_service, demo_usage_service, fit_service, resume_ats, resume_rules
 from .scoring_service import recompute_score_breakdown
 
 TARGET_ATS_SCORE = 90
@@ -948,9 +948,12 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
             for b in project.get("bullets", [])
         ])
 
+    # ATS research rules (resume_ats): the posting's wording next to the resume's own for abbreviation pairs, and the
+    # posting's own title in the headline unless the role type is not one the candidate does.
+    filtered_skills, wording_changes = resume_ats.add_posting_forms_to_skills(filtered_skills, jd_text)
     resume_doc = {
         "name": profile_content.get("name"),
-        "title": profile_content.get("title"),
+        "title": resume_ats.headline_for_posting(profile_content.get("title"), posting.job_title, rules["role"]["status"]),
         "contact": profile_content.get("contact"),
         "summary": final_summary,
         "skills": filtered_skills,
@@ -976,6 +979,20 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
         if cert_plan["additional"]:
             resume_doc["additional_certifications"] = cert_plan["additional"]
         resume_doc["certification_plan"] = {k: cert_plan[k] for k in ("mode", "coverage", "total_gain", "reason")}
+    page_limit = resume_ats.page_limit_for_posting(posting.job_title, jd_text, config)
+    if page_limit:
+        resume_doc["page_limit"] = page_limit
+    resume_text = json.dumps({k: resume_doc[k] for k in ("title", "summary", "skills", "experience", "projects")})
+    wording = resume_ats.exact_phrase_report(resume_text, jd_text, json.dumps(profile_content))
+    skills_only = resume_ats.keywords_only_in_skills(resume_doc, wording["on_resume"])
+    if wording_changes or wording["reword"] or wording["not_in_profile"] or skills_only:
+        log_activity(
+            db,
+            f"ATS wording for '{posting.job_title}' at {posting.company_name_raw}: wrote both forms {wording_changes}; "
+            f"posting words not word for word on the resume {[w['term'] for w in wording['reword']]}; "
+            f"not in profile (ask) {wording['not_in_profile']}; only in Skills {skills_only}",
+            "INFO",
+        )
     if dropped_skills:
         log_activity(
             db,
