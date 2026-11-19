@@ -13,7 +13,7 @@ ATS-safety is enforced, not just intended:
   - Single column, no tables, no text boxes, no images.
   - No headers/footers -- contact info lives in the document body.
   - Standard section headings (Summary / Technical Skills /
-    Professional Experience / Selected Projects / Education /
+    Professional Experience / Projects / Education /
     Certifications).
   - Bullets use python-docx's real "List Bullet" style (real numbering
     XML under the hood), never a literal "*" character typed into a
@@ -252,7 +252,7 @@ def _add_projects_section(doc: Document, resume_doc: dict, config: dict) -> None
     projects = resume_doc.get("projects") or []
     if not projects:
         return
-    doc.add_heading("Selected Projects", level=1)
+    doc.add_heading("Projects", level=1)
     pv = config["projects_by_variant"]
     for project in projects:
         name_p = doc.add_paragraph()

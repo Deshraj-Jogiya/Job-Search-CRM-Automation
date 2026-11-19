@@ -13,6 +13,12 @@
    `page_limit_for_posting` returns the limit; page_fit_service honours a resume's own "page_limit".
 5. GPA scale. A GPA on a 10-point or percentage scale is misread by US parsers and recruiters, and a conversion is
    an estimate, so `us_scale_gpa_only` leaves out any GPA not on the 4.0 scale.
+6. Numbered results. Checklists aim for about 80% of bullets with a measured result. `quantified_share` reports it;
+   numbered bullets are ordered and kept first, and no number is ever invented to reach the target.
+7. Stock phrases. A summary closing such as "Ready to bring..." repeats across resumes and reads as AI-written.
+   `stock_summary_phrases` flags them so the sentence is written in the posting's own terms.
+Also: a term flagged by rule 3 gets one of the profile's own bullets that shows it (`add_bullets_showing_terms`), and
+the projects heading is the plain "Projects" (document_render_service, docx_generator) to match standard headers.
 """
 from __future__ import annotations
 
@@ -133,13 +139,37 @@ BACKED_BY = {
     "classification": r"classif", "regression": r"regression", "clustering": r"cluster|k-means",
     "anomaly detection": r"anomal", "embeddings": r"embedding", "fine-tuning": r"fine-tun|lora",
     "REST APIs": r"rest(?:ful)? api", "time series": r"time[- ]series|forecast",
+    "data modeling": r"star schema|dimensional|data model", "ELT": r"\bdbt\b|\belt\b",
+    "data governance": r"governance|lineage|row-level security|data contract|personally identifiable|\bpii\b|audit log",
+    "data quality": r"data quality|great expectations|validation", "feature engineering": r"feature (?:engineering|extraction)",
+    "data lake": r"data lake|adls|\bs3\b|delta lake|iceberg", "lakehouse": r"lakehouse|delta lake|iceberg",
+    "MLOps": r"mlops|mlflow|drift", "deep learning": r"pytorch|tensorflow|bert|transformer|neural",
+    "natural language processing": r"\bnlp\b|bert|spacy|ner\b|sentiment", "computer vision": r"image|object detection|opencv|yolo",
+    "recommendation systems": r"recommend", "microservices": r"microservice", "data mining": r"anomal|cluster|pattern|k-means",
 }
+
+
+def backed_posting_terms(jd: str, profile_text: str) -> list[dict]:
+    """The posting's own terms that the candidate's work backs, with how ('exact', 'other form', 'evidence'). The
+    tailoring writes these in the posting's words: the profile holds what was done, the posting decides how it is
+    said. Rewording real work is not fabrication; a term with no backing never appears here."""
+    out = []
+    for term in posting_terms(jd):
+        how = profile_backs(term, profile_text)
+        if how:
+            out.append({"term": term, "backed_by": how})
+    return out
 
 
 def _term_re(term: str) -> re.Pattern:
     if term.isupper() or term in ("LLMs", "GenAI"):  # an abbreviation: exact case
         return re.compile(r"(?<![A-Za-z])" + re.escape(term) + r"(?![A-Za-z])")
-    return re.compile(r"(?<![A-Za-z])" + re.escape(term).replace(r"\ ", r"[\s-]+") + r"(?![A-Za-z])", re.IGNORECASE)
+    body = re.escape(term).replace(r"\ ", r"[\s-]+")
+    if len(term) > 4 and term[-1] == "s" and term[-2] != "s":  # "AI agents" also matches "an AI agent", "dashboards" "dashboard"
+        body += "?"
+    elif len(term) > 4 and term[-1].isalpha():
+        body += "s?"
+    return re.compile(r"(?<![A-Za-z])" + body + r"(?![A-Za-z])", re.IGNORECASE)
 
 
 def has_term(text: str, term: str) -> bool:
@@ -235,7 +265,8 @@ def keywords_only_in_skills(resume_doc: dict, terms: list[str]) -> list[str]:
     """Terms the resume lists under Skills but never shows in the summary, title or any bullet."""
     skills_text = json.dumps(resume_doc.get("skills") or {})
     shown = " ".join([resume_doc.get("title") or "", resume_doc.get("summary") or ""] + [
-        b for section in ("experience", "projects") for e in (resume_doc.get(section) or []) for b in (e.get("bullets") or [])
+        b for section in ("experience", "projects") for e in (resume_doc.get(section) or [])
+        if _bullets_render(section, e) for b in (e.get("bullets") or [])
     ])
     out = []
     for term in terms:
@@ -243,6 +274,16 @@ def keywords_only_in_skills(resume_doc: dict, terms: list[str]) -> list[str]:
         if any(has_term(skills_text, f) for f in forms) and not any(has_term(shown, f) for f in forms):
             out.append(term)
     return out
+
+
+def _bullets_render(section: str, entry: dict) -> bool:
+    """False for a role the renderer prints as a one-line "Earlier:" entry or moves to credentials: its bullets never
+    reach the page, so they neither count as shown nor take an added bullet."""
+    if section != "experience":
+        return True
+    from . import resume_rules
+
+    return resume_rules.classify_role(entry, resume_rules.get_config()) not in ("EARLIER", "CREDENTIAL")
 
 
 def trim_for_one_page(doc: dict) -> dict:
@@ -265,3 +306,60 @@ def trim_for_one_page(doc: dict) -> dict:
     out.pop("languages", None)
     out.pop("additional_certifications", None)
     return out
+
+
+def add_bullets_showing_terms(resume_doc: dict, profile: dict, terms: list[str], per_entry: int = 1) -> tuple[dict, list[str]]:
+    """For each term the resume only lists under Skills, add one of the profile's own bullets that shows it, taken from
+    a role or project already on the resume (matched by company or project name). Nothing is written or reworded: the
+    bullet is the profile's text as stored. At most `per_entry` added bullets per entry, so no entry grows by more than
+    that; page fit still decides what stays on the page. Returns (doc, notes)."""
+    out = dict(resume_doc)
+    notes: list[str] = []
+    sources = (("experience", "company"), ("projects", "name"))
+    added: dict[tuple[str, int], int] = {}
+    remaining = list(terms)
+    for section, key in sources:
+        prof_entries = {(e.get(key) or "").strip().lower(): e for e in (profile.get(section) or [])}
+        entries = [dict(e, bullets=list(e.get("bullets") or [])) for e in (out.get(section) or [])]
+        for i, entry in enumerate(entries):
+            prof = prof_entries.get((entry.get(key) or "").strip().lower())
+            if not prof or not _bullets_render(section, entry):
+                continue
+            for term in list(remaining):
+                if added.get((section, i), 0) >= per_entry:
+                    break
+                forms = [term] + _other_forms(term)
+                for bullet in prof.get("bullets") or []:
+                    if bullet not in entry["bullets"] and any(has_term(bullet, f) for f in forms):
+                        entry["bullets"].append(bullet)
+                        added[(section, i)] = added.get((section, i), 0) + 1
+                        remaining.remove(term)
+                        notes.append(f"{term}: added a {entry.get(key)} bullet")
+                        break
+        out[section] = entries
+    return out, notes
+
+
+# ---- 6. numbered results ----
+def quantified_share(resume_doc: dict) -> tuple[int, int]:
+    """(bullets with a measured result, all bullets). Resume checklists aim for about 80%; numbers are never invented to
+    reach it, numbered bullets are chosen over unnumbered ones that show the same thing."""
+    from . import resume_rules
+
+    bullets = [b for s in ("experience", "projects") for e in (resume_doc.get(s) or []) for b in (e.get("bullets") or [])]
+    return sum(1 for b in bullets if resume_rules.has_quantified_result(b)), len(bullets)
+
+
+# ---- 7. stock summary phrases ----
+# Hiring managers say they spot AI-written resumes, and a closing line that repeats across every resume reads as one.
+STOCK_SUMMARY_PHRASES = [
+    "ready to bring", "eager to", "passionate about", "results-driven", "results driven", "proven track record",
+    "seeking a", "looking to leverage", "detail-oriented", "team player", "dynamic", "go-getter", "hard-working",
+    "self-starter", "excited to",
+]
+
+
+def stock_summary_phrases(summary: str | None) -> list[str]:
+    """Stock phrases in a summary. A soft note: the sentence is rewritten in the posting's own terms, never blocked."""
+    low = (summary or "").lower()
+    return [p for p in STOCK_SUMMARY_PHRASES if p in low]

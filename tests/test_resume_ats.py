@@ -136,3 +136,67 @@ class TestOnePage:
     def test_without_a_limit_the_default_still_applies(self, db):
         result = page_fit_service.render_resume_pdf_with_fit(db, _long_resume())
         assert len(pdfplumber.open(io.BytesIO(result["pdf_bytes"])).pages) == 2
+
+
+class TestShowSkillsInBullets:
+    PROFILE = {"experience": [{"company": "Acme", "role": "Data Engineer", "date": "Jan 2025 - Present",
+                               "bullets": ["Cut costs 20% with Python.", "Built Kafka streams for 3 teams."]}],
+               "projects": [{"name": "Lake", "bullets": ["Built a dbt model.", "Ran Terraform for the warehouse."]}]}
+
+    def _doc(self):
+        return {"title": "Data Engineer", "summary": "S.", "skills": {"a": ["Kafka", "Terraform", "Looker"]},
+                "experience": [{"company": "Acme", "role": "Data Engineer", "date": "Jan 2025 - Present",
+                                "bullets": ["Cut costs 20% with Python."]}],
+                "projects": [{"name": "Lake", "bullets": ["Built a dbt model."]}]}
+
+    def test_adds_the_profiles_own_bullet_that_shows_the_term(self):
+        doc, notes = resume_ats.add_bullets_showing_terms(self._doc(), self.PROFILE, ["Kafka", "Terraform", "Looker"])
+        assert doc["experience"][0]["bullets"][-1] == "Built Kafka streams for 3 teams."
+        assert doc["projects"][0]["bullets"][-1] == "Ran Terraform for the warehouse."
+        assert len(notes) == 2  # Looker has no profile bullet: nothing is written for it
+        assert resume_ats.keywords_only_in_skills(doc, ["Kafka", "Terraform", "Looker"]) == ["Looker"]
+
+    def test_never_adds_to_a_role_printed_as_an_earlier_line(self):
+        old = {"company": "Old Co", "role": "Data Analyst", "date": "Aug 2015 - Mar 2016", "bullets": []}
+        profile = {"experience": [dict(old, bullets=["Built Tableau dashboards for sales."])], "projects": []}
+        doc = {"skills": {"a": ["Tableau"]}, "experience": [old], "projects": []}
+        out, notes = resume_ats.add_bullets_showing_terms(doc, profile, ["Tableau"])
+        assert notes == [] and out["experience"][0]["bullets"] == []
+
+
+class TestNumbersAndStockPhrases:
+    def test_quantified_share(self):
+        doc = {"experience": [{"bullets": ["Cut costs 20%.", "Wrote docs."]}], "projects": [{"bullets": ["Served 5,000 users."]}]}
+        assert resume_ats.quantified_share(doc) == (2, 3)
+
+    def test_stock_phrases(self):
+        assert resume_ats.stock_summary_phrases("Engineer. Ready to bring results-driven work.") == ["ready to bring", "results-driven"]
+        assert resume_ats.stock_summary_phrases("Focused on data engineering roles.") == []
+
+
+def test_projects_heading_is_plain():
+    doc = {"name": "T", "contact": {}, "summary": "S.", "skills": {}, "experience": [], "education": [],
+           "projects": [{"name": "P", "bullets": ["Did a thing."]}]}
+    text = pdfplumber.open(io.BytesIO(document_render_service.render_resume_pdf(doc))).pages[0].extract_text()
+    assert "PROJECTS" in text and "KEY PROJECTS" not in text
+
+
+class TestPostingWordsForRealWork:
+    """His rule (2026-11-15): the profile says what was done; the posting decides how it is said. Rewording is not faking."""
+
+    def test_singular_and_plural_both_match(self):
+        assert resume_ats.has_term("Built an AI agent with tool calling", "AI agents")
+        assert resume_ats.has_term("a published Tableau dashboard", "dashboards")
+        assert not resume_ats.has_term("Built an LLM app", "LLMs")  # short forms stay exact
+
+    def test_backed_terms_cover_work_under_other_words(self):
+        jd = "We need data modeling, ELT with dbt, data governance, model monitoring and Kafka."
+        profile = "Modernized Star Schema dimensional models; dbt project; PostgreSQL row-level security; KS drift checks."
+        terms = {t["term"] for t in resume_ats.backed_posting_terms(jd, profile)}
+        assert {"data modeling", "ELT", "data governance", "model monitoring", "dbt"} <= terms
+        assert "Kafka" not in terms  # no work shows it: never reworded in
+
+    def test_guard_accepts_the_postings_word_for_real_work(self):
+        from app.services.tailoring_service import _find_unsupported_keywords
+        profile = {"experience": [{"bullets": ["Modernized Star Schema dimensional models in Snowflake."]}]}
+        assert _find_unsupported_keywords(profile, ["data modeling", "Kafka"]) == ["Kafka"]

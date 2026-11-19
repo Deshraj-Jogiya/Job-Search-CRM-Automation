@@ -254,7 +254,7 @@ def test_additional_line_appears_once_and_only_after_the_certificate_section():
               "projects": [{"name": "P", "bullets": ["Built it."]}], "certifications": ["Cert A"], "additional_certifications": ["Cert B"]}
     paras = [p.text for p in build_resume_docx(resume).paragraphs]
     assert paras.count("Additional certificates: Cert B") == 1
-    assert paras.index("Additional certificates: Cert B") > paras.index("Certifications") > paras.index("Selected Projects")
+    assert paras.index("Additional certificates: Cert B") > paras.index("Certifications") > paras.index("Projects")
 
 
 def test_additional_line_skips_credentials_unrelated_to_the_job():

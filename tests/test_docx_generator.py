@@ -46,7 +46,7 @@ class TestBuildResumeDocx:
         assert "Summary" in headings
         assert "Technical Skills" in headings
         assert "Professional Experience" in headings
-        assert "Selected Projects" in headings
+        assert "Projects" in headings
         assert "Education" in headings
         assert "Certifications" in headings
 
@@ -234,7 +234,7 @@ def test_certification_entries_section_sits_between_experience_and_projects_with
                   {"name": "Cert B", "issuer": "Issuer B", "status": "In progress", "bullets": ["Covers Y."]}]}
     doc = build_resume_docx(resume)
     headings = [p.text for p in doc.paragraphs if p.style.name.startswith("Heading")]
-    assert headings.index("Professional Experience") < headings.index("Certifications & Training") < headings.index("Selected Projects")
+    assert headings.index("Professional Experience") < headings.index("Certifications & Training") < headings.index("Projects")
     text = "\n".join(p.text for p in doc.paragraphs)
     assert "Issuer A | 5 courses | Completed" in text and "Issuer B | In progress" in text and "Covered X." in text and "Covers Y." in text
 

@@ -71,6 +71,10 @@ _contact_style = ParagraphStyle(
     "ContactStyle", parent=_styles["Normal"], fontSize=8.3, leading=10,
     textColor=colors.black, spaceAfter=0, alignment=TA_CENTER,
 )
+_headline_style = ParagraphStyle(
+    "HeadlineStyle", parent=_styles["Normal"], fontSize=9.5, leading=12,
+    textColor=colors.black, spaceAfter=0, alignment=TA_CENTER,
+)
 _section_style = ParagraphStyle(
     "SectionStyle", parent=_styles["Heading2"], fontSize=10, leading=12, spaceBefore=0, spaceAfter=0,
     textColor=colors.HexColor("#1a1a1a"), borderPadding=0,
@@ -273,6 +277,11 @@ def build_resume_flow(
             yield i == 0, item
 
     flow = [Paragraph(_esc(resume_content.get("name") or ""), _name_style)]
+    # The headline (the posting's own title first) under the name. The Word version always had it; the PDF,
+    # the file that actually gets uploaded, dropped it, so an ATS reading the PDF never saw the target title.
+    if resume_content.get("title"):
+        flow.append(LINE_GAP)
+        flow.append(Paragraph(f"<b>{_esc(resume_content['title'])}</b>", _headline_style))
     for is_first, line in _lines(_contact_lines(resume_content.get("contact") or {})):
         if not is_first:
             flow.append(LINE_GAP)
@@ -385,7 +394,7 @@ def build_resume_flow(
     projects = resume_content.get("projects") or []
     if projects:
         flow.append(SECTION_GAP)
-        flow += _section_header("Key Projects")
+        flow += _section_header("Projects")
         for is_first, proj in _entries(projects):
             if not is_first:
                 flow.append(ENTRY_GAP)

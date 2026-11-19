@@ -131,10 +131,20 @@ def test_render_resume_pdf_uses_reference_section_titles():
         "Professional Summary",
         "Technical Skills",
         "Professional Experience",
-        "Key Projects",
+        "Projects",
         "Education",
         "Certifications",
     ]
+
+
+def test_render_resume_pdf_prints_the_headline_title():
+    """The PDF is the file that gets uploaded, so the posting's title in the headline has to be in it, not only in Word."""
+    import io
+    import pdfplumber
+    content = dict(_FULL_CONTENT, title="Clinical Outcomes AI Data Analyst | SQL, dbt, Python")
+    text = pdfplumber.open(io.BytesIO(render_resume_pdf(content))).pages[0].extract_text()
+    head = "\n".join(text.splitlines()[:3])
+    assert "Clinical Outcomes AI Data Analyst" in head
 
 
 def test_render_resume_pdf_omits_empty_sections():
@@ -280,5 +290,5 @@ def test_pdf_resume_renders_certification_entries_between_experience_and_project
                                         {"name": "Cert B", "issuer": "Issuer B", "status": "In progress", "bullets": ["Covers Y."]}]}
     pdf = render_resume_pdf(json.dumps(resume))
     text = "\n".join(p.extract_text() or "" for p in pdfplumber.open(io.BytesIO(pdf)).pages)
-    assert text.index("PROFESSIONAL EXPERIENCE") < text.index("CERTIFICATIONS & TRAINING") < text.index("KEY PROJECTS")
+    assert text.index("PROFESSIONAL EXPERIENCE") < text.index("CERTIFICATIONS & TRAINING") < text.index("PROJECTS")
     assert "Completed" in text and "In progress" in text and "Covers Y." in text

@@ -145,6 +145,14 @@ def _tailor_experience_and_projects_pass(experience: list, projects: list, jd_te
             "if it appears elsewhere in the provided experience or projects for that same work; otherwise leave "
             "it unquantified or omit it. Never invent, estimate, or round a number. Avoid empty filler words: "
             "'real', 'actual', 'genuine', 'various', 'successfully', 'leveraged', 'utilized'.\n\n"
+            "Use the job description's own words for the candidate's real work. The experience and projects "
+            "decide WHAT was done; the job description decides HOW it is said. When a bullet shows work the "
+            "posting names differently (Star Schema dimensional models -> 'data modeling', drift monitoring -> "
+            "'model monitoring', a ReAct agent with tool calling -> 'AI agents', dbt transformations in the "
+            "warehouse -> 'ELT'), reword the bullet with the posting's term, word for word. That is rewording, "
+            "not fabrication. Never add a tool, task, metric or outcome the source bullet does not show.\n"
+            f"Posting terms the candidate's work backs (use each one word for word where it fits): "
+            f"{json.dumps([t['term'] for t in resume_ats.backed_posting_terms(jd_text, json.dumps([experience, projects]))])}\n\n"
             "Real resume density, not an essay: a 1-2 page resume is the market standard for this "
             "candidate's experience level, and that only works if bullets stay tight. Aim for roughly 3 "
             "concise, high-impact bullets per experience role (not 5+) -- pick the strongest evidence for "
@@ -468,6 +476,10 @@ def _find_unsupported_keywords(original_profile_content: dict, resolved_keywords
         # concept with no real term anywhere in the profile.
         if any(term in haystack for term in _extract_candidate_terms(keyword)):
             return True
+        # The posting's word for work the profile shows under other words ("data modeling" for Star Schema
+        # dimensional models): resume_ats's evidence map, mechanical like everything above.
+        if resume_ats.profile_backs(keyword, haystack):
+            return True
         return False
 
     return [kw for kw in resolved_keywords if not _is_supported(kw)]
@@ -605,7 +617,10 @@ def _tailor_summary_skills(profile_content: dict, jd_text: str, company_context:
             "where the profile supports it, and never a years-of-experience figure the profile does not state. "
             "Sentence 2 gives the strongest measured result from the profile that matters for this job. "
             "Sentence 3 says what the candidate would bring to this team, tied to what the company builds when "
-            "COMPANY CONTEXT is given.\n\n"
+            "COMPANY CONTEXT is given, in plain words: never a stock opener such as 'Ready to bring', 'Eager to', "
+            "'Passionate about', 'Results-driven' or 'Proven track record'. Say the candidate's real work in the "
+            "posting's own words, and group and name skills the way the posting does, when the profile backs them: "
+            f"{json.dumps([t['term'] for t in resume_ats.backed_posting_terms(jd_text, json.dumps(profile_content))])}.\n\n"
             f"Job Description:\n{jd_text}\n\n"
             + (f"{company_context}\n\n" if company_context else "") +
             "Respond with EXACTLY this JSON shape:\n"
@@ -985,6 +1000,20 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
     resume_text = json.dumps({k: resume_doc[k] for k in ("title", "summary", "skills", "experience", "projects")})
     wording = resume_ats.exact_phrase_report(resume_text, jd_text, json.dumps(profile_content))
     skills_only = resume_ats.keywords_only_in_skills(resume_doc, wording["on_resume"])
+    if skills_only:  # show the term in work: one of the profile's own bullets from an entry already on the resume
+        resume_doc, shown_notes = resume_ats.add_bullets_showing_terms(resume_doc, profile_content, skills_only)
+        if shown_notes:
+            wording_changes = list(wording_changes) + shown_notes
+            skills_only = resume_ats.keywords_only_in_skills(resume_doc, wording["on_resume"])
+    numbered, total_bullets = resume_ats.quantified_share(resume_doc)
+    stock = resume_ats.stock_summary_phrases(resume_doc.get("summary"))
+    if stock or (total_bullets and numbered / total_bullets < 0.8):
+        log_activity(
+            db,
+            f"Resume notes for '{posting.job_title}' at {posting.company_name_raw}: {numbered}/{total_bullets} bullets have a "
+            f"measured result (aim about 80%, never invented); stock phrases in the summary {stock}",
+            "INFO",
+        )
     if wording_changes or wording["reword"] or wording["not_in_profile"] or skills_only:
         log_activity(
             db,

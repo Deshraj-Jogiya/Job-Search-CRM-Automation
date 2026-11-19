@@ -27,7 +27,7 @@ Wrote Scala Spark jobs on GCP Dataproc to process point-of-sale data across 300+
 Built scikit-learn based anomaly detection for inventory counts, catching roughly 90% of known discrepancy cases in backtesting.
 Created Tableau dashboards summarizing weekly inventory drift for regional operations managers.
 Earlier: Data Engineering Intern, Fabrikam Labs | Denver, CO | May 2016 - Aug 2016
-Selected Projects
+Projects
 Pipeline Cost Monitor
 Built a Streamlit dashboard tracking daily Snowflake compute spend, flagging anomalies roughly 24 hours faster than manual review.
 Automated weekly cost reports using Python and the Snowflake API.
