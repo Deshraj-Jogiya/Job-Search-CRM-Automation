@@ -45,7 +45,13 @@
        "a": "Only with a rule everyone agreed on, and I keep them in a quarantine table with the reason, so nothing is lost and the count is visible."
       }
      ],
-     "example_prompt": "One time you found and fixed bad data, the tool you used for the checks, and the result."
+     "example_prompt": "One time you found and fixed bad data, the tool you used for the checks, and the result.",
+     "tags": [
+      "data quality",
+      "data analysis",
+      "Pandas",
+      "data pipelines"
+     ]
     },
     {
      "id": "preprocessing-pipeline",
@@ -68,7 +74,14 @@
        "a": "Everything is code in version control, runs on a scheduler, and every load is idempotent, so a rerun gives the same result."
       }
      ],
-     "example_prompt": "Walk one of your real pipelines through these six steps, naming the tool at each step."
+     "example_prompt": "Walk one of your real pipelines through these six steps, naming the tool at each step.",
+     "tags": [
+      "data pipelines",
+      "data analysis",
+      "Pandas",
+      "machine learning",
+      "feature engineering"
+     ]
     },
     {
      "id": "missing-values",
@@ -86,7 +99,13 @@
        "a": "Median when the column is skewed or has outliers; mean only for roughly symmetric data."
       }
      ],
-     "example_prompt": "A column you handled and the rule you chose."
+     "example_prompt": "A column you handled and the rule you chose.",
+     "tags": [
+      "data quality",
+      "data analysis",
+      "Pandas",
+      "statistics"
+     ]
     },
     {
      "id": "outliers",
@@ -103,7 +122,13 @@
        "a": "Yes. In fraud or monitoring work the outliers are often the point."
       }
      ],
-     "example_prompt": "Where you met outliers, and whether they were errors or real."
+     "example_prompt": "Where you met outliers, and whether they were errors or real.",
+     "tags": [
+      "anomaly detection",
+      "data quality",
+      "statistics",
+      "data analysis"
+     ]
     },
     {
      "id": "duplicates",
@@ -120,7 +145,12 @@
        "a": "Normalise first (case, punctuation, suffixes like Inc), then match on the normalised value, and review fuzzy matches before merging."
       }
      ],
-     "example_prompt": "A deduplication rule you wrote."
+     "example_prompt": "A deduplication rule you wrote.",
+     "tags": [
+      "data quality",
+      "SQL",
+      "data pipelines"
+     ]
     },
     {
      "id": "imbalanced-data",
@@ -137,7 +167,12 @@
        "a": "With 1% positives, predicting 'no' every time scores 99% accuracy and catches nothing."
       }
      ],
-     "example_prompt": "A rare-event problem you worked on."
+     "example_prompt": "A rare-event problem you worked on.",
+     "tags": [
+      "classification",
+      "machine learning",
+      "predictive modeling"
+     ]
     },
     {
      "id": "data-leakage",
@@ -154,7 +189,12 @@
        "a": "Predicting churn with a 'cancellation date' column: it only exists after the customer has churned."
       }
      ],
-     "example_prompt": "How you split data in one of your models."
+     "example_prompt": "How you split data in one of your models.",
+     "tags": [
+      "machine learning",
+      "predictive modeling",
+      "feature engineering"
+     ]
     },
     {
      "id": "eda",
@@ -172,7 +212,13 @@
        "a": "Pandas for the summaries, plots for distributions, and SQL when the data stays in the warehouse."
       }
      ],
-     "example_prompt": "One finding from your own EDA that changed what you did next."
+     "example_prompt": "One finding from your own EDA that changed what you did next.",
+     "tags": [
+      "data analysis",
+      "statistical analysis",
+      "data visualization",
+      "Pandas"
+     ]
     },
     {
      "id": "feature-engineering",
@@ -189,7 +235,12 @@
        "a": "Validation score with and without the feature, plus importance from the model, plus a leakage check."
       }
      ],
-     "example_prompt": "Features you built in one of your models."
+     "example_prompt": "Features you built in one of your models.",
+     "tags": [
+      "feature engineering",
+      "machine learning",
+      "predictive modeling"
+     ]
     },
     {
      "id": "validate-model",
@@ -207,7 +258,14 @@
        "a": "Usually a feature computed differently in production, or a shift in the data. Compare feature distributions between training and live traffic first."
       }
      ],
-     "example_prompt": "How you validated one of your models, with its numbers."
+     "example_prompt": "How you validated one of your models, with its numbers.",
+     "tags": [
+      "machine learning",
+      "model deployment",
+      "MLOps",
+      "predictive models",
+      "evaluation"
+     ]
     },
     {
      "id": "debug-pipeline",
@@ -225,7 +283,14 @@
        "a": "Reconciliation tests between layers (row counts and key sums) and alerts when they disagree."
       }
      ],
-     "example_prompt": "A real bug you traced, how you found the root cause, and the fix."
+     "example_prompt": "A real bug you traced, how you found the root cause, and the fix.",
+     "tags": [
+      "data pipelines",
+      "dashboards",
+      "business intelligence",
+      "data quality",
+      "SQL"
+     ]
     },
     {
      "id": "data-quality",
@@ -242,7 +307,13 @@
        "a": "Great Expectations or dbt tests, run from the orchestrator."
       }
      ],
-     "example_prompt": "Your data quality checks and the reliability they gave."
+     "example_prompt": "Your data quality checks and the reliability they gave.",
+     "tags": [
+      "data quality",
+      "data governance",
+      "data pipelines",
+      "dbt"
+     ]
     },
     {
      "id": "late-duplicate-events",
@@ -259,7 +330,15 @@
        "a": "Most systems deliver at least once; making the writes idempotent gives the same end result as exactly once."
       }
      ],
-     "example_prompt": "Streaming or near-real-time work you have done."
+     "example_prompt": "Streaming or near-real-time work you have done.",
+     "tags": [
+      "Kafka",
+      "data pipelines",
+      "data quality",
+      "Spark",
+      "streaming",
+      "real-time"
+     ]
     },
     {
      "id": "backfill",
@@ -276,7 +355,13 @@
        "a": "Decide with the data's users whether old days get the new logic, and record the choice."
       }
      ],
-     "example_prompt": "A backfill or reprocessing job you ran."
+     "example_prompt": "A backfill or reprocessing job you ran.",
+     "tags": [
+      "data pipelines",
+      "Airflow",
+      "ETL",
+      "data warehouse"
+     ]
     },
     {
      "id": "schema-change",
@@ -293,7 +378,13 @@
        "a": "Parquet, Avro or Delta keep the schema with the data, and table formats like Delta or Iceberg support schema evolution."
       }
      ],
-     "example_prompt": "A time a source changed under you."
+     "example_prompt": "A time a source changed under you.",
+     "tags": [
+      "data pipelines",
+      "data governance",
+      "data modeling",
+      "ELT"
+     ]
     },
     {
      "id": "slow-query",
@@ -311,7 +402,15 @@
        "a": "A few keys hold most of the rows, so one task does most of the work. Fixes: salting the key, or handling the hot keys separately."
       }
      ],
-     "example_prompt": "A performance improvement you made, with the before and after."
+     "example_prompt": "A performance improvement you made, with the before and after.",
+     "tags": [
+      "SQL",
+      "Spark",
+      "PySpark",
+      "optimization",
+      "Databricks",
+      "Snowflake"
+     ]
     },
     {
      "id": "model-monitoring",
@@ -328,7 +427,14 @@
        "a": "Data drift: the inputs change. Concept drift: the relationship between inputs and the outcome changes, so the same inputs now mean something else."
       }
      ],
-     "example_prompt": "Drift detection or monitoring you built."
+     "example_prompt": "Drift detection or monitoring you built.",
+     "tags": [
+      "model monitoring",
+      "MLOps",
+      "model deployment",
+      "machine learning",
+      "observability"
+     ]
     }
    ]
   },
@@ -353,6 +459,12 @@
        "q": "What does R-squared tell you?",
        "a": "The share of the target's variance the model explains; it never goes down when you add features, so use adjusted R-squared or a validation score."
       }
+     ],
+     "tags": [
+      "regression",
+      "statistical modeling",
+      "machine learning",
+      "predictive modeling"
      ]
     },
     {
@@ -373,6 +485,12 @@
        "q": "Why is it called regression if it classifies?",
        "a": "It regresses the log-odds of the outcome on the inputs; the classification comes from the threshold."
       }
+     ],
+     "tags": [
+      "classification",
+      "regression",
+      "statistical modeling",
+      "machine learning"
      ]
     },
     {
@@ -392,6 +510,11 @@
        "q": "How do you stop it overfitting?",
        "a": "Limit depth, require a minimum number of rows per leaf, or prune."
       }
+     ],
+     "tags": [
+      "classification",
+      "machine learning",
+      "Scikit-learn"
      ]
     },
     {
@@ -416,6 +539,12 @@
        "q": "What is out-of-bag error?",
        "a": "Each tree skips about a third of the rows; scoring each row with the trees that did not see it gives a free validation estimate."
       }
+     ],
+     "tags": [
+      "classification",
+      "machine learning",
+      "Scikit-learn",
+      "predictive modeling"
      ]
     },
     {
@@ -436,6 +565,11 @@
        "q": "Which settings matter most?",
        "a": "Learning rate, number of trees (with early stopping), tree depth, and row and column sampling."
       }
+     ],
+     "tags": [
+      "XGBoost",
+      "machine learning",
+      "predictive modeling"
      ]
     },
     {
@@ -456,6 +590,11 @@
        "q": "How do you choose k?",
        "a": "The elbow of the within-cluster error curve, silhouette scores, and whether the groups make sense to the business."
       }
+     ],
+     "tags": [
+      "clustering",
+      "machine learning",
+      "data mining"
      ]
     },
     {
@@ -475,6 +614,10 @@
        "q": "How do you tell which one you have?",
        "a": "Both training and validation error high: bias. Training error low and validation error much higher: variance."
       }
+     ],
+     "tags": [
+      "machine learning",
+      "statistical modeling"
      ]
     },
     {
@@ -493,6 +636,11 @@
        "q": "What does regularisation do?",
        "a": "Adds a penalty for large weights, which pushes the model towards simpler explanations."
       }
+     ],
+     "tags": [
+      "machine learning",
+      "deep learning",
+      "predictive modeling"
      ]
     },
     {
@@ -512,6 +660,11 @@
        "q": "Is a test set still needed?",
        "a": "Yes. Cross-validation guides choices; a final untouched test set gives the honest score."
       }
+     ],
+     "tags": [
+      "machine learning",
+      "predictive modeling",
+      "Scikit-learn"
      ]
     },
     {
@@ -531,6 +684,10 @@
        "q": "When is recall more important?",
        "a": "When missing a case is expensive: fraud, disease screening, safety."
       }
+     ],
+     "tags": [
+      "classification",
+      "machine learning"
      ]
     },
     {
@@ -550,6 +707,10 @@
        "q": "ROC-AUC or PR-AUC for fraud?",
        "a": "PR-AUC, because positives are rare and precision matters."
       }
+     ],
+     "tags": [
+      "classification",
+      "machine learning"
      ]
     },
     {
@@ -568,6 +729,10 @@
        "q": "Which cell is a false negative?",
        "a": "A real positive the model predicted as negative: a missed case."
       }
+     ],
+     "tags": [
+      "classification",
+      "machine learning"
      ]
     }
    ]
@@ -595,6 +760,12 @@
        "q": "What is a type I error?",
        "a": "Rejecting a true null: a false alarm. Type II is missing a real effect."
       }
+     ],
+     "tags": [
+      "hypothesis testing",
+      "statistics",
+      "A/B testing",
+      "statistical analysis"
      ]
     },
     {
@@ -614,6 +785,11 @@
        "q": "Can you say there is a 95% chance the true value is inside?",
        "a": "Strictly, no: the method captures it 95% of the time. In practice people say it that way."
       }
+     ],
+     "tags": [
+      "statistics",
+      "statistical analysis",
+      "A/B testing"
      ]
     },
     {
@@ -634,6 +810,12 @@
        "q": "What is a sample ratio mismatch?",
        "a": "The groups are not the planned sizes, which signals a bug in assignment; the result cannot be trusted until it is fixed."
       }
+     ],
+     "tags": [
+      "A/B testing",
+      "experimentation",
+      "hypothesis testing",
+      "causal inference"
      ]
     },
     {
@@ -648,7 +830,11 @@
      ],
      "use_when": "It is why confidence intervals and many tests work on non-normal data.",
      "trade_offs": "Needs reasonably large samples and independent observations; very heavy tails need more data.",
-     "follow_ups": []
+     "follow_ups": [],
+     "tags": [
+      "statistics",
+      "hypothesis testing"
+     ]
     }
    ]
   },
@@ -674,6 +860,13 @@
        "q": "What is grain?",
        "a": "What one fact row represents, such as one order line per day. Choosing it first stops double counting."
       }
+     ],
+     "tags": [
+      "data modeling",
+      "data warehouse",
+      "data warehousing",
+      "business intelligence",
+      "Power BI"
      ]
     },
     {
@@ -693,6 +886,12 @@
        "q": "How do you join a fact to a type 2 dimension?",
        "a": "On the business key where the fact's date falls between valid-from and valid-to."
       }
+     ],
+     "tags": [
+      "data modeling",
+      "data warehouse",
+      "data warehousing",
+      "dbt"
      ]
     },
     {
@@ -711,6 +910,11 @@
        "q": "How does it help a backfill?",
        "a": "You can rerun any date range and it replaces those days instead of doubling them."
       }
+     ],
+     "tags": [
+      "data pipelines",
+      "Airflow",
+      "ETL"
      ]
     },
     {
@@ -730,6 +934,15 @@
        "q": "Partitioning or clustering?",
        "a": "Partitioning splits the data into separate parts; clustering or sort keys order the data inside them. They are often used together."
       }
+     ],
+     "tags": [
+      "Spark",
+      "PySpark",
+      "data lake",
+      "BigQuery",
+      "Snowflake",
+      "optimization",
+      "Databricks"
      ]
     },
     {
@@ -749,6 +962,12 @@
        "q": "Parquet or CSV?",
        "a": "Parquet for analytics: typed, compressed, columnar. CSV only for simple exchange."
       }
+     ],
+     "tags": [
+      "data lake",
+      "Spark",
+      "lakehouse",
+      "Databricks"
      ]
     },
     {
@@ -763,7 +982,13 @@
      ],
      "use_when": "Keeping a warehouse in near real time with a busy source, without heavy full extracts.",
      "trade_offs": "Low load on the source and fresh data, but more moving parts; deletes and schema changes need care.",
-     "follow_ups": []
+     "follow_ups": [],
+     "tags": [
+      "data pipelines",
+      "Kafka",
+      "ELT",
+      "PostgreSQL"
+     ]
     },
     {
      "id": "orchestration",
@@ -782,6 +1007,12 @@
        "q": "What is a DAG?",
        "a": "A set of tasks with one-way dependencies and no loops, so there is always a valid order to run them."
       }
+     ],
+     "tags": [
+      "Airflow",
+      "data pipelines",
+      "ETL",
+      "dbt"
      ]
     }
    ]
@@ -812,6 +1043,16 @@
        "q": "What if retrieval returns nothing useful?",
        "a": "Have the model say it does not know instead of guessing."
       }
+     ],
+     "tags": [
+      "RAG",
+      "large language models",
+      "LLMs",
+      "generative AI",
+      "vector databases",
+      "LangChain",
+      "LLM",
+      "retrieval"
      ]
     },
     {
@@ -825,7 +1066,15 @@
      ],
      "use_when": "Semantic search, RAG retrieval, clustering, recommendations and deduplication.",
      "trade_offs": "They capture meaning well, but exact terms and IDs are better matched with keyword search; hybrid search combines both.",
-     "follow_ups": []
+     "follow_ups": [],
+     "tags": [
+      "embeddings",
+      "NLP",
+      "natural language processing",
+      "vector databases",
+      "recommendation systems",
+      "semantic search"
+     ]
     },
     {
      "id": "vector-database",
@@ -839,7 +1088,13 @@
      ],
      "use_when": "RAG and semantic search over many documents.",
      "trade_offs": "Approximate search trades a little accuracy for big speed; for small data a plain array or pgvector in Postgres is enough.",
-     "follow_ups": []
+     "follow_ups": [],
+     "tags": [
+      "vector databases",
+      "embeddings",
+      "RAG",
+      "semantic search"
+     ]
     },
     {
      "id": "hallucination",
@@ -854,7 +1109,16 @@
      ],
      "use_when": "Any production use where wrong answers cost something.",
      "trade_offs": "Grounding and checks reduce it but never remove it, so the checks matter more than the prompt.",
-     "follow_ups": []
+     "follow_ups": [],
+     "tags": [
+      "LLMs",
+      "large language models",
+      "generative AI",
+      "RAG",
+      "prompt engineering",
+      "LLM",
+      "evaluation"
+     ]
     },
     {
      "id": "agents",
@@ -874,6 +1138,16 @@
        "q": "What is ReAct?",
        "a": "A pattern where the model alternates reasoning and acting: a thought, a tool call, the observation, and so on."
       }
+     ],
+     "tags": [
+      "AI agents",
+      "agentic",
+      "LLMs",
+      "LangChain",
+      "agents",
+      "agent",
+      "tool use",
+      "MCP"
      ]
     },
     {
@@ -887,7 +1161,15 @@
      ],
      "use_when": "Planning prompts, RAG chunk sizes and costs.",
      "trade_offs": "Long contexts are convenient but cost more and models can miss details in the middle, so retrieve only what is needed.",
-     "follow_ups": []
+     "follow_ups": [],
+     "tags": [
+      "LLMs",
+      "large language models",
+      "prompt engineering",
+      "LLM",
+      "context engineering",
+      "prompting"
+     ]
     },
     {
      "id": "fine-tuning",
@@ -901,7 +1183,14 @@
      ],
      "use_when": "A consistent format or behaviour that prompting cannot reliably get, or a smaller, cheaper model for one task.",
      "trade_offs": "Costs data and training time and must be redone for new facts; it teaches behaviour better than knowledge.",
-     "follow_ups": []
+     "follow_ups": [],
+     "tags": [
+      "fine-tuning",
+      "LLMs",
+      "deep learning",
+      "PyTorch",
+      "LLM"
+     ]
     },
     {
      "id": "benchmarking",
@@ -920,6 +1209,14 @@
        "q": "How did you benchmark something yourself?",
        "a": "Say what you held fixed, what you measured, and the result."
       }
+     ],
+     "tags": [
+      "LLMs",
+      "model monitoring",
+      "MLOps",
+      "evaluation",
+      "evals",
+      "benchmarks"
      ]
     },
     {
@@ -934,7 +1231,14 @@
      ],
      "use_when": "Many calls that share the same long context.",
      "trade_offs": "Only exact prefixes are reused, and caches expire after a short time.",
-     "follow_ups": []
+     "follow_ups": [],
+     "tags": [
+      "LLMs",
+      "prompt engineering",
+      "generative AI",
+      "LLM",
+      "prompting"
+     ]
     }
    ]
   },
@@ -973,7 +1277,11 @@
       ]
      ],
      "rule": "Bagging for a robust default; boosting for the last bit of accuracy.",
-     "follow_ups": []
+     "follow_ups": [],
+     "tags": [
+      "XGBoost",
+      "machine learning"
+     ]
     },
     {
      "id": "rf-vs-gb",
@@ -1005,7 +1313,12 @@
       ]
      ],
      "rule": "Random forest when you want good results fast; boosting when accuracy is worth the tuning time.",
-     "follow_ups": []
+     "follow_ups": [],
+     "tags": [
+      "XGBoost",
+      "machine learning",
+      "predictive modeling"
+     ]
     },
     {
      "id": "l1-vs-l2",
@@ -1032,7 +1345,12 @@
       ]
      ],
      "rule": "L1 to drop features, L2 to keep them all but smaller; elastic net mixes both.",
-     "follow_ups": []
+     "follow_ups": [],
+     "tags": [
+      "regression",
+      "machine learning",
+      "statistical modeling"
+     ]
     },
     {
      "id": "precision-vs-recall",
@@ -1059,7 +1377,11 @@
       ]
      ],
      "rule": "Choose by which mistake costs more, then move the threshold.",
-     "follow_ups": []
+     "follow_ups": [],
+     "tags": [
+      "classification",
+      "machine learning"
+     ]
     },
     {
      "id": "supervised-vs-unsupervised",
@@ -1086,7 +1408,12 @@
       ]
      ],
      "rule": "Labels available: supervised. No labels: unsupervised, often to explore or create features.",
-     "follow_ups": []
+     "follow_ups": [],
+     "tags": [
+      "machine learning",
+      "clustering",
+      "classification"
+     ]
     },
     {
      "id": "classification-vs-regression",
@@ -1113,7 +1440,12 @@
       ]
      ],
      "rule": "Decide by the type of the answer you need.",
-     "follow_ups": []
+     "follow_ups": [],
+     "tags": [
+      "classification",
+      "regression",
+      "machine learning"
+     ]
     },
     {
      "id": "rag-vs-finetune",
@@ -1150,7 +1482,15 @@
       ]
      ],
      "rule": "Start with prompting, add RAG for knowledge, fine-tune only for behaviour prompting cannot get.",
-     "follow_ups": []
+     "follow_ups": [],
+     "tags": [
+      "RAG",
+      "fine-tuning",
+      "prompt engineering",
+      "LLMs",
+      "LLM",
+      "prompting"
+     ]
     },
     {
      "id": "benchmark-vs-eval",
@@ -1177,7 +1517,15 @@
       ]
      ],
      "rule": "Benchmarks to shortlist, your own evaluation to decide.",
-     "follow_ups": []
+     "follow_ups": [],
+     "tags": [
+      "LLMs",
+      "MLOps",
+      "model monitoring",
+      "evaluation",
+      "evals",
+      "benchmarks"
+     ]
     },
     {
      "id": "etl-vs-elt",
@@ -1204,7 +1552,14 @@
       ]
      ],
      "rule": "ELT is the default with a cloud warehouse; ETL when data must be cleaned or masked before it lands.",
-     "follow_ups": []
+     "follow_ups": [],
+     "tags": [
+      "ETL",
+      "ELT",
+      "dbt",
+      "Snowflake",
+      "data warehouse"
+     ]
     },
     {
      "id": "batch-vs-streaming",
@@ -1231,7 +1586,14 @@
       ]
      ],
      "rule": "Use streaming only when the business needs fresher data than a schedule gives.",
-     "follow_ups": []
+     "follow_ups": [],
+     "tags": [
+      "Kafka",
+      "Spark",
+      "data pipelines",
+      "streaming",
+      "real-time"
+     ]
     },
     {
      "id": "lake-warehouse-lakehouse",
@@ -1268,7 +1630,15 @@
       ]
      ],
      "rule": "A lakehouse aims to give warehouse reliability on lake storage.",
-     "follow_ups": []
+     "follow_ups": [],
+     "tags": [
+      "data lake",
+      "data warehouse",
+      "lakehouse",
+      "Databricks",
+      "Snowflake",
+      "BigQuery"
+     ]
     },
     {
      "id": "oltp-vs-olap",
@@ -1295,7 +1665,13 @@
       ]
      ],
      "rule": "Run the business on OLTP; analyse it on OLAP.",
-     "follow_ups": []
+     "follow_ups": [],
+     "tags": [
+      "data warehouse",
+      "data warehousing",
+      "PostgreSQL",
+      "business intelligence"
+     ]
     },
     {
      "id": "star-vs-snowflake",
@@ -1322,7 +1698,13 @@
       ]
      ],
      "rule": "Star schema is the usual default for analytics; snowflake when dimensions are huge or shared.",
-     "follow_ups": []
+     "follow_ups": [],
+     "tags": [
+      "data modeling",
+      "data warehouse",
+      "data warehousing",
+      "business intelligence"
+     ]
     }
    ]
   }

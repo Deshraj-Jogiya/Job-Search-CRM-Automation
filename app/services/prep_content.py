@@ -235,12 +235,17 @@ def cards_for_posting(cards: list[dict], job_description: str, limit: int = 6) -
 
 
 def questions_for_posting(job_description: str, limit: int = 8) -> list[dict]:
-    terms = resume_ats.posting_terms(job_description or "")
+    """The bank's questions a posting points to: each question's tags found word for word in the posting, plus the
+    posting's ATS terms (resume_ats.posting_terms) that the question itself uses. Most matches first. Tags are matched
+    here only, so plain forms like "agents" or "evaluation" help this list without changing the resume ATS check."""
+    jd = job_description or ""
+    terms = resume_ats.posting_terms(jd)
     out = []
     for q in all_questions():
         text = " ".join(str(v) for k, v in q.items() if k in ("q", "definition", "use_when"))
         text += " " + " ".join(q.get("steps") or [])
-        hits = [t for t in terms if resume_ats.has_term(text, t)]
+        hits = [t for t in q.get("tags") or [] if resume_ats.has_term(jd, t)]
+        hits += [t for t in terms if resume_ats.has_term(text, t) and t.lower() not in {h.lower() for h in hits}]
         if hits:
             out.append({"id": q["id"], "q": q["q"], "section": q["section"], "terms": hits})
     out.sort(key=lambda q: -len(q["terms"]))

@@ -75,3 +75,19 @@ def test_card_keys_are_stable_and_distinct():
     keys = prep_content.all_card_keys()
     assert len(keys) == len(set(keys))
     assert "qb:messy-data" in keys and "code:two-sum" in keys
+
+
+def test_every_question_is_tagged_and_ai_postings_in_plain_words_still_match():
+    for q in prep_content.all_questions():
+        assert q.get("tags"), q["id"]
+    jd = "Build LLM-powered applications and agents, and design evaluation frameworks for them."
+    ids = {q["id"] for q in prep_content.questions_for_posting(jd)}
+    assert {"agents", "benchmarking", "rag"} <= ids
+
+
+def test_a_posting_in_business_words_still_finds_its_questions():
+    jd = ("You will build data pipelines in Databricks, support business intelligence and data governance, "
+          "and help the team adopt MLOps practices.")
+    ids = [q["id"] for q in prep_content.questions_for_posting(jd)]
+    assert {"debug-pipeline", "data-quality", "model-monitoring"} & set(ids)
+    assert len(ids) == 8
