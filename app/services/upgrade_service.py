@@ -131,7 +131,7 @@ def evidence_strength(profile: dict, term: str) -> dict:
     return {"level": "none", "via": via}
 
 
-def market_demand(db: Session, profile: dict, now: datetime | None = None) -> dict:
+def market_demand(db: Session, profile: dict, now: datetime | None = None, top: int = 25) -> dict:
     now = now or utcnow()
     since = now - timedelta(days=MARKET_WINDOW_DAYS)
     targets = [k.keyword for k in db.query(SearchKeyword).filter(SearchKeyword.is_active == True).all()]  # noqa: E712
@@ -158,7 +158,7 @@ def market_demand(db: Session, profile: dict, now: datetime | None = None) -> di
             counts[term] = counts.get(term, 0) + 1
     n = len(target_postings)
     ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-    for term, count in ranked[:25]:
+    for term, count in ranked[:top]:
         share = round(100 * count / n)
         entry = {"term": term, "count": count, "share": share, **evidence_strength(profile, term)}
         result["skills"].append(entry)

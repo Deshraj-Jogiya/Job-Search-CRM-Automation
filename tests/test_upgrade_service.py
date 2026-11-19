@@ -175,6 +175,24 @@ def test_market_check_ranks_required_skills_against_evidence(db):
     assert {g["term"] for g in result["gaps"]} == {"Kafka", "Snowflake"}
 
 
+
+def test_market_skills_export_keeps_only_skill_names_shares_and_evidence(db, monkeypatch, tmp_path):
+    from app.ingest import cli
+
+    _profile_db(db)
+    _postings(db, 30, "Requirements:\nPython, SQL, Kafka and Snowflake")
+    monkeypatch.setattr(upgrade_service, "utcnow", lambda: NOW)
+    out = tmp_path / "market_skills.json"
+
+    summary = cli.market_skills(db, top=2, out=str(out))
+    data = json.loads(out.read_text(encoding="utf-8"))
+
+    assert summary == {"written": str(out), "skills": 2, "target_postings": 30}
+    assert data["generated_at"] == "2026-10-22" and data["target_postings"] == 30
+    assert len(data["skills"]) == 2
+    assert all(set(s) == {"term", "share", "evidence"} for s in data["skills"])
+    assert all(s["share"] == 100 for s in data["skills"])
+
 # ---- checks 4 and 5 ----------------------------------------------------------------------------------------
 
 def test_outcomes_wait_for_enough_sent_and_replies(db):

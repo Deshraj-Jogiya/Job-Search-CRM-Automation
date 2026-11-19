@@ -81,6 +81,30 @@ def backfill_fit(db) -> dict:
     return {"applications_refreshed": len(scored) - skipped, "scores_capped_or_changed": changed, "skipped_no_profile": skipped}
 
 
+def market_skills(db, top: int = 40, out: str | None = None) -> dict:
+    """The skills required by the target-role postings of the last 90 days, ranked by the share of postings that require each,
+    with how strongly the profile shows each one. No personal data: only skill names, counts and shares."""
+    import json as _json
+
+    from ..services import upgrade_service
+
+    profile, _ = upgrade_service._current_profile(db)
+    demand = upgrade_service.market_demand(db, profile, top=top)
+    result = {
+        "generated_at": upgrade_service.utcnow().date().isoformat(),
+        "window_days": demand["window_days"],
+        "target_postings": demand["target_postings"],
+        "target_roles": demand["target_roles"],
+        "skills": [{"term": s["term"], "share": s["share"], "evidence": s["level"]} for s in demand["skills"]],
+    }
+    if out:
+        with open(out, "w", encoding="utf-8") as fh:
+            _json.dump(result, fh, indent=2, ensure_ascii=False)
+            fh.write("\n")
+        return {"written": out, "skills": len(result["skills"]), "target_postings": result["target_postings"]}
+    return result
+
+
 def compare_ats_verify(db, limit: int = 20) -> dict:
     """Runs the AI and the rule-based ATS verify side by side on the most recent tailored resumes and
     reports how closely they agree, the evidence for switching ATS_VERIFY_MODE to "rules". Makes one
@@ -187,6 +211,11 @@ def main(argv=None) -> int:
         "compare-ats-verify", help="Compare the AI and rule-based ATS verify on recent tailored resumes (paid AI calls)"
     )
     compare_parser.add_argument("--limit", type=int, default=20)
+    skills_parser = subparsers.add_parser(
+        "market-skills", help="Skills the target postings of the last 90 days require, ranked, as JSON (feeds the LinkedIn post picker)"
+    )
+    skills_parser.add_argument("--out", help="write the JSON to this file instead of printing it")
+    skills_parser.add_argument("--top", type=int, default=40)
 
     # Sponsorship lookups straight from the raw government files (no database): any employer, not only tracked companies.
     subparsers.add_parser("build-lca-slim", help="Extract certified H-1B data-role filings from the LCA XLSX into data/raw/dol/lca_data_roles.csv")
@@ -241,6 +270,8 @@ def main(argv=None) -> int:
             result = backfill_fit(db)
         elif args.command == "compare-ats-verify":
             result = compare_ats_verify(db, args.limit)
+        elif args.command == "market-skills":
+            result = market_skills(db, args.top, args.out)
         else:
             parser.error(f"Unknown command {args.command!r}")
             return 2
