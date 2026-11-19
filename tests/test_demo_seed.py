@@ -108,3 +108,16 @@ def test_daily_reset_is_scheduled_only_in_showcase_mode():
     from app.services import scheduler
     assert "is_showcase_mode()" in inspect.getsource(scheduler.start_scheduler)
     assert demo_seed_service.reset_demo_data.__name__ in inspect.getsource(scheduler._demo_reset_tick)
+
+
+def test_demo_seeds_one_written_deep_dive_with_only_the_fixtures_numbers(db, monkeypatch):
+    from app.services import prep_content, profile_prep_service, tailoring_service
+
+    monkeypatch.setenv("APP_MODE", "showcase")
+    seed_demo_data(db)
+    profile, variant = profile_prep_service.load_profile(db)
+    _, drafted = profile_prep_service.get_active_prep(db, variant.id)
+    cards = prep_content.build_cards(profile, drafted.get("deep_dives"))
+    written = [c for c in cards if not c["outline"]]
+    assert len(written) == 1 and written[0]["changed_since"] is False
+    assert tailoring_service.unsupported_numbers(prep_content.card_text(written[0]), json.dumps(profile)) == []

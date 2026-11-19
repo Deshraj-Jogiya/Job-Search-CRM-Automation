@@ -1,0 +1,1330 @@
+{
+ "version": 1,
+ "how_to_answer": {
+  "process": [
+   "Give about five steps in order.",
+   "Name the tool or method at each step.",
+   "Finish with one real example from your work, with its result."
+  ],
+  "concept": [
+   "One-sentence definition.",
+   "A plain picture or analogy.",
+   "How it works in a few steps.",
+   "When to use it and what it costs.",
+   "Where you used it, only if your profile backs it."
+  ],
+  "difference": [
+   "Compare them on the same few points.",
+   "Give a one-line rule for when to use each.",
+   "Name where you used one of them."
+  ]
+ },
+ "sections": [
+  {
+   "id": "working-with-data",
+   "title": "Working with data",
+   "kind": "process",
+   "questions": [
+    {
+     "id": "messy-data",
+     "q": "How do you handle messy data?",
+     "steps": [
+      "Profile it first: row counts, null share per column, types, duplicates, value ranges and odd categories.",
+      "Agree what 'correct' means with whoever owns the data: which fields are required, valid ranges, the unique key.",
+      "Decide a rule per issue: drop, fix, fill or flag. Never change data silently; keep a count of what each rule touched.",
+      "Automate the rules as tests in the pipeline so the same problem is caught next time, not cleaned by hand again.",
+      "Document the decisions and monitor the counts, so a jump in bad rows raises an alert."
+     ],
+     "follow_ups": [
+      {
+       "q": "What if the owner does not know what is correct?",
+       "a": "Start from how the data is used: what would break a report or a model. Propose rules, show their effect on real rows, and get a yes before applying them."
+      },
+      {
+       "q": "Do you ever delete bad rows?",
+       "a": "Only with a rule everyone agreed on, and I keep them in a quarantine table with the reason, so nothing is lost and the count is visible."
+      }
+     ],
+     "example_prompt": "One time you found and fixed bad data, the tool you used for the checks, and the result."
+    },
+    {
+     "id": "preprocessing-pipeline",
+     "q": "Walk me through your data preprocessing and analysis pipeline.",
+     "steps": [
+      "Ingest: pull from the sources into a raw layer exactly as received, so you can always reprocess.",
+      "Validate: schema, types, nulls, duplicates and ranges, with failures counted and reported.",
+      "Clean and standardise: fix types and formats, deduplicate on the business key, handle missing values with a stated rule.",
+      "Transform: join sources, build the features or the facts and dimensions the analysis needs.",
+      "Analyse or model: explore, then answer the question or train and evaluate the model on held-out data.",
+      "Deliver and monitor: a dashboard, a table or a model, with checks that keep running after launch."
+     ],
+     "follow_ups": [
+      {
+       "q": "Where do most of the problems show up?",
+       "a": "At ingestion and validation: schema changes, late files and duplicates. That is why the checks run before any transformation."
+      },
+      {
+       "q": "How do you make it repeatable?",
+       "a": "Everything is code in version control, runs on a scheduler, and every load is idempotent, so a rerun gives the same result."
+      }
+     ],
+     "example_prompt": "Walk one of your real pipelines through these six steps, naming the tool at each step."
+    },
+    {
+     "id": "missing-values",
+     "q": "How do you handle missing values?",
+     "steps": [
+      "Find out why they are missing: not collected, not applicable, a join that failed, or a bug upstream.",
+      "Measure how much is missing per column and whether it is random or tied to a group.",
+      "Choose by cause: fix it upstream if it is a bug; leave it as a real 'not applicable' value; drop rows only when few and random; otherwise impute.",
+      "Impute simply first (median, most frequent, or a value per group), and add a 'was missing' flag when the missingness itself carries information.",
+      "For models, fit any imputation on training data only, to avoid leakage."
+     ],
+     "follow_ups": [
+      {
+       "q": "Mean or median?",
+       "a": "Median when the column is skewed or has outliers; mean only for roughly symmetric data."
+      }
+     ],
+     "example_prompt": "A column you handled and the rule you chose."
+    },
+    {
+     "id": "outliers",
+     "q": "How do you handle outliers?",
+     "steps": [
+      "Check whether each outlier is an error (a typo, a unit mix-up) or a real extreme value.",
+      "Errors: fix them at the source or remove them with a logged rule.",
+      "Real extremes: keep them, and choose methods that cope (median, robust scaling, tree models) or cap them if the analysis needs it.",
+      "Detect them with a rule that suits the data: IQR fences or z-scores for roughly normal data, domain limits otherwise."
+     ],
+     "follow_ups": [
+      {
+       "q": "Would you ever keep them?",
+       "a": "Yes. In fraud or monitoring work the outliers are often the point."
+      }
+     ],
+     "example_prompt": "Where you met outliers, and whether they were errors or real."
+    },
+    {
+     "id": "duplicates",
+     "q": "How do you deal with duplicate records?",
+     "steps": [
+      "Define the business key that makes a record unique; exact-row duplicates are only the easy case.",
+      "Find duplicates on that key and look at how they differ (a retry, an update, two sources).",
+      "Keep one by a stated rule, usually the latest update (ROW_NUMBER over the key, ordered by updated time).",
+      "Stop them at the source: idempotent loads with MERGE or upsert on the key."
+     ],
+     "follow_ups": [
+      {
+       "q": "How do you find near-duplicates, like the same company spelled two ways?",
+       "a": "Normalise first (case, punctuation, suffixes like Inc), then match on the normalised value, and review fuzzy matches before merging."
+      }
+     ],
+     "example_prompt": "A deduplication rule you wrote."
+    },
+    {
+     "id": "imbalanced-data",
+     "q": "How do you handle an imbalanced dataset?",
+     "steps": [
+      "Use metrics that show the rare class: precision, recall, F1 or PR-AUC, not accuracy.",
+      "Split with stratification so every set keeps the class ratio.",
+      "Try class weights first; then resampling of the training set only (undersampling, oversampling or SMOTE).",
+      "Tune the decision threshold to the business cost of a missed case versus a false alarm."
+     ],
+     "follow_ups": [
+      {
+       "q": "Why not accuracy?",
+       "a": "With 1% positives, predicting 'no' every time scores 99% accuracy and catches nothing."
+      }
+     ],
+     "example_prompt": "A rare-event problem you worked on."
+    },
+    {
+     "id": "data-leakage",
+     "q": "What is data leakage and how do you prevent it?",
+     "steps": [
+      "Leakage is when training uses information that will not exist at prediction time, so test scores look better than reality.",
+      "Split before any fitting; fit scalers, imputers and encoders on the training data only (a pipeline object makes this automatic).",
+      "For time data, split by time, never randomly, and build features only from the past.",
+      "Be suspicious of any feature that is almost perfectly predictive, and check what it really encodes."
+     ],
+     "follow_ups": [
+      {
+       "q": "Give an example.",
+       "a": "Predicting churn with a 'cancellation date' column: it only exists after the customer has churned."
+      }
+     ],
+     "example_prompt": "How you split data in one of your models."
+    },
+    {
+     "id": "eda",
+     "q": "How do you approach exploratory data analysis?",
+     "steps": [
+      "Start from the question the analysis must answer, so exploration has a direction.",
+      "Check shape, types, nulls, duplicates and ranges.",
+      "Look at each important variable alone (distributions), then in pairs (correlations, group comparisons).",
+      "Write down every surprise and check it is real, not a data error.",
+      "Summarise what you found and what it means for the next step."
+     ],
+     "follow_ups": [
+      {
+       "q": "What tools?",
+       "a": "Pandas for the summaries, plots for distributions, and SQL when the data stays in the warehouse."
+      }
+     ],
+     "example_prompt": "One finding from your own EDA that changed what you did next."
+    },
+    {
+     "id": "feature-engineering",
+     "q": "How do you approach feature engineering?",
+     "steps": [
+      "Start from what plausibly drives the outcome, with domain knowledge.",
+      "Build simple, explainable features first: ratios, counts, time since an event, rolling averages.",
+      "Encode categories suitably (one-hot for few levels, target or frequency encoding for many, fitted on training data).",
+      "Keep a feature only if it improves the validation score, and check it is available at prediction time."
+     ],
+     "follow_ups": [
+      {
+       "q": "How do you pick features?",
+       "a": "Validation score with and without the feature, plus importance from the model, plus a leakage check."
+      }
+     ],
+     "example_prompt": "Features you built in one of your models."
+    },
+    {
+     "id": "validate-model",
+     "q": "How do you validate a model before it goes to production?",
+     "steps": [
+      "Hold out a test set (by time if the data is time-based) and keep it untouched until the end.",
+      "Compare against a simple baseline; a model that does not beat it is not ready.",
+      "Pick metrics that match the business cost, and look at errors by segment, not only the overall score.",
+      "Check the model on recent data and on edge cases, and confirm the features exist in production the same way.",
+      "Ship behind monitoring, with a rollback plan."
+     ],
+     "follow_ups": [
+      {
+       "q": "What if offline and online results disagree?",
+       "a": "Usually a feature computed differently in production, or a shift in the data. Compare feature distributions between training and live traffic first."
+      }
+     ],
+     "example_prompt": "How you validated one of your models, with its numbers."
+    },
+    {
+     "id": "debug-pipeline",
+     "q": "A dashboard number is wrong. How do you debug the pipeline?",
+     "steps": [
+      "Confirm the problem: what the number is, what it should be, and since when.",
+      "Walk backwards one layer at a time (dashboard, final table, staging, raw) and compare counts and sums at each.",
+      "The first layer where the numbers diverge holds the bug; look at what changed there (code, schema, a late or duplicated file).",
+      "Fix it, backfill the affected dates, and add a test that would have caught it.",
+      "Tell the people who use the number what was wrong and for which dates."
+     ],
+     "follow_ups": [
+      {
+       "q": "How do you avoid this next time?",
+       "a": "Reconciliation tests between layers (row counts and key sums) and alerts when they disagree."
+      }
+     ],
+     "example_prompt": "A real bug you traced, how you found the root cause, and the fix."
+    },
+    {
+     "id": "data-quality",
+     "q": "How do you make sure data quality stays high in a pipeline?",
+     "steps": [
+      "Write the expectations down as tests: not null, unique keys, accepted values, ranges, freshness and row-count changes.",
+      "Run them on every load and stop or quarantine the load when a critical test fails.",
+      "Alert the owner with the failing test and the sample rows.",
+      "Track the pass rate over time and fix the causes upstream, not only the symptoms."
+     ],
+     "follow_ups": [
+      {
+       "q": "Which tools?",
+       "a": "Great Expectations or dbt tests, run from the orchestrator."
+      }
+     ],
+     "example_prompt": "Your data quality checks and the reliability they gave."
+    },
+    {
+     "id": "late-duplicate-events",
+     "q": "How do you handle late or duplicate events in streaming data?",
+     "steps": [
+      "Give every event a unique id and an event time, separate from the time it arrived.",
+      "Deduplicate on the id within a time window (or with an idempotent upsert downstream).",
+      "Use event-time windows with a watermark: how long to wait for late events before closing a window.",
+      "Send events later than the watermark to a correction path, and reprocess the affected windows."
+     ],
+     "follow_ups": [
+      {
+       "q": "Exactly-once or at-least-once?",
+       "a": "Most systems deliver at least once; making the writes idempotent gives the same end result as exactly once."
+      }
+     ],
+     "example_prompt": "Streaming or near-real-time work you have done."
+    },
+    {
+     "id": "backfill",
+     "q": "How would you backfill a year of data?",
+     "steps": [
+      "Make the pipeline idempotent first, so rerunning a day replaces it instead of adding to it.",
+      "Run it in date partitions, oldest first, in small batches you can retry.",
+      "Limit how many run at once so the backfill does not starve normal jobs or the source system.",
+      "Check counts and totals per partition against the source as each batch finishes."
+     ],
+     "follow_ups": [
+      {
+       "q": "What if the logic changed during the year?",
+       "a": "Decide with the data's users whether old days get the new logic, and record the choice."
+      }
+     ],
+     "example_prompt": "A backfill or reprocessing job you ran."
+    },
+    {
+     "id": "schema-change",
+     "q": "The source system changed its schema. What happens to your pipeline?",
+     "steps": [
+      "Detect it: schema checks on ingestion fail loudly instead of loading wrong data.",
+      "Additive changes (a new column) can usually flow through; renamed, removed or retyped columns need a code change.",
+      "Agree a data contract with the source team so changes are announced and versioned.",
+      "Keep raw data, so once the code is fixed you can reprocess."
+     ],
+     "follow_ups": [
+      {
+       "q": "How do formats help?",
+       "a": "Parquet, Avro or Delta keep the schema with the data, and table formats like Delta or Iceberg support schema evolution."
+      }
+     ],
+     "example_prompt": "A time a source changed under you."
+    },
+    {
+     "id": "slow-query",
+     "q": "A query or Spark job is slow. How do you speed it up?",
+     "steps": [
+      "Measure first: read the query plan or the Spark UI to see where the time goes.",
+      "Read less: filter early, select only needed columns, and use partition pruning.",
+      "Fix the join: index the join keys in a database, broadcast the small side in Spark, and watch for skewed keys.",
+      "Avoid repeated work: materialise expensive steps, and use incremental loads instead of full rebuilds.",
+      "Measure again to confirm the gain."
+     ],
+     "follow_ups": [
+      {
+       "q": "What is data skew?",
+       "a": "A few keys hold most of the rows, so one task does most of the work. Fixes: salting the key, or handling the hot keys separately."
+      }
+     ],
+     "example_prompt": "A performance improvement you made, with the before and after."
+    },
+    {
+     "id": "model-monitoring",
+     "q": "How do you monitor a model in production?",
+     "steps": [
+      "Watch the inputs: feature distributions against training (PSI or a KS test) to catch drift.",
+      "Watch the outputs: prediction distribution and confidence.",
+      "Watch the outcome when labels arrive: accuracy or error over time, and by segment.",
+      "Alert on thresholds, and have a retraining and rollback plan."
+     ],
+     "follow_ups": [
+      {
+       "q": "What is data drift versus concept drift?",
+       "a": "Data drift: the inputs change. Concept drift: the relationship between inputs and the outcome changes, so the same inputs now mean something else."
+      }
+     ],
+     "example_prompt": "Drift detection or monitoring you built."
+    }
+   ]
+  },
+  {
+   "id": "ml-concepts",
+   "title": "Machine learning concepts",
+   "kind": "concept",
+   "questions": [
+    {
+     "id": "linear-regression",
+     "q": "Explain linear regression.",
+     "definition": "A model that predicts a number as a weighted sum of the inputs plus a constant.",
+     "picture": "Drawing the straight line that sits closest to a cloud of points.",
+     "how": [
+      "Choose the weights that make the squared errors between predictions and real values as small as possible.",
+      "Each weight says how much the prediction moves when that input goes up by one, holding the others fixed."
+     ],
+     "use_when": "A first model for a numeric target, and whenever you need to explain the effect of each input.",
+     "trade_offs": "Simple, fast and explainable, but it assumes a straight-line relationship and is hurt by outliers and strongly correlated inputs.",
+     "follow_ups": [
+      {
+       "q": "What does R-squared tell you?",
+       "a": "The share of the target's variance the model explains; it never goes down when you add features, so use adjusted R-squared or a validation score."
+      }
+     ]
+    },
+    {
+     "id": "logistic-regression",
+     "q": "Explain logistic regression.",
+     "definition": "A classification model that predicts the probability of a yes/no outcome.",
+     "picture": "Linear regression whose output is squeezed between 0 and 1 by an S-shaped curve.",
+     "how": [
+      "Compute a weighted sum of the inputs.",
+      "Pass it through the sigmoid to get a probability.",
+      "Train by maximising the likelihood of the real labels (log loss).",
+      "Pick a threshold to turn probabilities into decisions."
+     ],
+     "use_when": "A strong, explainable baseline for classification.",
+     "trade_offs": "Fast and explainable, but it draws a straight boundary unless you add interaction or transformed features.",
+     "follow_ups": [
+      {
+       "q": "Why is it called regression if it classifies?",
+       "a": "It regresses the log-odds of the outcome on the inputs; the classification comes from the threshold."
+      }
+     ]
+    },
+    {
+     "id": "decision-tree",
+     "q": "Explain a decision tree.",
+     "definition": "A model that makes a prediction through a sequence of yes/no questions about the inputs.",
+     "picture": "A game of twenty questions that ends in an answer.",
+     "how": [
+      "At each step, pick the split that best separates the target (Gini or entropy for classes, squared error for numbers).",
+      "Repeat on each branch until a stopping rule (depth, minimum rows).",
+      "A leaf predicts the majority class or the average value."
+     ],
+     "use_when": "When you need rules people can read, or as the building block of forests and boosting.",
+     "trade_offs": "Easy to read and needs no scaling, but a single deep tree overfits and changes a lot with small data changes.",
+     "follow_ups": [
+      {
+       "q": "How do you stop it overfitting?",
+       "a": "Limit depth, require a minimum number of rows per leaf, or prune."
+      }
+     ]
+    },
+    {
+     "id": "random-forest",
+     "q": "Explain random forest.",
+     "definition": "An ensemble of many decision trees, each trained on a random sample of the rows and a random subset of the features, that vote or average.",
+     "picture": "Asking a hundred people who each saw part of the data, then taking the majority: individual mistakes cancel out.",
+     "how": [
+      "Draw a bootstrap sample of the rows for each tree.",
+      "At each split, consider only a random subset of the features.",
+      "Grow many deep trees.",
+      "Average their predictions, or take the majority vote."
+     ],
+     "use_when": "A strong default for tabular data with little tuning.",
+     "trade_offs": "Robust and hard to overfit, but bigger, slower and harder to explain than one tree, and it cannot predict beyond the range of the training targets.",
+     "follow_ups": [
+      {
+       "q": "Explain it without saying 'tree'.",
+       "a": "Many small rule-based voters, each trained on a different random slice of the data, and the final answer is their vote."
+      },
+      {
+       "q": "What is out-of-bag error?",
+       "a": "Each tree skips about a third of the rows; scoring each row with the trees that did not see it gives a free validation estimate."
+      }
+     ]
+    },
+    {
+     "id": "gradient-boosting",
+     "q": "Explain gradient boosting (XGBoost, LightGBM).",
+     "definition": "An ensemble that builds small trees one after another, each one correcting the errors of the ones before it.",
+     "picture": "A team where each new member studies only the mistakes the team still makes.",
+     "how": [
+      "Start with a simple prediction.",
+      "Fit a small tree to the current errors (the gradient of the loss).",
+      "Add it with a small learning rate.",
+      "Repeat for many rounds, stopping when the validation score stops improving."
+     ],
+     "use_when": "When you need the best accuracy on tabular data and can spend time tuning.",
+     "trade_offs": "Often the most accurate on tabular data, but more sensitive to its settings and easier to overfit than a random forest.",
+     "follow_ups": [
+      {
+       "q": "Which settings matter most?",
+       "a": "Learning rate, number of trees (with early stopping), tree depth, and row and column sampling."
+      }
+     ]
+    },
+    {
+     "id": "k-means",
+     "q": "Explain k-means clustering.",
+     "definition": "An unsupervised method that splits data into k groups so that points are close to their group's centre.",
+     "picture": "Placing k flags in a field so everyone walks to the nearest flag, then moving each flag to the middle of its crowd.",
+     "how": [
+      "Pick k starting centres.",
+      "Assign each point to its nearest centre.",
+      "Move each centre to the mean of its points.",
+      "Repeat until assignments stop changing."
+     ],
+     "use_when": "Segmentation (customers, products) when groups are roughly round and similar in size.",
+     "trade_offs": "Simple and fast, but you must choose k, it needs scaled features, and it struggles with odd-shaped or very unequal clusters.",
+     "follow_ups": [
+      {
+       "q": "How do you choose k?",
+       "a": "The elbow of the within-cluster error curve, silhouette scores, and whether the groups make sense to the business."
+      }
+     ]
+    },
+    {
+     "id": "bias-variance",
+     "q": "Explain the bias-variance trade-off.",
+     "definition": "A model's error comes from being too simple (bias) or too sensitive to the training data (variance); reducing one tends to raise the other.",
+     "picture": "Bias is always missing the target in the same direction; variance is hitting all over the place.",
+     "how": [
+      "Simple models: high bias, low variance (underfit).",
+      "Complex models: low bias, high variance (overfit).",
+      "Aim for the complexity where validation error is lowest."
+     ],
+     "use_when": "To explain why a model underfits or overfits and what to change.",
+     "trade_offs": "More data mainly reduces variance; more features or a more flexible model mainly reduce bias.",
+     "follow_ups": [
+      {
+       "q": "How do you tell which one you have?",
+       "a": "Both training and validation error high: bias. Training error low and validation error much higher: variance."
+      }
+     ]
+    },
+    {
+     "id": "overfitting",
+     "q": "What is overfitting and how do you prevent it?",
+     "definition": "When a model learns noise in the training data, so it scores well there and badly on new data.",
+     "picture": "Memorising last year's exam answers instead of learning the subject.",
+     "how": [
+      "Detect it with a gap between training and validation scores.",
+      "Prevent it with more data, simpler models, regularisation (L1/L2, dropout), early stopping, and cross-validation."
+     ],
+     "use_when": "Always: every model is checked on data it did not train on.",
+     "trade_offs": "Too much regularisation causes underfitting instead, so tune it on validation data.",
+     "follow_ups": [
+      {
+       "q": "What does regularisation do?",
+       "a": "Adds a penalty for large weights, which pushes the model towards simpler explanations."
+      }
+     ]
+    },
+    {
+     "id": "cross-validation",
+     "q": "Explain cross-validation.",
+     "definition": "Estimating how a model will do on new data by training and testing it several times on different splits.",
+     "picture": "Taking several practice exams on different topics instead of trusting one.",
+     "how": [
+      "Split the data into k folds.",
+      "Train on k-1 folds and test on the remaining one.",
+      "Repeat so each fold is the test once, and average the scores."
+     ],
+     "use_when": "Model selection and tuning when data is limited.",
+     "trade_offs": "More reliable than one split but k times the training cost; for time data use time-based splits, not random folds.",
+     "follow_ups": [
+      {
+       "q": "Is a test set still needed?",
+       "a": "Yes. Cross-validation guides choices; a final untouched test set gives the honest score."
+      }
+     ]
+    },
+    {
+     "id": "precision-recall-f1",
+     "q": "Explain precision, recall and F1.",
+     "definition": "Precision: of the cases flagged positive, how many really were. Recall: of the real positives, how many were caught. F1: the harmonic mean of the two.",
+     "picture": "A fishing net: precision is how much of the catch is the fish you wanted; recall is how much of that fish you caught.",
+     "how": [
+      "Precision = TP / (TP + FP).",
+      "Recall = TP / (TP + FN).",
+      "F1 = 2 x precision x recall / (precision + recall)."
+     ],
+     "use_when": "Classification with an imbalanced or costly-error problem.",
+     "trade_offs": "Raising the threshold usually raises precision and lowers recall; the business cost decides where to sit.",
+     "follow_ups": [
+      {
+       "q": "When is recall more important?",
+       "a": "When missing a case is expensive: fraud, disease screening, safety."
+      }
+     ]
+    },
+    {
+     "id": "roc-auc",
+     "q": "Explain ROC-AUC.",
+     "definition": "The area under the curve of true positive rate against false positive rate across all thresholds: the chance the model ranks a random positive above a random negative.",
+     "picture": "How well the model sorts the cases, before you choose where to draw the line.",
+     "how": [
+      "Score every case.",
+      "For every threshold, compute the true and false positive rates.",
+      "Plot them and measure the area: 0.5 is random, 1.0 is perfect."
+     ],
+     "use_when": "Comparing models independent of the threshold.",
+     "trade_offs": "It can look good on heavily imbalanced data while precision is poor; use PR-AUC there.",
+     "follow_ups": [
+      {
+       "q": "ROC-AUC or PR-AUC for fraud?",
+       "a": "PR-AUC, because positives are rare and precision matters."
+      }
+     ]
+    },
+    {
+     "id": "confusion-matrix",
+     "q": "What is a confusion matrix?",
+     "definition": "A table of a classifier's predictions against the real labels: true positives, false positives, true negatives and false negatives.",
+     "picture": "A scorecard that shows not just how often the model is wrong, but how.",
+     "how": [
+      "Rows are the real classes, columns the predicted ones (or the reverse).",
+      "Every metric (accuracy, precision, recall) is computed from its cells."
+     ],
+     "use_when": "Any time you report a classifier, to show which mistakes it makes.",
+     "trade_offs": "It depends on the threshold chosen.",
+     "follow_ups": [
+      {
+       "q": "Which cell is a false negative?",
+       "a": "A real positive the model predicted as negative: a missed case."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "statistics",
+   "title": "Statistics",
+   "kind": "concept",
+   "questions": [
+    {
+     "id": "p-value",
+     "q": "Explain a p-value.",
+     "definition": "The probability of seeing a result at least this extreme if there were really no effect (the null hypothesis).",
+     "picture": "How surprising your data would be in a world where nothing changed.",
+     "how": [
+      "State the null hypothesis.",
+      "Compute the test statistic from the data.",
+      "The p-value is the share of results at least this extreme under the null.",
+      "Below a threshold set in advance (often 0.05), reject the null."
+     ],
+     "use_when": "Hypothesis tests and A/B tests.",
+     "trade_offs": "It is not the probability that the null is true, and it says nothing about how big or important the effect is.",
+     "follow_ups": [
+      {
+       "q": "What is a type I error?",
+       "a": "Rejecting a true null: a false alarm. Type II is missing a real effect."
+      }
+     ]
+    },
+    {
+     "id": "confidence-interval",
+     "q": "Explain a confidence interval.",
+     "definition": "A range built so that, if you repeated the study many times, 95% (for a 95% interval) of the ranges would contain the true value.",
+     "picture": "A margin of error around an estimate.",
+     "how": [
+      "Estimate the value.",
+      "Estimate its standard error.",
+      "Take the estimate plus and minus about 1.96 standard errors for 95%."
+     ],
+     "use_when": "Reporting any estimate, so people see its uncertainty.",
+     "trade_offs": "Wider with less data or more noise; more data narrows it.",
+     "follow_ups": [
+      {
+       "q": "Can you say there is a 95% chance the true value is inside?",
+       "a": "Strictly, no: the method captures it 95% of the time. In practice people say it that way."
+      }
+     ]
+    },
+    {
+     "id": "ab-test",
+     "q": "How do you run an A/B test?",
+     "definition": "A controlled experiment that randomly splits users between the current version and a change to measure the change's effect.",
+     "picture": "A fair coin decides who gets the new version, so the only difference between the groups is the change.",
+     "how": [
+      "Pick one primary metric and the smallest effect worth detecting.",
+      "Compute the sample size (power analysis) before starting.",
+      "Randomise users, run for the planned time, and do not stop early when it looks good.",
+      "Test the difference, check guardrail metrics, and decide."
+     ],
+     "use_when": "Any product or model change where you can split traffic.",
+     "trade_offs": "Needs enough traffic and time; peeking early and testing many metrics both inflate false positives.",
+     "follow_ups": [
+      {
+       "q": "What is a sample ratio mismatch?",
+       "a": "The groups are not the planned sizes, which signals a bug in assignment; the result cannot be trusted until it is fixed."
+      }
+     ]
+    },
+    {
+     "id": "central-limit-theorem",
+     "q": "Explain the central limit theorem.",
+     "definition": "The average of many independent samples is approximately normally distributed, whatever the shape of the original data.",
+     "picture": "Single dice rolls are flat, but averages of many rolls pile up in a bell around 3.5.",
+     "how": [
+      "Take repeated samples of size n.",
+      "Compute each sample's mean.",
+      "Those means form a bell curve that narrows as n grows."
+     ],
+     "use_when": "It is why confidence intervals and many tests work on non-normal data.",
+     "trade_offs": "Needs reasonably large samples and independent observations; very heavy tails need more data.",
+     "follow_ups": []
+    }
+   ]
+  },
+  {
+   "id": "data-engineering",
+   "title": "Data engineering concepts",
+   "kind": "concept",
+   "questions": [
+    {
+     "id": "star-schema",
+     "q": "Explain a star schema.",
+     "definition": "A warehouse design with one fact table of measurable events in the middle, joined to dimension tables that describe them.",
+     "picture": "A receipt (the fact) linked to the customer, the product, the store and the date (the dimensions).",
+     "how": [
+      "Choose the grain: what one row in the fact table means.",
+      "Put the measures (amounts, counts) in the fact table with keys to each dimension.",
+      "Put the descriptive attributes in the dimension tables."
+     ],
+     "use_when": "Analytics and BI, where queries filter and group by descriptive attributes.",
+     "trade_offs": "Simple, fast queries, at the cost of some duplicated data in the dimensions.",
+     "follow_ups": [
+      {
+       "q": "What is grain?",
+       "a": "What one fact row represents, such as one order line per day. Choosing it first stops double counting."
+      }
+     ]
+    },
+    {
+     "id": "scd",
+     "q": "What are slowly changing dimensions?",
+     "definition": "Ways of handling dimension attributes that change over time, such as a customer moving city.",
+     "picture": "Deciding whether history is overwritten or kept.",
+     "how": [
+      "Type 1: overwrite; no history.",
+      "Type 2: add a new row with valid-from and valid-to dates and a current flag; full history.",
+      "Type 3: keep the previous value in an extra column; limited history."
+     ],
+     "use_when": "Type 2 whenever reports must show what was true at the time.",
+     "trade_offs": "Type 2 keeps history but grows the table and needs date-aware joins.",
+     "follow_ups": [
+      {
+       "q": "How do you join a fact to a type 2 dimension?",
+       "a": "On the business key where the fact's date falls between valid-from and valid-to."
+      }
+     ]
+    },
+    {
+     "id": "idempotency",
+     "q": "What is an idempotent pipeline?",
+     "definition": "One that gives the same result whether it runs once or many times for the same input.",
+     "picture": "Pressing a lift button twice still calls one lift.",
+     "how": [
+      "Write with MERGE or upsert on a key, or overwrite a whole partition, instead of appending.",
+      "Make each run depend only on its inputs and its date, not on what ran before."
+     ],
+     "use_when": "Every production pipeline: retries and backfills then become safe.",
+     "trade_offs": "Upserts cost more than appends, but avoid duplicates and manual clean-up.",
+     "follow_ups": [
+      {
+       "q": "How does it help a backfill?",
+       "a": "You can rerun any date range and it replaces those days instead of doubling them."
+      }
+     ]
+    },
+    {
+     "id": "partitioning",
+     "q": "What is partitioning, and why does it matter?",
+     "definition": "Splitting a table's data into parts by a column (often date), so queries read only the parts they need.",
+     "picture": "Filing papers into folders by month so you open one folder instead of the whole cabinet.",
+     "how": [
+      "Choose a column queries filter on, usually a date.",
+      "Store each value's rows separately.",
+      "Queries that filter on it skip the other partitions (pruning)."
+     ],
+     "use_when": "Large tables with a common filter.",
+     "trade_offs": "Too many tiny partitions slow things down; choose a column with moderate cardinality.",
+     "follow_ups": [
+      {
+       "q": "Partitioning or clustering?",
+       "a": "Partitioning splits the data into separate parts; clustering or sort keys order the data inside them. They are often used together."
+      }
+     ]
+    },
+    {
+     "id": "parquet",
+     "q": "Why is Parquet used so much?",
+     "definition": "A columnar file format: data is stored column by column, compressed, with the schema and statistics in the file.",
+     "picture": "Reading one column of a spreadsheet without opening the other columns.",
+     "how": [
+      "Values of one column are stored together, so they compress well.",
+      "Queries read only the columns they need.",
+      "Per-chunk min/max statistics let readers skip data that cannot match."
+     ],
+     "use_when": "Analytics storage in data lakes and lakehouses.",
+     "trade_offs": "Fast to read and small, but not suited to frequent single-row updates; table formats such as Delta or Iceberg add that on top.",
+     "follow_ups": [
+      {
+       "q": "Parquet or CSV?",
+       "a": "Parquet for analytics: typed, compressed, columnar. CSV only for simple exchange."
+      }
+     ]
+    },
+    {
+     "id": "cdc",
+     "q": "What is change data capture?",
+     "definition": "Capturing the inserts, updates and deletes from a source database as a stream of changes, usually from its transaction log.",
+     "picture": "Reading the database's own diary instead of photographing the whole database every night.",
+     "how": [
+      "A connector (such as Debezium) reads the log.",
+      "Each change becomes an event with the before and after values.",
+      "Downstream, the changes are merged into the target table."
+     ],
+     "use_when": "Keeping a warehouse in near real time with a busy source, without heavy full extracts.",
+     "trade_offs": "Low load on the source and fresh data, but more moving parts; deletes and schema changes need care.",
+     "follow_ups": []
+    },
+    {
+     "id": "orchestration",
+     "q": "What does an orchestrator like Airflow do?",
+     "definition": "It schedules and runs pipeline tasks in dependency order, retries failures and shows what ran.",
+     "picture": "A conductor who starts each section when the one before it has finished.",
+     "how": [
+      "Define tasks and their dependencies as a DAG (directed acyclic graph).",
+      "The scheduler runs each task when its upstream tasks succeed.",
+      "Failures retry, alert, and can be rerun for a given date."
+     ],
+     "use_when": "Any pipeline with several dependent steps on a schedule.",
+     "trade_offs": "It orchestrates work; heavy processing should run in the warehouse or Spark, not inside the orchestrator.",
+     "follow_ups": [
+      {
+       "q": "What is a DAG?",
+       "a": "A set of tasks with one-way dependencies and no loops, so there is always a valid order to run them."
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "llms",
+   "title": "LLMs and AI",
+   "kind": "concept",
+   "questions": [
+    {
+     "id": "rag",
+     "q": "What is RAG (retrieval-augmented generation)?",
+     "definition": "Giving a language model relevant documents retrieved at question time, so it answers from them instead of from memory alone.",
+     "picture": "An open-book exam: the model looks up the right pages before answering.",
+     "how": [
+      "Split the documents into chunks and embed them.",
+      "Embed the question and retrieve the most similar chunks (often with reranking).",
+      "Put them in the prompt and ask the model to answer only from them, citing them."
+     ],
+     "use_when": "Answers grounded in private or frequently changing data.",
+     "trade_offs": "Cheaper to update than fine-tuning and can cite sources, but answers are only as good as the retrieval.",
+     "follow_ups": [
+      {
+       "q": "How do you evaluate a RAG system?",
+       "a": "Separately: retrieval (did the right chunks come back) and the answer (is it correct and supported by those chunks)."
+      },
+      {
+       "q": "What if retrieval returns nothing useful?",
+       "a": "Have the model say it does not know instead of guessing."
+      }
+     ]
+    },
+    {
+     "id": "embeddings",
+     "q": "What are embeddings?",
+     "definition": "Lists of numbers that represent text (or images) so that similar meanings end up close together.",
+     "picture": "Coordinates on a map of meaning.",
+     "how": [
+      "A model turns each text into a fixed-length vector.",
+      "Similarity is measured with cosine similarity or dot product."
+     ],
+     "use_when": "Semantic search, RAG retrieval, clustering, recommendations and deduplication.",
+     "trade_offs": "They capture meaning well, but exact terms and IDs are better matched with keyword search; hybrid search combines both.",
+     "follow_ups": []
+    },
+    {
+     "id": "vector-database",
+     "q": "What is a vector database?",
+     "definition": "A store that indexes embeddings so you can quickly find the nearest ones to a query vector.",
+     "picture": "A library catalogue sorted by meaning instead of by title.",
+     "how": [
+      "Store each vector with its text and metadata.",
+      "Build an approximate nearest-neighbour index (such as HNSW).",
+      "Query with a vector, filter by metadata, and return the top matches."
+     ],
+     "use_when": "RAG and semantic search over many documents.",
+     "trade_offs": "Approximate search trades a little accuracy for big speed; for small data a plain array or pgvector in Postgres is enough.",
+     "follow_ups": []
+    },
+    {
+     "id": "hallucination",
+     "q": "What is hallucination, and how do you reduce it?",
+     "definition": "When a model states something fluent and confident that is not true or not supported by its sources.",
+     "picture": "A confident guess presented as a fact.",
+     "how": [
+      "Ground answers in retrieved sources and ask for citations.",
+      "Allow 'I don't know'.",
+      "Check outputs mechanically where possible (numbers, names, tool results) instead of trusting the model.",
+      "Measure the hallucination rate on a test set."
+     ],
+     "use_when": "Any production use where wrong answers cost something.",
+     "trade_offs": "Grounding and checks reduce it but never remove it, so the checks matter more than the prompt.",
+     "follow_ups": []
+    },
+    {
+     "id": "agents",
+     "q": "What is an AI agent?",
+     "definition": "A model that works in a loop: it decides on an action, calls a tool (search, code, an API), reads the result, and continues until the task is done.",
+     "picture": "An assistant that can look things up and use software, not just talk.",
+     "how": [
+      "Give the model tools with clear descriptions.",
+      "It plans a step and calls a tool.",
+      "The real tool result goes back into the context.",
+      "It repeats until it has an answer or hits a limit."
+     ],
+     "use_when": "Tasks that need live data or several steps.",
+     "trade_offs": "Flexible, but slower, costlier and harder to test; needs step limits, cost limits and checks on every tool result.",
+     "follow_ups": [
+      {
+       "q": "What is ReAct?",
+       "a": "A pattern where the model alternates reasoning and acting: a thought, a tool call, the observation, and so on."
+      }
+     ]
+    },
+    {
+     "id": "context-window",
+     "q": "What are tokens and the context window?",
+     "definition": "Tokens are the chunks of text a model reads (roughly three quarters of an English word); the context window is the most tokens it can take in at once, prompt and answer together.",
+     "picture": "The model's working memory for one conversation.",
+     "how": [
+      "Everything (instructions, documents, history, answer) must fit in the window.",
+      "Cost and speed scale with the tokens used."
+     ],
+     "use_when": "Planning prompts, RAG chunk sizes and costs.",
+     "trade_offs": "Long contexts are convenient but cost more and models can miss details in the middle, so retrieve only what is needed.",
+     "follow_ups": []
+    },
+    {
+     "id": "fine-tuning",
+     "q": "What is fine-tuning?",
+     "definition": "Further training a pre-trained model on your own examples so it learns a style, a format or a narrow task.",
+     "picture": "Sending a skilled employee on a course for your company's way of working.",
+     "how": [
+      "Collect high-quality input and output examples.",
+      "Train (often a light method such as LoRA) on them.",
+      "Evaluate against the base model on held-out examples."
+     ],
+     "use_when": "A consistent format or behaviour that prompting cannot reliably get, or a smaller, cheaper model for one task.",
+     "trade_offs": "Costs data and training time and must be redone for new facts; it teaches behaviour better than knowledge.",
+     "follow_ups": []
+    },
+    {
+     "id": "benchmarking",
+     "q": "What is benchmarking?",
+     "definition": "Measuring performance against a fixed, shared standard so results can be compared. For models: a standard test set and metric. For systems: a repeatable load test of speed or cost.",
+     "picture": "A standard exam everyone takes, so scores are comparable.",
+     "how": [
+      "Fix the test set or workload and the metric.",
+      "Run every candidate the same way.",
+      "Compare the scores, and repeat runs for systems to see the spread."
+     ],
+     "use_when": "Choosing between models, tools or designs.",
+     "trade_offs": "Public benchmarks may not match your task and can leak into training data, so evaluate on your own data as well.",
+     "follow_ups": [
+      {
+       "q": "How did you benchmark something yourself?",
+       "a": "Say what you held fixed, what you measured, and the result."
+      }
+     ]
+    },
+    {
+     "id": "prompt-caching",
+     "q": "What is prompt caching?",
+     "definition": "Reusing the processed form of a long, unchanged prompt prefix across calls, so repeated calls cost less and start faster.",
+     "picture": "Not re-reading the whole manual every time you ask a question about it.",
+     "how": [
+      "Put the stable part (instructions, documents) first and the changing part last.",
+      "Mark the stable prefix as cacheable.",
+      "Later calls with the same prefix read it from the cache at a lower price."
+     ],
+     "use_when": "Many calls that share the same long context.",
+     "trade_offs": "Only exact prefixes are reused, and caches expire after a short time.",
+     "follow_ups": []
+    }
+   ]
+  },
+  {
+   "id": "differences",
+   "title": "Differences (X versus Y)",
+   "kind": "difference",
+   "questions": [
+    {
+     "id": "bagging-vs-boosting",
+     "q": "Bagging versus boosting?",
+     "columns": [
+      "Bagging",
+      "Boosting"
+     ],
+     "rows": [
+      [
+       "How",
+       "Many models trained in parallel on random samples",
+       "Models trained in sequence, each fixing the last one's errors"
+      ],
+      [
+       "Mainly reduces",
+       "Variance",
+       "Bias"
+      ],
+      [
+       "Example",
+       "Random forest",
+       "XGBoost, LightGBM"
+      ],
+      [
+       "Risk",
+       "Rarely overfits",
+       "Overfits more easily; needs tuning"
+      ]
+     ],
+     "rule": "Bagging for a robust default; boosting for the last bit of accuracy.",
+     "follow_ups": []
+    },
+    {
+     "id": "rf-vs-gb",
+     "q": "Random forest versus gradient boosting?",
+     "columns": [
+      "Random forest",
+      "Gradient boosting"
+     ],
+     "rows": [
+      [
+       "Trees",
+       "Deep, independent",
+       "Shallow, built one after another"
+      ],
+      [
+       "Tuning",
+       "Little",
+       "More (learning rate, depth, rounds)"
+      ],
+      [
+       "Accuracy on tabular data",
+       "Good",
+       "Usually best"
+      ],
+      [
+       "Training",
+       "Easy to run in parallel",
+       "Sequential rounds"
+      ]
+     ],
+     "rule": "Random forest when you want good results fast; boosting when accuracy is worth the tuning time.",
+     "follow_ups": []
+    },
+    {
+     "id": "l1-vs-l2",
+     "q": "L1 versus L2 regularisation?",
+     "columns": [
+      "L1 (lasso)",
+      "L2 (ridge)"
+     ],
+     "rows": [
+      [
+       "Penalty",
+       "Sum of absolute weights",
+       "Sum of squared weights"
+      ],
+      [
+       "Effect",
+       "Pushes some weights to exactly zero",
+       "Shrinks all weights smoothly"
+      ],
+      [
+       "Use",
+       "Feature selection",
+       "Many correlated features"
+      ]
+     ],
+     "rule": "L1 to drop features, L2 to keep them all but smaller; elastic net mixes both.",
+     "follow_ups": []
+    },
+    {
+     "id": "precision-vs-recall",
+     "q": "Precision versus recall?",
+     "columns": [
+      "Precision",
+      "Recall"
+     ],
+     "rows": [
+      [
+       "Question",
+       "Of what I flagged, how much was right?",
+       "Of what was there, how much did I catch?"
+      ],
+      [
+       "Hurt by",
+       "False positives",
+       "False negatives"
+      ],
+      [
+       "Prioritise when",
+       "False alarms are costly (spam filter)",
+       "Misses are costly (fraud, disease)"
+      ]
+     ],
+     "rule": "Choose by which mistake costs more, then move the threshold.",
+     "follow_ups": []
+    },
+    {
+     "id": "supervised-vs-unsupervised",
+     "q": "Supervised versus unsupervised learning?",
+     "columns": [
+      "Supervised",
+      "Unsupervised"
+     ],
+     "rows": [
+      [
+       "Data",
+       "Inputs with known answers (labels)",
+       "Inputs only"
+      ],
+      [
+       "Goal",
+       "Predict the label",
+       "Find structure: groups, anomalies, patterns"
+      ],
+      [
+       "Examples",
+       "Regression, classification",
+       "Clustering, dimensionality reduction"
+      ]
+     ],
+     "rule": "Labels available: supervised. No labels: unsupervised, often to explore or create features.",
+     "follow_ups": []
+    },
+    {
+     "id": "classification-vs-regression",
+     "q": "Classification versus regression?",
+     "columns": [
+      "Classification",
+      "Regression"
+     ],
+     "rows": [
+      [
+       "Predicts",
+       "A category",
+       "A number"
+      ],
+      [
+       "Metrics",
+       "Precision, recall, F1, AUC",
+       "MAE, RMSE, R-squared"
+      ],
+      [
+       "Example",
+       "Will this customer churn?",
+       "How much will they spend?"
+      ]
+     ],
+     "rule": "Decide by the type of the answer you need.",
+     "follow_ups": []
+    },
+    {
+     "id": "rag-vs-finetune",
+     "q": "RAG versus fine-tuning versus prompting?",
+     "columns": [
+      "Prompting",
+      "RAG",
+      "Fine-tuning"
+     ],
+     "rows": [
+      [
+       "Changes",
+       "The instructions",
+       "The information given at question time",
+       "The model's weights"
+      ],
+      [
+       "Best for",
+       "Format and task instructions",
+       "Facts that change or are private",
+       "A consistent style or narrow task"
+      ],
+      [
+       "Cost to update",
+       "Lowest",
+       "Low: update the documents",
+       "High: retrain"
+      ],
+      [
+       "Can cite sources",
+       "No",
+       "Yes",
+       "No"
+      ]
+     ],
+     "rule": "Start with prompting, add RAG for knowledge, fine-tune only for behaviour prompting cannot get.",
+     "follow_ups": []
+    },
+    {
+     "id": "benchmark-vs-eval",
+     "q": "Benchmarking versus evaluation?",
+     "columns": [
+      "Benchmark",
+      "Evaluation"
+     ],
+     "rows": [
+      [
+       "Data",
+       "A fixed, shared test set or workload",
+       "Your own task's data and criteria"
+      ],
+      [
+       "Purpose",
+       "Compare against others on a standard",
+       "Decide whether it works for your use"
+      ],
+      [
+       "Risk",
+       "May not match your task; can leak into training",
+       "Needs effort to build a good test set"
+      ]
+     ],
+     "rule": "Benchmarks to shortlist, your own evaluation to decide.",
+     "follow_ups": []
+    },
+    {
+     "id": "etl-vs-elt",
+     "q": "ETL versus ELT?",
+     "columns": [
+      "ETL",
+      "ELT"
+     ],
+     "rows": [
+      [
+       "Order",
+       "Transform before loading",
+       "Load raw, transform inside the warehouse"
+      ],
+      [
+       "Where the work runs",
+       "A separate processing engine",
+       "The warehouse (Snowflake, BigQuery) with SQL, often dbt"
+      ],
+      [
+       "Raw data kept",
+       "Often not",
+       "Yes, so you can reprocess"
+      ]
+     ],
+     "rule": "ELT is the default with a cloud warehouse; ETL when data must be cleaned or masked before it lands.",
+     "follow_ups": []
+    },
+    {
+     "id": "batch-vs-streaming",
+     "q": "Batch versus streaming processing?",
+     "columns": [
+      "Batch",
+      "Streaming"
+     ],
+     "rows": [
+      [
+       "Latency",
+       "Minutes to hours",
+       "Seconds or less"
+      ],
+      [
+       "Complexity",
+       "Lower",
+       "Higher: late events, state, exactly-once"
+      ],
+      [
+       "Tools",
+       "Airflow, Spark, dbt",
+       "Kafka, Flink, Spark Structured Streaming"
+      ]
+     ],
+     "rule": "Use streaming only when the business needs fresher data than a schedule gives.",
+     "follow_ups": []
+    },
+    {
+     "id": "lake-warehouse-lakehouse",
+     "q": "Data lake versus warehouse versus lakehouse?",
+     "columns": [
+      "Data lake",
+      "Warehouse",
+      "Lakehouse"
+     ],
+     "rows": [
+      [
+       "Stores",
+       "Raw files of any kind",
+       "Structured, modelled tables",
+       "Open files with table features on top"
+      ],
+      [
+       "Schema",
+       "On read",
+       "On write",
+       "Enforced, with evolution"
+      ],
+      [
+       "Strength",
+       "Cheap, flexible storage",
+       "Fast, governed SQL analytics",
+       "One copy for both BI and ML"
+      ],
+      [
+       "Examples",
+       "S3, ADLS",
+       "Snowflake, Redshift, BigQuery",
+       "Delta Lake, Iceberg on Databricks"
+      ]
+     ],
+     "rule": "A lakehouse aims to give warehouse reliability on lake storage.",
+     "follow_ups": []
+    },
+    {
+     "id": "oltp-vs-olap",
+     "q": "OLTP versus OLAP?",
+     "columns": [
+      "OLTP",
+      "OLAP"
+     ],
+     "rows": [
+      [
+       "Workload",
+       "Many small reads and writes",
+       "Large scans and aggregations"
+      ],
+      [
+       "Design",
+       "Normalised, row-oriented",
+       "Star schema, columnar"
+      ],
+      [
+       "Example",
+       "An orders database",
+       "A sales analytics warehouse"
+      ]
+     ],
+     "rule": "Run the business on OLTP; analyse it on OLAP.",
+     "follow_ups": []
+    },
+    {
+     "id": "star-vs-snowflake",
+     "q": "Star schema versus snowflake schema?",
+     "columns": [
+      "Star",
+      "Snowflake"
+     ],
+     "rows": [
+      [
+       "Dimensions",
+       "Flat, one table each",
+       "Split into sub-tables"
+      ],
+      [
+       "Queries",
+       "Fewer joins, faster",
+       "More joins"
+      ],
+      [
+       "Storage",
+       "Some duplication",
+       "Less duplication"
+      ]
+     ],
+     "rule": "Star schema is the usual default for analytics; snowflake when dimensions are huge or shared.",
+     "follow_ups": []
+    }
+   ]
+  }
+ ]
+}

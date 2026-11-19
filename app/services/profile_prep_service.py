@@ -313,8 +313,25 @@ def generate_profile_prep(db: Session, trigger: str = "manual") -> ProfileInterv
 # profile and the roles being applied for; the answer refresh does not produce them, so it must not drop them.
 GENERAL_PREP_KEYS = (
     "role_tracks", "fundamentals", "design_drills", "story_bank", "logistics", "only_you", "how_to_use",
-    "questions_by_interviewer",
+    "questions_by_interviewer", "deep_dives", "question_examples",
 )
+
+
+def save_general_section(db: Session, variant_id: int, key: str, value) -> ProfileInterviewPrep:
+    """Write one hand-kept section (deep-dive cards, question examples) into the active prep, in place. The answer
+    refresh carries these over; with no prep yet, an empty one is started (with no profile version, so the page
+    still shows the drafted answers as not built and the normal refresh still runs)."""
+    if key not in GENERAL_PREP_KEYS:
+        raise ProfilePrepServiceError(f"Unknown prep section: {key}")
+    prep, content = get_active_prep(db, variant_id)
+    if prep is None:
+        prep = ProfileInterviewPrep(variant_id=variant_id, content_json="{}", is_active=True, trigger="cards")
+        db.add(prep)
+        content = {}
+    content[key] = value
+    prep.content_json = json.dumps(content, ensure_ascii=False)
+    db.commit()
+    return prep
 
 
 def carry_over_general_prep(db: Session, variant_id: int, drafted: dict) -> None:

@@ -715,6 +715,24 @@ class ProfileInterviewPrep(Base):
     trigger = Column(String, nullable=True)  # initial | profile_changed | manual
 
 
+class PrepPractice(Base):
+    """Practice progress on the general interview prep (prep_practice_service.py): one row per thing practised --
+    a question ("qb:<id>"), a deep-dive card ("dd:<key>"), a coding pattern ("pat:<id>") or problem ("code:<slug>").
+    The rating moves it between review boxes (1, 3, 7, 21, 45 days), so weak items come back soon and solid ones
+    rarely. Not used in showcase mode, where the demo keeps practice in each visitor's own browser instead."""
+    __tablename__ = "prep_practice"
+    __table_args__ = (UniqueConstraint("variant_id", "card_key", name="uq_prep_practice_card"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    variant_id = Column(Integer, ForeignKey("profile_variants.id"), nullable=False, index=True)
+    card_key = Column(String, nullable=False)
+    box = Column(Integer, default=0, nullable=False)
+    last_rating = Column(Integer, nullable=True)  # 1 could not / 2 shaky / 3 solid
+    reviews = Column(Integer, default=0, nullable=False)
+    last_reviewed_at = Column(DateTime, nullable=True)
+    next_due_at = Column(DateTime, nullable=True, index=True)
+
+
 class UpgradeReport(Base):
     """One run of the monthly upgrade check (upgrade_service.py): what the five checks found, stored whole so
     the page can show it and the quarterly summary can compare against a report from about three months

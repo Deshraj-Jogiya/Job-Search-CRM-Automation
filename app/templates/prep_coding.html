@@ -1,0 +1,115 @@
+{% extends "_base.html" %}
+
+{% block title %}Career Pilot -- Interview Prep: Coding{% endblock %}
+{% block header_title %}<a href="/" class="plain-link">Career Pilot</a> / <a href="/interview-prep" class="plain-link">Interview Prep</a> / Coding{% endblock %}
+
+{% block content %}
+{% if message %}<div class="flash flash-ok" role="status">{{ message }}</div>{% endif %}
+{% if error %}<div class="flash flash-error" role="alert">{{ error }}</div>{% endif %}
+{% set active = "coding" %}{% include "_prep_tabs.html" %}
+
+{% if setup_error %}
+<section class="variant-block"><p class="muted-note">{{ setup_error }} <a href="/profile">Go to Profile</a></p></section>
+{% else %}
+<section class="variant-block prep-section">
+    <h2>Coding: from a blank page to a solution</h2>
+    {% for p in coding.why %}<p class="prep-lede">{{ p }}</p>{% endfor %}
+    <div class="prep-two-col">
+        <div>
+            <h3>Every problem starts the same way</h3>
+            <ol class="prep-list">{% for s in coding.start_steps %}<li>{{ s }}</li>{% endfor %}</ol>
+        </div>
+        <div>
+            <h3>When you are stuck</h3>
+            <ul class="prep-list">{% for s in coding.stuck_rule %}<li>{{ s }}</li>{% endfor %}</ul>
+            <h3>Each pattern, step by step</h3>
+            <ol class="prep-list">{% for s in coding.support_stages %}<li>{{ s }}</li>{% endfor %}</ol>
+        </div>
+    </div>
+    <details class="prep-more-item">
+        <summary>What the research says, and how strong it is</summary>
+        <ul class="prep-list">{% for m in coding.methods %}<li><strong>{{ m.name }}:</strong> {{ m.what }} <span class="muted-note">{{ m.evidence }}</span></li>{% endfor %}</ul>
+    </details>
+    <details class="prep-more-item">
+        <summary>Weekly mix, daily plan and the interview itself</summary>
+        <h3>Weekly mix for data roles</h3>
+        <ul class="prep-list">{% for w in coding.weekly_mix %}<li><strong>{{ w.area }} {{ w.share }}%</strong>: {{ w.why }}</li>{% endfor %}</ul>
+        <h3>Each day (45-60 minutes)</h3>
+        <ul class="prep-list">{% for s in coding.daily_plan %}<li>{{ s }}</li>{% endfor %}</ul>
+        <h3>In the interview</h3>
+        <ul class="prep-list">{% for s in coding.in_the_interview %}<li>{{ s }}</li>{% endfor %}</ul>
+    </details>
+    <details class="prep-more-item">
+        <summary>The first two weeks, day by day</summary>
+        <ol class="prep-list">{% for d in coding.two_week_start %}<li><strong>Day {{ d.day }}:</strong> {{ d.do }}</li>{% endfor %}</ol>
+    </details>
+</section>
+
+<section class="variant-block prep-section" id="drill">
+    <h2>Pattern drill</h2>
+    <p class="muted-note">{{ coding.pattern_drill }}</p>
+    <div id="pattern-drill" class="prep-drill" data-problems='{{ problems | tojson }}' data-patterns='{{ coding.patterns | map(attribute="name") | list | tojson }}'>
+        <button type="button" class="btn-secondary" data-drill-next>Show a problem</button>
+        <div data-drill-card hidden>
+            <p class="prep-drill-statement" data-drill-statement></p>
+            <label for="drill-choice">Which pattern?</label>
+            <select id="drill-choice" data-drill-choice></select>
+            <button type="button" data-drill-check>Check</button>
+            <p data-drill-result role="status"></p>
+        </div>
+    </div>
+</section>
+
+{% for group, heading in [("algorithms", "Algorithm patterns"), ("data", "Data patterns (Python and SQL)")] %}
+<section class="variant-block prep-section">
+    <h2>{{ heading }}</h2>
+    {% for p in coding.patterns if p.group == group %}
+    <details class="prep-more prep-card" id="pat-{{ p.id }}">
+        <summary><strong>{{ p.name }}</strong></summary>
+        <p class="prep-cue"><span>Clue</span> {{ p.clue }}</p>
+        <p class="prep-cue"><span>Idea</span> {{ p.idea }}</p>
+        <p class="muted-note">Cost: {{ p.cost }}</p>
+
+        <h3>Worked example, step by step</h3>
+        <ol class="prep-list prep-steps">{% for s in p.worked.steps %}<li>{{ s }}</li>{% endfor %}</ol>
+        <pre class="prep-code"><code>{% for line in p.worked.lines %}<span class="prep-code-line" data-step="{{ line.step }}">{{ line.code }}</span>
+{% endfor %}</code></pre>
+        <p class="muted-note">Check: <code>{{ p.worked.check.call }}</code> returns <code>{{ p.worked.check.expect | tojson }}</code>.</p>
+
+        <h3>Parsons drill: put the lines in order</h3>
+        <div class="prep-parsons" data-lines='{{ p.worked.lines | map(attribute="code") | list | tojson }}'>
+            <ol class="prep-parsons-list" data-parsons-list></ol>
+            <button type="button" class="btn-secondary" data-parsons-shuffle>Shuffle</button>
+            <button type="button" data-parsons-check>Check order</button>
+            <p data-parsons-result role="status"></p>
+        </div>
+
+        {% if p.sql %}
+        <h3>The same idea in SQL</h3>
+        <pre class="prep-code"><code>{{ p.sql.query }}</code></pre>
+        {% endif %}
+
+        {% if p.problems %}
+        <h3>Practice problems</h3>
+        <ul class="prep-list">
+            {% for prob in p.problems %}
+            <li id="code-{{ prob.slug }}"><a href="{{ prob.url }}" target="_blank" rel="noopener">{{ prob.title }}</a> <span class="prep-date">{{ prob.level }}</span><br>
+                <span class="muted-note">{{ prob.statement }}</span>
+                {% set key = "code:" ~ prob.slug %}{% set back = "/interview-prep/coding#pat-" ~ p.id %}{% include "_prep_rate.html" %}
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        <h3>This pattern</h3>
+        {% set key = "pat:" ~ p.id %}{% set back = "/interview-prep/coding#pat-" ~ p.id %}{% include "_prep_rate.html" %}
+    </details>
+    {% endfor %}
+</section>
+{% endfor %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/vendor/sortable.min.js"></script>
+<script src="/static/js/prep_practice.js"></script>
+{% endblock %}

@@ -1538,6 +1538,68 @@ html.light-theme .flag-warning {
     .prep-star { grid-template-columns: 1fr; }
 }
 
+/* General prep sub-pages: tabs, cards, drills, practice */
+.prep-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0 0 1rem; }
+.prep-tab { padding: 0.4rem 0.9rem; border-radius: 999px; border: 1px solid var(--card-border); color: var(--text-secondary);
+    text-decoration: none; font-size: 0.92rem; }
+.prep-tab:hover, .prep-tab:focus-visible { border-color: var(--accent-indigo); color: var(--text-primary); }
+.prep-tab-active { background: var(--accent-indigo); border-color: var(--accent-indigo); color: #fff; }
+.prep-tab-active:hover, .prep-tab-active:focus-visible { color: #fff; }
+.prep-badge { display: inline-block; margin-left: 0.4rem; padding: 0.05rem 0.5rem; border-radius: 999px; font-size: 0.72rem;
+    font-weight: 600; border: 1px solid var(--card-border); color: var(--text-muted); vertical-align: middle; }
+.prep-badge-ok { border-color: var(--accent-emerald); color: var(--accent-emerald); }
+.prep-badge-warn { border-color: var(--accent-amber); color: var(--accent-amber); }
+.prep-card { border-bottom: 1px solid var(--card-border); padding: 0.4rem 0 0.8rem; }
+.prep-card-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; margin-top: 0.8rem; }
+.prep-inline-form { display: inline; margin: 0; }
+.prep-edit-form label { display: block; font-weight: 600; margin: 1rem 0 0.25rem; }
+.prep-edit-form textarea { width: 100%; box-sizing: border-box; }
+.prep-edit-form .muted-note { margin: 0.15rem 0 0.35rem; }
+.prep-three-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.2rem; margin-top: 0.5rem; }
+.prep-answer-body { padding: 0.6rem 0 0.4rem; }
+.prep-answer-body p { line-height: 1.65; max-width: 72ch; }
+.prep-table-wrap { overflow-x: auto; margin: 0.5rem 0; }
+.prep-table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+.prep-table th, .prep-table td { border: 1px solid var(--card-border); padding: 0.45rem 0.6rem; text-align: left; vertical-align: top; line-height: 1.5; }
+.prep-table thead th { color: var(--text-primary); background: var(--input-bg); }
+.prep-table tbody th { color: var(--text-secondary); font-weight: 600; }
+.prep-example-edit { margin-top: 0.6rem; }
+.prep-example-edit textarea { width: 100%; box-sizing: border-box; margin: 0.4rem 0; }
+.prep-code { background: var(--input-bg); border: 1px solid var(--card-border); border-radius: var(--radius-md); padding: 0.7rem 0.9rem;
+    overflow-x: auto; font-size: 0.85rem; line-height: 1.55; }
+.prep-code-line { display: block; white-space: pre; }
+.prep-code-line::before { content: attr(data-step); display: inline-block; width: 1.6rem; color: var(--text-muted); }
+.prep-parsons { margin: 0.5rem 0 0.8rem; }
+.prep-parsons-list { list-style: none; padding: 0; margin: 0 0 0.6rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.3rem; }
+.prep-parsons-line { display: flex; gap: 0.35rem; align-items: center; border: 1px solid var(--card-border); border-radius: var(--radius-md);
+    background: var(--input-bg); padding: 0.25rem 0.4rem; }
+.prep-parsons-line code { flex: 1; min-width: 0; white-space: pre; overflow-x: auto; font-size: 0.85rem; cursor: grab; padding: 0.2rem 0; }
+.prep-parsons-line button { flex: none; padding: 0.2rem 0.55rem; min-width: 2.2rem; }
+.prep-drill { display: grid; gap: 0.6rem; justify-items: start; }
+.prep-drill [data-drill-card] { display: grid; gap: 0.5rem; justify-items: start; width: 100%; }
+.prep-drill-statement { font-size: 1rem; line-height: 1.6; max-width: 72ch; margin: 0; }
+.prep-rate { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin: 0.6rem 0 0.2rem; }
+.prep-rate button { padding: 0.25rem 0.7rem; font-size: 0.85rem; }
+.prep-rate-label { font-size: 0.85rem; color: var(--text-muted); }
+.prep-rate-status { font-size: 0.82rem; }
+.prep-summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.7rem; margin-top: 0.8rem; }
+.prep-summary { display: grid; gap: 0.15rem; padding: 0.8rem 0.9rem; border-radius: var(--radius-md); border: 1px solid var(--card-border);
+    background: var(--input-bg); font-size: 0.9rem; color: var(--text-secondary); }
+.prep-summary strong { color: var(--text-primary); }
+.prep-random { display: grid; gap: 0.5rem; justify-items: start; }
+
+@media (max-width: 600px) {
+    .prep-tab { padding: 0.35rem 0.7rem; font-size: 0.85rem; }
+    .prep-code { font-size: 0.78rem; }
+    .prep-parsons-line code { font-size: 0.78rem; }
+}
+/* The phone rule that makes every button full width would squeeze the code out of a Parsons row and stack the rating buttons. */
+@media (max-width: 480px) {
+    .prep-parsons-line button { width: auto; }
+    .prep-rate button { width: auto; flex: 1 1 0; }
+    .prep-rate-label, .prep-rate-status { flex-basis: 100%; }
+}
+
 /* Chromium stops painting an element with backdrop-filter once it grows past its compositing size limit, so very tall cards
    (the interview prep sections run several thousand pixels) rendered blank below the fold. Tall content panels use a solid
    background instead of the blur. */

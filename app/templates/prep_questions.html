@@ -1,0 +1,80 @@
+{% extends "_base.html" %}
+
+{% block title %}Career Pilot -- Interview Prep: Questions{% endblock %}
+{% block header_title %}<a href="/" class="plain-link">Career Pilot</a> / <a href="/interview-prep" class="plain-link">Interview Prep</a> / Questions{% endblock %}
+
+{% block content %}
+{% if message %}<div class="flash flash-ok" role="status">{{ message }}</div>{% endif %}
+{% if error %}<div class="flash flash-error" role="alert">{{ error }}</div>{% endif %}
+{% set active = "questions" %}{% include "_prep_tabs.html" %}
+
+{% if setup_error %}
+<section class="variant-block"><p class="muted-note">{{ setup_error }} <a href="/profile">Go to Profile</a></p></section>
+{% else %}
+<section class="variant-block prep-section">
+    <h2>Common questions</h2>
+    <p class="prep-lede">Process questions, concept questions and "X versus Y" questions, each with one answer shape. Try to answer out loud
+        before opening the answer.</p>
+    <div class="prep-three-col">
+        {% for kind, label in [("process", "Process (how do you...)"), ("concept", "Concept (explain...)"), ("difference", "Difference (X versus Y)")] %}
+        <div>
+            <h3>{{ label }}</h3>
+            <ol class="prep-list">{% for s in bank.how_to_answer[kind] %}<li>{{ s }}</li>{% endfor %}</ol>
+        </div>
+        {% endfor %}
+    </div>
+    <nav class="prep-jump" aria-label="Question groups">
+        {% for s in bank.sections %}<a href="#{{ s.id }}">{{ s.title }}</a>{% endfor %}
+    </nav>
+</section>
+
+{% for s in bank.sections %}
+<section class="variant-block prep-section" id="{{ s.id }}">
+    <h2>{{ s.title }} <span class="prep-date">{{ s.questions | length }}</span></h2>
+    {% for q in s.questions %}
+    <details class="prep-more-item prep-question" id="q-{{ q.id }}">
+        <summary>{{ q.q }}</summary>
+        <div class="prep-answer-body">
+        {% if s.kind == "process" %}
+            <ol class="prep-list">{% for x in q.steps %}<li>{{ x }}</li>{% endfor %}</ol>
+        {% elif s.kind == "concept" %}
+            <p class="prep-cue"><span>Definition</span> {{ q.definition }}</p>
+            <p class="prep-cue"><span>Picture</span> {{ q.picture }}</p>
+            <h3>How it works</h3>
+            <ol class="prep-list">{% for x in q.how %}<li>{{ x }}</li>{% endfor %}</ol>
+            <p><strong>Use it when:</strong> {{ q.use_when }}</p>
+            <p><strong>Trade-offs:</strong> {{ q.trade_offs }}</p>
+        {% else %}
+            <div class="prep-table-wrap">
+            <table class="prep-table">
+                <thead><tr><th scope="col"></th>{% for c in q.columns %}<th scope="col">{{ c }}</th>{% endfor %}</tr></thead>
+                <tbody>{% for row in q.rows %}<tr><th scope="row">{{ row[0] }}</th>{% for cell in row[1:] %}<td>{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+            </table>
+            </div>
+            <p class="prep-cue"><span>Rule</span> {{ q.rule }}</p>
+        {% endif %}
+        {% if q.follow_ups %}
+            <h3>Follow-ups</h3>
+            <ol class="prep-qa">{% for f in q.follow_ups %}<li><details><summary>{{ f.q }}</summary><div class="prep-answer"><p>{{ f.a }}</p></div></details></li>{% endfor %}</ol>
+        {% endif %}
+        {% if examples.get(q.id) %}<p class="prep-cue"><span>Your example</span> {{ examples[q.id] }}</p>{% endif %}
+        {% if not showcase_mode %}
+        <details class="prep-example-edit">
+            <summary class="muted-note">{{ "Edit your example" if examples.get(q.id) else "Add your example" }}{% if q.example_prompt %}: {{ q.example_prompt }}{% endif %}</summary>
+            <form method="post" action="/interview-prep/questions/{{ q.id }}/example">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <textarea name="example" rows="3" aria-label="Your example for: {{ q.q }}">{{ examples.get(q.id, "") }}</textarea>
+                <button type="submit" class="btn-secondary">Save example</button>
+            </form>
+        </details>
+        {% endif %}
+        {% set key = "qb:" ~ q.id %}{% set back = "/interview-prep/questions#q-" ~ q.id %}{% include "_prep_rate.html" %}
+        </div>
+    </details>
+    {% endfor %}
+</section>
+{% endfor %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}<script src="/static/js/prep_practice.js"></script>{% endblock %}

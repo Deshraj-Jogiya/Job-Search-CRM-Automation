@@ -1,0 +1,2213 @@
+{
+ "version": 1,
+ "why": [
+  "Getting stuck before writing anything is common and well studied. Soloway's 'rainfall problem' studies found most students could not write a simple averaging program, and the reason was not syntax: beginners lack the small solution patterns (he called them plans) that experienced programmers carry, and the habit of combining them.",
+  "So the fix is to learn a small set of patterns on purpose, then practice choosing between them. Solving cold from a blank page before you have the patterns mostly overloads working memory."
+ ],
+ "methods": [
+  {
+   "name": "Worked examples with labelled steps",
+   "what": "Study a solution split into named steps, saying out loud why each line is there.",
+   "evidence": "Solid. Labelled worked examples beat solving from scratch for beginners; explaining each step (Chi's self-explanation effect) predicts who learns."
+  },
+  {
+   "name": "Parsons problems",
+   "what": "Put the given lines of a solution in the right order.",
+   "evidence": "Solid. Builds the structure with far less memory load than writing from zero."
+  },
+  {
+   "name": "Mixed practice",
+   "what": "Practice sets where the pattern is not given, so you must choose it.",
+   "evidence": "Strong in math (72% vs 38% on a later test); not yet tested on coding. It trains exactly the 'which approach?' step."
+  },
+  {
+   "name": "Spaced redoing",
+   "what": "Redo a problem from a blank file after 1, 3, 7 and 21 days.",
+   "evidence": "One of the strongest findings in learning science."
+  }
+ ],
+ "start_steps": [
+  "Say the problem back in your own words: input, output, any limits.",
+  "Write two small examples with their correct outputs, one of them an edge case (empty, one item, duplicates).",
+  "Solve your examples by hand and write the steps you took in plain English.",
+  "Those steps are your plan: paste them in as comments.",
+  "Write the simplest correct version first (brute force), even if it is slow.",
+  "Turn each comment into code, one at a time.",
+  "Run your examples through it, by hand if there is no computer.",
+  "Then ask: what is the slow part? Which pattern removes it?"
+ ],
+ "stuck_rule": [
+  "After 15-20 minutes stuck, look only at the hint or the pattern name, then try again.",
+  "Still stuck: study the solution, rewrite it as labelled steps, and mark it 'could not solve' so it comes back tomorrow.",
+  "A problem counts as learned only when you solve it cold from a blank file on a later day."
+ ],
+ "support_stages": [
+  "Study the worked example and explain each step out loud.",
+  "Put its lines in order (the Parsons drill on this page).",
+  "Finish a half-written solution: write only the missing step.",
+  "Write it with your pattern notes open.",
+  "Write it with nothing open."
+ ],
+ "pattern_drill": "Once you know a few patterns: read three mixed problems and name the pattern for each within 3 minutes, without coding. The drill on this page does this.",
+ "weekly_mix": [
+  {
+   "area": "SQL",
+   "share": 40,
+   "why": "In most data engineering loops; window functions, joins, deduplication."
+  },
+  {
+   "area": "Python for data",
+   "share": 35,
+   "why": "Parsing, grouping, cleaning, large files."
+  },
+  {
+   "area": "Algorithms",
+   "share": 25,
+   "why": "Rarer for data roles, but Amazon, Meta and software or ML roles still run them."
+  }
+ ],
+ "daily_plan": [
+  "5 minutes: redo the problems that are due.",
+  "30-40 minutes: one pattern at its current stage.",
+  "10 minutes: explain one solution out loud as if to an interviewer."
+ ],
+ "in_the_interview": [
+  "Think out loud from the first minute; silence is what makes it look like you are stuck.",
+  "Ask about input size, empty input, duplicates and what to return when nothing is found.",
+  "Say the brute-force idea and its cost before optimising.",
+  "If you are stuck for a few minutes, say what you have tried and ask for a hint; that is normal and scored better than a long silence.",
+  "Test with your examples before saying you are done.",
+  "Some companies now run AI-assisted coding rounds: explain what you asked the tool for and how you checked its output."
+ ],
+ "two_week_start": [
+  {
+   "day": 1,
+   "do": "Hash map: worked example, Parsons drill, then Two Sum and Valid Anagram. SQL: Duplicate Emails."
+  },
+  {
+   "day": 2,
+   "do": "Redo Day 1 problems cold. Two pointers: worked example, Parsons, Valid Palindrome. SQL: Combine Two Tables."
+  },
+  {
+   "day": 3,
+   "do": "Sliding window: worked example, Best Time to Buy and Sell Stock. SQL: Customers Who Never Order."
+  },
+  {
+   "day": 4,
+   "do": "Redo due problems. Stack: Valid Parentheses. Python data: group and aggregate example."
+  },
+  {
+   "day": 5,
+   "do": "Binary search: Binary Search. SQL: Rising Temperature. Python data: dedupe-latest example."
+  },
+  {
+   "day": 6,
+   "do": "Pattern drill (name the pattern) for 10 minutes, then redo everything marked shaky."
+  },
+  {
+   "day": 7,
+   "do": "Rest, or one timed mixed problem explained out loud."
+  },
+  {
+   "day": 8,
+   "do": "Redo due problems. Prefix sums: Subarray Sum Equals K. SQL: Second Highest Salary."
+  },
+  {
+   "day": 9,
+   "do": "Intervals: Merge Intervals. SQL: Rank Scores. Python data: compare with the previous row."
+  },
+  {
+   "day": 10,
+   "do": "Heap: Kth Largest Element. SQL: Game Play Analysis IV. Python data: sessions."
+  },
+  {
+   "day": 11,
+   "do": "Graph search: Number of Islands. Python data: parse and clean logs."
+  },
+  {
+   "day": 12,
+   "do": "Topological sort: Course Schedule. SQL: Department Top Three Salaries."
+  },
+  {
+   "day": 13,
+   "do": "Pattern drill, then two mixed problems timed at 25 minutes each, talking out loud."
+  },
+  {
+   "day": 14,
+   "do": "Redo everything due. Pick the weakest pattern for next week."
+  }
+ ],
+ "patterns": [
+  {
+   "id": "hash-map",
+   "group": "algorithms",
+   "name": "Hash map: remember what you have seen",
+   "clue": "Find a pair, a duplicate, a count, or whether two things contain the same items.",
+   "idea": "Walk the data once and keep a dict of what you have seen, so each lookup is O(1) instead of a second loop.",
+   "cost": "O(n) time, O(n) memory.",
+   "worked": {
+    "lines": [
+     {
+      "code": "def two_sum(nums, target):",
+      "step": 0
+     },
+     {
+      "code": "    seen = {}",
+      "step": 1
+     },
+     {
+      "code": "    for i, x in enumerate(nums):",
+      "step": 2
+     },
+     {
+      "code": "        need = target - x",
+      "step": 3
+     },
+     {
+      "code": "        if need in seen:",
+      "step": 3
+     },
+     {
+      "code": "            return [seen[need], i]",
+      "step": 3
+     },
+     {
+      "code": "        seen[x] = i",
+      "step": 4
+     },
+     {
+      "code": "    return []",
+      "step": 0
+     }
+    ],
+    "steps": [
+     "Make a dict that maps each value to where you saw it.",
+     "Walk the list once.",
+     "Work out the partner this value needs and check whether you have already seen it.",
+     "Not found yet: store this value so a later one can find it."
+    ],
+    "check": {
+     "call": "two_sum([2, 7, 11, 15], 9)",
+     "expect": [
+      0,
+      1
+     ]
+    }
+   },
+   "problems": [
+    {
+     "slug": "two-sum",
+     "title": "Two Sum",
+     "statement": "Return the positions of two numbers that add up to a target.",
+     "level": "Easy",
+     "url": "https://leetcode.com/problems/two-sum/"
+    },
+    {
+     "slug": "valid-anagram",
+     "title": "Valid Anagram",
+     "statement": "Do two words use exactly the same letters?",
+     "level": "Easy",
+     "url": "https://leetcode.com/problems/valid-anagram/"
+    },
+    {
+     "slug": "contains-duplicate",
+     "title": "Contains Duplicate",
+     "statement": "Does any value appear more than once?",
+     "level": "Easy",
+     "url": "https://leetcode.com/problems/contains-duplicate/"
+    },
+    {
+     "slug": "group-anagrams",
+     "title": "Group Anagrams",
+     "statement": "Group words that are made of the same letters.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/group-anagrams/"
+    }
+   ]
+  },
+  {
+   "id": "two-pointers",
+   "group": "algorithms",
+   "name": "Two pointers",
+   "clue": "A sorted array, a pair or triple with a target sum, a palindrome, or changing an array in place.",
+   "idea": "Start one pointer at each end (or both at the start) and move the one that brings you closer to the goal.",
+   "cost": "O(n) time, O(1) memory (plus the sort if the input is not sorted).",
+   "worked": {
+    "lines": [
+     {
+      "code": "def is_palindrome(s):",
+      "step": 0
+     },
+     {
+      "code": "    left, right = 0, len(s) - 1",
+      "step": 1
+     },
+     {
+      "code": "    while left < right:",
+      "step": 2
+     },
+     {
+      "code": "        if not s[left].isalnum():",
+      "step": 3
+     },
+     {
+      "code": "            left += 1",
+      "step": 3
+     },
+     {
+      "code": "        elif not s[right].isalnum():",
+      "step": 3
+     },
+     {
+      "code": "            right -= 1",
+      "step": 3
+     },
+     {
+      "code": "        elif s[left].lower() != s[right].lower():",
+      "step": 4
+     },
+     {
+      "code": "            return False",
+      "step": 4
+     },
+     {
+      "code": "        else:",
+      "step": 5
+     },
+     {
+      "code": "            left, right = left + 1, right - 1",
+      "step": 5
+     },
+     {
+      "code": "    return True",
+      "step": 0
+     }
+    ],
+    "steps": [
+     "Put one pointer at each end.",
+     "Keep going until they meet.",
+     "Skip characters that do not count (spaces, punctuation).",
+     "Compare the two ends; a mismatch means it is not a palindrome.",
+     "Both match: move both inward."
+    ],
+    "check": {
+     "call": "is_palindrome('A man, a plan, a canal: Panama')",
+     "expect": true
+    }
+   },
+   "problems": [
+    {
+     "slug": "valid-palindrome",
+     "title": "Valid Palindrome",
+     "statement": "Does a sentence read the same backwards, ignoring case and punctuation?",
+     "level": "Easy",
+     "url": "https://leetcode.com/problems/valid-palindrome/"
+    },
+    {
+     "slug": "two-sum-ii-input-array-is-sorted",
+     "title": "Two Sum II",
+     "statement": "In a sorted list, find two numbers that add up to a target.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/two-sum-ii-input-array-is-sorted/"
+    },
+    {
+     "slug": "3sum",
+     "title": "3Sum",
+     "statement": "Find every set of three numbers that adds up to zero.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/3sum/"
+    },
+    {
+     "slug": "container-with-most-water",
+     "title": "Container With Most Water",
+     "statement": "Pick two walls that hold the most water between them.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/container-with-most-water/"
+    }
+   ]
+  },
+  {
+   "id": "sliding-window",
+   "group": "algorithms",
+   "name": "Sliding window",
+   "clue": "The longest or shortest contiguous substring or subarray that meets a rule.",
+   "idea": "Keep a window [left, right]. Grow it by moving right; when the rule breaks, shrink it by moving left. Record the best window as you go.",
+   "cost": "O(n) time: each element enters and leaves the window once.",
+   "worked": {
+    "lines": [
+     {
+      "code": "def length_of_longest_substring(s):",
+      "step": 0
+     },
+     {
+      "code": "    last_seen = {}",
+      "step": 1
+     },
+     {
+      "code": "    left = best = 0",
+      "step": 2
+     },
+     {
+      "code": "    for right, ch in enumerate(s):",
+      "step": 3
+     },
+     {
+      "code": "        if ch in last_seen and last_seen[ch] >= left:",
+      "step": 4
+     },
+     {
+      "code": "            left = last_seen[ch] + 1",
+      "step": 4
+     },
+     {
+      "code": "        last_seen[ch] = right",
+      "step": 5
+     },
+     {
+      "code": "        best = max(best, right - left + 1)",
+      "step": 6
+     },
+     {
+      "code": "    return best",
+      "step": 0
+     }
+    ],
+    "steps": [
+     "Track where each character was last seen.",
+     "Start an empty window and a best score.",
+     "Grow the window one character at a time.",
+     "The rule breaks (a repeat inside the window): move left past the earlier copy.",
+     "Record this character's position.",
+     "Keep the best window length."
+    ],
+    "check": {
+     "call": "length_of_longest_substring('abcabcbb')",
+     "expect": 3
+    }
+   },
+   "problems": [
+    {
+     "slug": "best-time-to-buy-and-sell-stock",
+     "title": "Best Time to Buy and Sell Stock",
+     "statement": "Pick one day to buy and a later day to sell for the biggest profit.",
+     "level": "Easy",
+     "url": "https://leetcode.com/problems/best-time-to-buy-and-sell-stock/"
+    },
+    {
+     "slug": "longest-substring-without-repeating-characters",
+     "title": "Longest Substring Without Repeating Characters",
+     "statement": "Find the longest stretch of text with no repeated character.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/longest-substring-without-repeating-characters/"
+    },
+    {
+     "slug": "minimum-size-subarray-sum",
+     "title": "Minimum Size Subarray Sum",
+     "statement": "Find the shortest stretch of numbers whose sum reaches a target.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/minimum-size-subarray-sum/"
+    },
+    {
+     "slug": "permutation-in-string",
+     "title": "Permutation in String",
+     "statement": "Does one word contain a rearrangement of another as a stretch?",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/permutation-in-string/"
+    }
+   ]
+  },
+  {
+   "id": "prefix-sums",
+   "group": "algorithms",
+   "name": "Prefix sums",
+   "clue": "Sums over ranges, or how many subarrays add up to a value.",
+   "idea": "Keep a running total. The sum of a range is one running total minus an earlier one, so you can look earlier totals up in a dict.",
+   "cost": "O(n) time, O(n) memory.",
+   "worked": {
+    "lines": [
+     {
+      "code": "def subarray_sum(nums, k):",
+      "step": 0
+     },
+     {
+      "code": "    count = 0",
+      "step": 1
+     },
+     {
+      "code": "    running = 0",
+      "step": 1
+     },
+     {
+      "code": "    seen = {0: 1}",
+      "step": 1
+     },
+     {
+      "code": "    for x in nums:",
+      "step": 2
+     },
+     {
+      "code": "        running += x",
+      "step": 2
+     },
+     {
+      "code": "        count += seen.get(running - k, 0)",
+      "step": 3
+     },
+     {
+      "code": "        seen[running] = seen.get(running, 0) + 1",
+      "step": 4
+     },
+     {
+      "code": "    return count",
+      "step": 0
+     }
+    ],
+    "steps": [
+     "Set up a counter, a running total, and a dict of earlier totals (the empty start counts once).",
+     "Add each number to the running total.",
+     "A stretch ending here sums to k when an earlier total equals running - k: add how many there were.",
+     "Record this running total for later positions."
+    ],
+    "check": {
+     "call": "subarray_sum([1, 1, 1], 2)",
+     "expect": 2
+    }
+   },
+   "problems": [
+    {
+     "slug": "range-sum-query-immutable",
+     "title": "Range Sum Query",
+     "statement": "Answer many 'sum from i to j' questions quickly.",
+     "level": "Easy",
+     "url": "https://leetcode.com/problems/range-sum-query-immutable/"
+    },
+    {
+     "slug": "subarray-sum-equals-k",
+     "title": "Subarray Sum Equals K",
+     "statement": "Count the stretches of numbers that add up to k.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/subarray-sum-equals-k/"
+    },
+    {
+     "slug": "product-of-array-except-self",
+     "title": "Product of Array Except Self",
+     "statement": "For each position, multiply every other number, without division.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/product-of-array-except-self/"
+    }
+   ]
+  },
+  {
+   "id": "intervals",
+   "group": "algorithms",
+   "name": "Sort, then sweep (intervals)",
+   "clue": "Meetings, time ranges, overlaps, or anything with a start and an end.",
+   "idea": "Sort by start time, then walk once, comparing each interval with the last one you kept.",
+   "cost": "O(n log n) for the sort, then O(n).",
+   "worked": {
+    "lines": [
+     {
+      "code": "def merge(intervals):",
+      "step": 0
+     },
+     {
+      "code": "    intervals.sort(key=lambda iv: iv[0])",
+      "step": 1
+     },
+     {
+      "code": "    merged = []",
+      "step": 2
+     },
+     {
+      "code": "    for start, end in intervals:",
+      "step": 2
+     },
+     {
+      "code": "        if merged and start <= merged[-1][1]:",
+      "step": 3
+     },
+     {
+      "code": "            merged[-1][1] = max(merged[-1][1], end)",
+      "step": 3
+     },
+     {
+      "code": "        else:",
+      "step": 4
+     },
+     {
+      "code": "            merged.append([start, end])",
+      "step": 4
+     },
+     {
+      "code": "    return merged",
+      "step": 0
+     }
+    ],
+    "steps": [
+     "Sort by start so overlaps sit next to each other.",
+     "Walk the sorted list.",
+     "Overlaps the last kept interval: stretch its end.",
+     "No overlap: keep it as a new interval."
+    ],
+    "check": {
+     "call": "merge([[1, 3], [2, 6], [8, 10], [15, 18]])",
+     "expect": [
+      [
+       1,
+       6
+      ],
+      [
+       8,
+       10
+      ],
+      [
+       15,
+       18
+      ]
+     ]
+    }
+   },
+   "problems": [
+    {
+     "slug": "merge-intervals",
+     "title": "Merge Intervals",
+     "statement": "Combine overlapping time ranges.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/merge-intervals/"
+    },
+    {
+     "slug": "insert-interval",
+     "title": "Insert Interval",
+     "statement": "Add a new range to a sorted list and merge overlaps.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/insert-interval/"
+    },
+    {
+     "slug": "non-overlapping-intervals",
+     "title": "Non-overlapping Intervals",
+     "statement": "Remove the fewest ranges so none overlap.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/non-overlapping-intervals/"
+    }
+   ]
+  },
+  {
+   "id": "stack",
+   "group": "algorithms",
+   "name": "Stack",
+   "clue": "Matching brackets, undo, nested structure, or 'the next bigger value'.",
+   "idea": "Push things you will need to come back to; pop when the matching or closing item arrives.",
+   "cost": "O(n) time, O(n) memory.",
+   "worked": {
+    "lines": [
+     {
+      "code": "def is_valid(s):",
+      "step": 0
+     },
+     {
+      "code": "    pairs = {\")\": \"(\", \"]\": \"[\", \"}\": \"{\"}",
+      "step": 1
+     },
+     {
+      "code": "    stack = []",
+      "step": 2
+     },
+     {
+      "code": "    for ch in s:",
+      "step": 3
+     },
+     {
+      "code": "        if ch in pairs:",
+      "step": 4
+     },
+     {
+      "code": "            if not stack or stack.pop() != pairs[ch]:",
+      "step": 4
+     },
+     {
+      "code": "                return False",
+      "step": 4
+     },
+     {
+      "code": "        else:",
+      "step": 5
+     },
+     {
+      "code": "            stack.append(ch)",
+      "step": 5
+     },
+     {
+      "code": "    return not stack",
+      "step": 6
+     }
+    ],
+    "steps": [
+     "Map each closing bracket to its opening one.",
+     "Start an empty stack.",
+     "Read one character at a time.",
+     "A closing bracket must match the most recent opening one.",
+     "An opening bracket waits on the stack.",
+     "Valid only if nothing is left open."
+    ],
+    "check": {
+     "call": "is_valid('([]{})')",
+     "expect": true
+    }
+   },
+   "problems": [
+    {
+     "slug": "valid-parentheses",
+     "title": "Valid Parentheses",
+     "statement": "Is every bracket closed in the right order?",
+     "level": "Easy",
+     "url": "https://leetcode.com/problems/valid-parentheses/"
+    },
+    {
+     "slug": "min-stack",
+     "title": "Min Stack",
+     "statement": "Build a stack that also returns its smallest value instantly.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/min-stack/"
+    },
+    {
+     "slug": "daily-temperatures",
+     "title": "Daily Temperatures",
+     "statement": "For each day, how many days until a warmer one?",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/daily-temperatures/"
+    },
+    {
+     "slug": "evaluate-reverse-polish-notation",
+     "title": "Evaluate Reverse Polish Notation",
+     "statement": "Calculate an expression written as '2 1 + 3 *'.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/evaluate-reverse-polish-notation/"
+    }
+   ]
+  },
+  {
+   "id": "binary-search",
+   "group": "algorithms",
+   "name": "Binary search",
+   "clue": "Sorted data, 'find the smallest value that works', or a hint that O(log n) is expected.",
+   "idea": "Look at the middle, throw away the half that cannot hold the answer, repeat.",
+   "cost": "O(log n).",
+   "worked": {
+    "lines": [
+     {
+      "code": "def search(nums, target):",
+      "step": 0
+     },
+     {
+      "code": "    lo, hi = 0, len(nums) - 1",
+      "step": 1
+     },
+     {
+      "code": "    while lo <= hi:",
+      "step": 2
+     },
+     {
+      "code": "        mid = (lo + hi) // 2",
+      "step": 3
+     },
+     {
+      "code": "        if nums[mid] == target:",
+      "step": 4
+     },
+     {
+      "code": "            return mid",
+      "step": 4
+     },
+     {
+      "code": "        if nums[mid] < target:",
+      "step": 5
+     },
+     {
+      "code": "            lo = mid + 1",
+      "step": 5
+     },
+     {
+      "code": "        else:",
+      "step": 5
+     },
+     {
+      "code": "            hi = mid - 1",
+      "step": 5
+     },
+     {
+      "code": "    return -1",
+      "step": 6
+     }
+    ],
+    "steps": [
+     "Set the search range to the whole list.",
+     "Keep going while the range is not empty.",
+     "Look at the middle.",
+     "Found it.",
+     "Throw away the half that cannot contain the target.",
+     "Not there."
+    ],
+    "check": {
+     "call": "search([-1, 0, 3, 5, 9, 12], 9)",
+     "expect": 4
+    }
+   },
+   "problems": [
+    {
+     "slug": "binary-search",
+     "title": "Binary Search",
+     "statement": "Find a number's position in a sorted list.",
+     "level": "Easy",
+     "url": "https://leetcode.com/problems/binary-search/"
+    },
+    {
+     "slug": "search-in-rotated-sorted-array",
+     "title": "Search in Rotated Sorted Array",
+     "statement": "Find a number in a sorted list that was rotated.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/search-in-rotated-sorted-array/"
+    },
+    {
+     "slug": "find-minimum-in-rotated-sorted-array",
+     "title": "Find Minimum in Rotated Sorted Array",
+     "statement": "Find the smallest number in a rotated sorted list.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/find-minimum-in-rotated-sorted-array/"
+    },
+    {
+     "slug": "koko-eating-bananas",
+     "title": "Koko Eating Bananas",
+     "statement": "Find the slowest eating speed that still finishes in time.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/koko-eating-bananas/"
+    }
+   ]
+  },
+  {
+   "id": "heap",
+   "group": "algorithms",
+   "name": "Heap (top k)",
+   "clue": "The k largest, smallest, closest or most frequent items.",
+   "idea": "Keep a heap of size k; push each item and pop the smallest when it grows past k. What remains is the top k.",
+   "cost": "O(n log k).",
+   "worked": {
+    "lines": [
+     {
+      "code": "import heapq",
+      "step": 0
+     },
+     {
+      "code": "def find_kth_largest(nums, k):",
+      "step": 0
+     },
+     {
+      "code": "    heap = []",
+      "step": 1
+     },
+     {
+      "code": "    for x in nums:",
+      "step": 2
+     },
+     {
+      "code": "        heapq.heappush(heap, x)",
+      "step": 2
+     },
+     {
+      "code": "        if len(heap) > k:",
+      "step": 3
+     },
+     {
+      "code": "            heapq.heappop(heap)",
+      "step": 3
+     },
+     {
+      "code": "    return heap[0]",
+      "step": 4
+     }
+    ],
+    "steps": [
+     "Start an empty min-heap.",
+     "Add each number.",
+     "Too many: drop the smallest, so only the k largest stay.",
+     "The smallest of the k largest is the answer."
+    ],
+    "check": {
+     "call": "find_kth_largest([3, 2, 1, 5, 6, 4], 2)",
+     "expect": 5
+    }
+   },
+   "problems": [
+    {
+     "slug": "kth-largest-element-in-an-array",
+     "title": "Kth Largest Element in an Array",
+     "statement": "Find the k-th biggest number.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/kth-largest-element-in-an-array/"
+    },
+    {
+     "slug": "top-k-frequent-elements",
+     "title": "Top K Frequent Elements",
+     "statement": "Return the k values that appear most often.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/top-k-frequent-elements/"
+    },
+    {
+     "slug": "k-closest-points-to-origin",
+     "title": "K Closest Points to Origin",
+     "statement": "Return the k points nearest to (0, 0).",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/k-closest-points-to-origin/"
+    },
+    {
+     "slug": "last-stone-weight",
+     "title": "Last Stone Weight",
+     "statement": "Smash the two heaviest stones together until one is left.",
+     "level": "Easy",
+     "url": "https://leetcode.com/problems/last-stone-weight/"
+    }
+   ]
+  },
+  {
+   "id": "graph-search",
+   "group": "algorithms",
+   "name": "Grid and graph search (DFS/BFS)",
+   "clue": "Connected areas, islands, spreading, or the fewest steps from A to B.",
+   "idea": "From each unvisited start, visit everything reachable and mark it. DFS for 'how many areas', BFS for 'fewest steps'.",
+   "cost": "O(rows x cols) or O(nodes + edges).",
+   "worked": {
+    "lines": [
+     {
+      "code": "def num_islands(grid):",
+      "step": 0
+     },
+     {
+      "code": "    rows, cols = len(grid), len(grid[0])",
+      "step": 1
+     },
+     {
+      "code": "    def sink(r, c):",
+      "step": 2
+     },
+     {
+      "code": "        if r < 0 or c < 0 or r >= rows or c >= cols or grid[r][c] != \"1\":",
+      "step": 2
+     },
+     {
+      "code": "            return",
+      "step": 2
+     },
+     {
+      "code": "        grid[r][c] = \"0\"",
+      "step": 3
+     },
+     {
+      "code": "        for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1)):",
+      "step": 3
+     },
+     {
+      "code": "            sink(r + dr, c + dc)",
+      "step": 3
+     },
+     {
+      "code": "    count = 0",
+      "step": 4
+     },
+     {
+      "code": "    for r in range(rows):",
+      "step": 4
+     },
+     {
+      "code": "        for c in range(cols):",
+      "step": 4
+     },
+     {
+      "code": "            if grid[r][c] == \"1\":",
+      "step": 4
+     },
+     {
+      "code": "                count += 1",
+      "step": 4
+     },
+     {
+      "code": "                sink(r, c)",
+      "step": 4
+     },
+     {
+      "code": "    return count",
+      "step": 5
+     }
+    ],
+    "steps": [
+     "Note the grid size.",
+     "Define a visit that stops at the edge or at water.",
+     "Mark the cell visited (sink it), then visit its four neighbours.",
+     "Scan every cell; each unvisited land cell starts a new island.",
+     "Return the island count."
+    ],
+    "check": {
+     "call": "num_islands([list('11000'), list('11000'), list('00100'), list('00011')])",
+     "expect": 3
+    }
+   },
+   "problems": [
+    {
+     "slug": "number-of-islands",
+     "title": "Number of Islands",
+     "statement": "Count the separate land areas in a grid.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/number-of-islands/"
+    },
+    {
+     "slug": "max-area-of-island",
+     "title": "Max Area of Island",
+     "statement": "Find the size of the biggest land area.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/max-area-of-island/"
+    },
+    {
+     "slug": "rotting-oranges",
+     "title": "Rotting Oranges",
+     "statement": "How many minutes until rot spreads to every orange?",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/rotting-oranges/"
+    },
+    {
+     "slug": "clone-graph",
+     "title": "Clone Graph",
+     "statement": "Make a deep copy of a connected graph.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/clone-graph/"
+    }
+   ]
+  },
+  {
+   "id": "topological-sort",
+   "group": "algorithms",
+   "name": "Topological sort (dependencies)",
+   "clue": "Prerequisites, build order, task scheduling, or 'can all of these finish?'.",
+   "idea": "Count what each task still waits for. Start with tasks that wait for nothing; finishing one frees the tasks that depended on it. The same idea runs an Airflow DAG.",
+   "cost": "O(tasks + dependencies).",
+   "worked": {
+    "lines": [
+     {
+      "code": "from collections import deque",
+      "step": 0
+     },
+     {
+      "code": "def can_finish(num_courses, prerequisites):",
+      "step": 0
+     },
+     {
+      "code": "    waiting_on = [0] * num_courses",
+      "step": 1
+     },
+     {
+      "code": "    unlocks = [[] for _ in range(num_courses)]",
+      "step": 1
+     },
+     {
+      "code": "    for course, pre in prerequisites:",
+      "step": 2
+     },
+     {
+      "code": "        waiting_on[course] += 1",
+      "step": 2
+     },
+     {
+      "code": "        unlocks[pre].append(course)",
+      "step": 2
+     },
+     {
+      "code": "    ready = deque(i for i in range(num_courses) if waiting_on[i] == 0)",
+      "step": 3
+     },
+     {
+      "code": "    done = 0",
+      "step": 4
+     },
+     {
+      "code": "    while ready:",
+      "step": 4
+     },
+     {
+      "code": "        course = ready.popleft()",
+      "step": 4
+     },
+     {
+      "code": "        done += 1",
+      "step": 4
+     },
+     {
+      "code": "        for nxt in unlocks[course]:",
+      "step": 5
+     },
+     {
+      "code": "            waiting_on[nxt] -= 1",
+      "step": 5
+     },
+     {
+      "code": "            if waiting_on[nxt] == 0:",
+      "step": 5
+     },
+     {
+      "code": "                ready.append(nxt)",
+      "step": 5
+     },
+     {
+      "code": "    return done == num_courses",
+      "step": 6
+     }
+    ],
+    "steps": [
+     "Count what each course waits for and what it unlocks.",
+     "Fill both from the prerequisite pairs.",
+     "Courses waiting for nothing are ready.",
+     "Take a ready course and count it done.",
+     "It frees its dependents; any that now wait for nothing become ready.",
+     "Everything finished only if there was no cycle."
+    ],
+    "check": {
+     "call": "can_finish(2, [[1, 0]])",
+     "expect": true
+    }
+   },
+   "problems": [
+    {
+     "slug": "course-schedule",
+     "title": "Course Schedule",
+     "statement": "Can every course be taken given its prerequisites?",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/course-schedule/"
+    },
+    {
+     "slug": "course-schedule-ii",
+     "title": "Course Schedule II",
+     "statement": "Give an order to take every course in.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/course-schedule-ii/"
+    }
+   ]
+  },
+  {
+   "id": "linked-list",
+   "group": "algorithms",
+   "name": "Linked list pointers",
+   "clue": "Reverse, merge or find a cycle in a chain of nodes.",
+   "idea": "Keep the few pointers you need (previous, current, next) and update them in the right order so nothing is lost.",
+   "cost": "O(n) time, O(1) memory.",
+   "worked": {
+    "lines": [
+     {
+      "code": "def reverse_list(head):",
+      "step": 0
+     },
+     {
+      "code": "    prev = None",
+      "step": 1
+     },
+     {
+      "code": "    cur = head",
+      "step": 1
+     },
+     {
+      "code": "    while cur:",
+      "step": 2
+     },
+     {
+      "code": "        nxt = cur.next",
+      "step": 3
+     },
+     {
+      "code": "        cur.next = prev",
+      "step": 4
+     },
+     {
+      "code": "        prev = cur",
+      "step": 5
+     },
+     {
+      "code": "        cur = nxt",
+      "step": 5
+     },
+     {
+      "code": "    return prev",
+      "step": 6
+     }
+    ],
+    "steps": [
+     "Nothing comes before the first node yet.",
+     "Walk the chain.",
+     "Save the next node before you change anything.",
+     "Point this node backwards.",
+     "Step both pointers forward.",
+     "The old tail is the new head."
+    ],
+    "check": {
+     "setup": "class Node:\n    def __init__(self, val, next=None):\n        self.val, self.next = val, next\ndef to_list(n):\n    out = []\n    while n:\n        out.append(n.val)\n        n = n.next\n    return out",
+     "call": "to_list(reverse_list(Node(1, Node(2, Node(3)))))",
+     "expect": [
+      3,
+      2,
+      1
+     ]
+    }
+   },
+   "problems": [
+    {
+     "slug": "reverse-linked-list",
+     "title": "Reverse Linked List",
+     "statement": "Reverse a chain of nodes.",
+     "level": "Easy",
+     "url": "https://leetcode.com/problems/reverse-linked-list/"
+    },
+    {
+     "slug": "merge-two-sorted-lists",
+     "title": "Merge Two Sorted Lists",
+     "statement": "Combine two sorted chains into one.",
+     "level": "Easy",
+     "url": "https://leetcode.com/problems/merge-two-sorted-lists/"
+    },
+    {
+     "slug": "linked-list-cycle",
+     "title": "Linked List Cycle",
+     "statement": "Does the chain loop back on itself?",
+     "level": "Easy",
+     "url": "https://leetcode.com/problems/linked-list-cycle/"
+    }
+   ]
+  },
+  {
+   "id": "tree-recursion",
+   "group": "algorithms",
+   "name": "Tree recursion",
+   "clue": "Anything about a binary tree: depth, paths, sums, comparing two trees.",
+   "idea": "Answer for an empty tree first, then build each node's answer from its left and right answers.",
+   "cost": "O(n) time, O(height) stack.",
+   "worked": {
+    "lines": [
+     {
+      "code": "def max_depth(root):",
+      "step": 0
+     },
+     {
+      "code": "    if root is None:",
+      "step": 1
+     },
+     {
+      "code": "        return 0",
+      "step": 1
+     },
+     {
+      "code": "    return 1 + max(max_depth(root.left), max_depth(root.right))",
+      "step": 2
+     }
+    ],
+    "steps": [
+     "An empty tree has depth 0 (the stopping case).",
+     "A node's depth is one more than its deeper side."
+    ],
+    "check": {
+     "setup": "class T:\n    def __init__(self, left=None, right=None):\n        self.left, self.right = left, right",
+     "call": "max_depth(T(T(), T(T(), None)))",
+     "expect": 3
+    }
+   },
+   "problems": [
+    {
+     "slug": "maximum-depth-of-binary-tree",
+     "title": "Maximum Depth of Binary Tree",
+     "statement": "How many levels does a tree have?",
+     "level": "Easy",
+     "url": "https://leetcode.com/problems/maximum-depth-of-binary-tree/"
+    },
+    {
+     "slug": "invert-binary-tree",
+     "title": "Invert Binary Tree",
+     "statement": "Mirror a tree left to right.",
+     "level": "Easy",
+     "url": "https://leetcode.com/problems/invert-binary-tree/"
+    },
+    {
+     "slug": "same-tree",
+     "title": "Same Tree",
+     "statement": "Are two trees identical?",
+     "level": "Easy",
+     "url": "https://leetcode.com/problems/same-tree/"
+    },
+    {
+     "slug": "binary-tree-level-order-traversal",
+     "title": "Binary Tree Level Order Traversal",
+     "statement": "List a tree's values level by level.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/binary-tree-level-order-traversal/"
+    }
+   ]
+  },
+  {
+   "id": "dynamic-programming",
+   "group": "algorithms",
+   "name": "Dynamic programming (choices that build on earlier answers)",
+   "clue": "Count the ways, the minimum cost, or the best total when each step is a choice.",
+   "idea": "Name the state (the best answer up to here), write how it comes from the previous states, then fill it in order.",
+   "cost": "Usually O(n) or O(n x m).",
+   "worked": {
+    "lines": [
+     {
+      "code": "def rob(nums):",
+      "step": 0
+     },
+     {
+      "code": "    take, skip = 0, 0",
+      "step": 1
+     },
+     {
+      "code": "    for x in nums:",
+      "step": 2
+     },
+     {
+      "code": "        take, skip = skip + x, max(take, skip)",
+      "step": 3
+     },
+     {
+      "code": "    return max(take, skip)",
+      "step": 4
+     }
+    ],
+    "steps": [
+     "The state: best total if this house is robbed (take) or not (skip).",
+     "Go house by house.",
+     "Taking this house means skipping the last; skipping it keeps the better of both.",
+     "The answer is the better final state."
+    ],
+    "check": {
+     "call": "rob([2, 7, 9, 3, 1])",
+     "expect": 12
+    }
+   },
+   "problems": [
+    {
+     "slug": "climbing-stairs",
+     "title": "Climbing Stairs",
+     "statement": "How many ways to climb n steps taking 1 or 2 at a time?",
+     "level": "Easy",
+     "url": "https://leetcode.com/problems/climbing-stairs/"
+    },
+    {
+     "slug": "house-robber",
+     "title": "House Robber",
+     "statement": "Best total from houses when you cannot take two neighbours.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/house-robber/"
+    },
+    {
+     "slug": "coin-change",
+     "title": "Coin Change",
+     "statement": "The fewest coins that make an amount.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/coin-change/"
+    },
+    {
+     "slug": "longest-increasing-subsequence",
+     "title": "Longest Increasing Subsequence",
+     "statement": "The longest rising sequence you can pick in order.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/longest-increasing-subsequence/"
+    }
+   ]
+  },
+  {
+   "id": "backtracking",
+   "group": "algorithms",
+   "name": "Backtracking (try, then undo)",
+   "clue": "List every subset, ordering or combination.",
+   "idea": "Make a choice, explore everything after it, undo the choice, and try the next one.",
+   "cost": "Exponential, so it is used when the answer itself is every option.",
+   "worked": {
+    "lines": [
+     {
+      "code": "def subsets(nums):",
+      "step": 0
+     },
+     {
+      "code": "    result, chosen = [], []",
+      "step": 1
+     },
+     {
+      "code": "    def explore(i):",
+      "step": 0
+     },
+     {
+      "code": "        if i == len(nums):",
+      "step": 2
+     },
+     {
+      "code": "            result.append(chosen[:])",
+      "step": 2
+     },
+     {
+      "code": "            return",
+      "step": 2
+     },
+     {
+      "code": "        chosen.append(nums[i])",
+      "step": 3
+     },
+     {
+      "code": "        explore(i + 1)",
+      "step": 3
+     },
+     {
+      "code": "        chosen.pop()",
+      "step": 4
+     },
+     {
+      "code": "        explore(i + 1)",
+      "step": 4
+     },
+     {
+      "code": "    explore(0)",
+      "step": 5
+     },
+     {
+      "code": "    return result",
+      "step": 5
+     }
+    ],
+    "steps": [
+     "Collect results and the current choice.",
+     "At the end of the list, save a copy of the choice.",
+     "Choose this item and explore the rest.",
+     "Undo it and explore the rest without it.",
+     "Start from the first item."
+    ],
+    "check": {
+     "call": "sorted(subsets([1, 2]))",
+     "expect": [
+      [],
+      [
+       1
+      ],
+      [
+       1,
+       2
+      ],
+      [
+       2
+      ]
+     ]
+    }
+   },
+   "problems": [
+    {
+     "slug": "subsets",
+     "title": "Subsets",
+     "statement": "List every subset of a set.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/subsets/"
+    },
+    {
+     "slug": "permutations",
+     "title": "Permutations",
+     "statement": "List every ordering of some numbers.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/permutations/"
+    },
+    {
+     "slug": "combination-sum",
+     "title": "Combination Sum",
+     "statement": "List every combination of numbers that adds up to a target.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/combination-sum/"
+    }
+   ]
+  },
+  {
+   "id": "group-aggregate",
+   "group": "data",
+   "name": "Group and aggregate",
+   "clue": "Totals, counts or averages per customer, day, region or any key.",
+   "idea": "One pass with a dict keyed by the group (or GROUP BY). Decide up front what to do with missing values.",
+   "cost": "O(n).",
+   "worked": {
+    "lines": [
+     {
+      "code": "from collections import defaultdict",
+      "step": 0
+     },
+     {
+      "code": "def totals_by_customer(rows):",
+      "step": 0
+     },
+     {
+      "code": "    totals = defaultdict(float)",
+      "step": 1
+     },
+     {
+      "code": "    for row in rows:",
+      "step": 2
+     },
+     {
+      "code": "        if row.get(\"amount\") is None:",
+      "step": 3
+     },
+     {
+      "code": "            continue",
+      "step": 3
+     },
+     {
+      "code": "        totals[row[\"customer_id\"]] += float(row[\"amount\"])",
+      "step": 4
+     },
+     {
+      "code": "    return dict(totals)",
+      "step": 5
+     }
+    ],
+    "steps": [
+     "Start a total per key that defaults to 0.",
+     "Read each row.",
+     "Skip rows with no amount (say so in the interview).",
+     "Add the amount to its customer's total.",
+     "Return plain totals."
+    ],
+    "check": {
+     "call": "totals_by_customer([{'customer_id': 'a', 'amount': '5'}, {'customer_id': 'a', 'amount': 2}, {'customer_id': 'b', 'amount': None}])",
+     "expect": {
+      "a": 7.0
+     }
+    }
+   },
+   "sql": {
+    "query": "SELECT customer_id, SUM(amount) AS total\nFROM orders\nWHERE amount IS NOT NULL\nGROUP BY customer_id\nHAVING SUM(amount) > 5\nORDER BY customer_id",
+    "setup": [
+     "CREATE TABLE orders (customer_id TEXT, amount REAL)",
+     "INSERT INTO orders VALUES ('a', 5), ('a', 2), ('b', 3), ('c', NULL)"
+    ],
+    "expect": [
+     [
+      "a",
+      7.0
+     ]
+    ]
+   },
+   "problems": [
+    {
+     "slug": "duplicate-emails",
+     "title": "Duplicate Emails (SQL)",
+     "statement": "List the emails that appear more than once.",
+     "level": "Easy",
+     "url": "https://leetcode.com/problems/duplicate-emails/"
+    },
+    {
+     "slug": "confirmation-rate",
+     "title": "Confirmation Rate (SQL)",
+     "statement": "Each user's share of confirmed messages.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/confirmation-rate/"
+    },
+    {
+     "slug": "immediate-food-delivery-ii",
+     "title": "Immediate Food Delivery II (SQL)",
+     "statement": "Share of first orders delivered the same day.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/immediate-food-delivery-ii/"
+    }
+   ]
+  },
+  {
+   "id": "dedupe-latest",
+   "group": "data",
+   "name": "Deduplicate, keep the latest",
+   "clue": "Repeated records, change logs, 'current state' of each id, idempotent loads.",
+   "idea": "Key by the id and keep the row with the newest timestamp (or ROW_NUMBER() = 1 in SQL).",
+   "cost": "O(n).",
+   "worked": {
+    "lines": [
+     {
+      "code": "def latest_per_id(records):",
+      "step": 0
+     },
+     {
+      "code": "    latest = {}",
+      "step": 1
+     },
+     {
+      "code": "    for rec in records:",
+      "step": 2
+     },
+     {
+      "code": "        key = rec[\"id\"]",
+      "step": 3
+     },
+     {
+      "code": "        if key not in latest or rec[\"updated_at\"] > latest[key][\"updated_at\"]:",
+      "step": 3
+     },
+     {
+      "code": "            latest[key] = rec",
+      "step": 3
+     },
+     {
+      "code": "    return sorted(latest.values(), key=lambda r: r[\"id\"])",
+      "step": 4
+     }
+    ],
+    "steps": [
+     "Keep the newest row seen for each id.",
+     "Read each record.",
+     "Replace the kept row when this one is newer.",
+     "Return one row per id."
+    ],
+    "check": {
+     "call": "[r['v'] for r in latest_per_id([{'id': 1, 'updated_at': 1, 'v': 'old'}, {'id': 1, 'updated_at': 2, 'v': 'new'}, {'id': 2, 'updated_at': 1, 'v': 'only'}])]",
+     "expect": [
+      "new",
+      "only"
+     ]
+    }
+   },
+   "sql": {
+    "query": "SELECT id, v FROM (\n    SELECT id, v, ROW_NUMBER() OVER (PARTITION BY id ORDER BY updated_at DESC) AS rn\n    FROM events\n) AS ranked\nWHERE rn = 1\nORDER BY id",
+    "setup": [
+     "CREATE TABLE events (id INTEGER, updated_at INTEGER, v TEXT)",
+     "INSERT INTO events VALUES (1, 1, 'old'), (1, 2, 'new'), (2, 1, 'only')"
+    ],
+    "expect": [
+     [
+      1,
+      "new"
+     ],
+     [
+      2,
+      "only"
+     ]
+    ]
+   },
+   "problems": [
+    {
+     "slug": "delete-duplicate-emails",
+     "title": "Delete Duplicate Emails (SQL)",
+     "statement": "Keep one row per email, the lowest id.",
+     "level": "Easy",
+     "url": "https://leetcode.com/problems/delete-duplicate-emails/"
+    },
+    {
+     "slug": "game-play-analysis-i",
+     "title": "Game Play Analysis I (SQL)",
+     "statement": "Each player's first login date.",
+     "level": "Easy",
+     "url": "https://leetcode.com/problems/game-play-analysis-i/"
+    }
+   ]
+  },
+  {
+   "id": "top-n-per-group",
+   "group": "data",
+   "name": "Top N per group",
+   "clue": "The top 3 salaries per department, the latest 5 orders per customer, the second highest of anything.",
+   "idea": "Rank inside each group (DENSE_RANK or ROW_NUMBER over a partition), then filter by rank. In Python, a heap per group.",
+   "cost": "O(n log n).",
+   "worked": {
+    "lines": [
+     {
+      "code": "import heapq",
+      "step": 0
+     },
+     {
+      "code": "from collections import defaultdict",
+      "step": 0
+     },
+     {
+      "code": "def top_n_per_dept(rows, n):",
+      "step": 0
+     },
+     {
+      "code": "    groups = defaultdict(list)",
+      "step": 1
+     },
+     {
+      "code": "    for row in rows:",
+      "step": 2
+     },
+     {
+      "code": "        groups[row[\"dept\"]].append(row[\"salary\"])",
+      "step": 2
+     },
+     {
+      "code": "    return {dept: heapq.nlargest(n, salaries) for dept, salaries in sorted(groups.items())}",
+      "step": 3
+     }
+    ],
+    "steps": [
+     "Collect the values for each group.",
+     "Put each row in its group.",
+     "Keep the n largest in each group."
+    ],
+    "check": {
+     "call": "top_n_per_dept([{'dept': 'x', 'salary': 3}, {'dept': 'x', 'salary': 9}, {'dept': 'x', 'salary': 5}, {'dept': 'y', 'salary': 1}], 2)",
+     "expect": {
+      "x": [
+       9,
+       5
+      ],
+      "y": [
+       1
+      ]
+     }
+    }
+   },
+   "sql": {
+    "query": "SELECT dept, salary FROM (\n    SELECT dept, salary, DENSE_RANK() OVER (PARTITION BY dept ORDER BY salary DESC) AS rnk\n    FROM employees\n) AS ranked\nWHERE rnk <= 2\nORDER BY dept, salary DESC",
+    "setup": [
+     "CREATE TABLE employees (dept TEXT, salary INTEGER)",
+     "INSERT INTO employees VALUES ('x', 3), ('x', 9), ('x', 5), ('x', 9), ('y', 1)"
+    ],
+    "expect": [
+     [
+      "x",
+      9
+     ],
+     [
+      "x",
+      9
+     ],
+     [
+      "x",
+      5
+     ],
+     [
+      "y",
+      1
+     ]
+    ]
+   },
+   "problems": [
+    {
+     "slug": "second-highest-salary",
+     "title": "Second Highest Salary (SQL)",
+     "statement": "The second highest distinct salary, or null.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/second-highest-salary/"
+    },
+    {
+     "slug": "rank-scores",
+     "title": "Rank Scores (SQL)",
+     "statement": "Rank scores with no gaps between ranks.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/rank-scores/"
+    },
+    {
+     "slug": "department-top-three-salaries",
+     "title": "Department Top Three Salaries (SQL)",
+     "statement": "Everyone earning a top-3 salary in their department.",
+     "level": "Hard",
+     "url": "https://leetcode.com/problems/department-top-three-salaries/"
+    }
+   ]
+  },
+  {
+   "id": "previous-row",
+   "group": "data",
+   "name": "Compare with the previous row",
+   "clue": "Day-over-day change, 'higher than yesterday', consecutive values, churn between periods.",
+   "idea": "Sort by time, then look at each row next to the one before it (LAG in SQL, zip(rows, rows[1:]) in Python).",
+   "cost": "O(n log n) for the sort.",
+   "worked": {
+    "lines": [
+     {
+      "code": "def warmer_than_yesterday(readings):",
+      "step": 0
+     },
+     {
+      "code": "    readings = sorted(readings, key=lambda r: r[\"day\"])",
+      "step": 1
+     },
+     {
+      "code": "    out = []",
+      "step": 2
+     },
+     {
+      "code": "    for prev, cur in zip(readings, readings[1:]):",
+      "step": 2
+     },
+     {
+      "code": "        if cur[\"day\"] - prev[\"day\"] == 1 and cur[\"temp\"] > prev[\"temp\"]:",
+      "step": 3
+     },
+     {
+      "code": "            out.append(cur[\"day\"])",
+      "step": 3
+     },
+     {
+      "code": "    return out",
+      "step": 0
+     }
+    ],
+    "steps": [
+     "Sort by time so neighbours are next to each other.",
+     "Pair each row with the one before it.",
+     "Count it only when the days are consecutive and the value rose."
+    ],
+    "check": {
+     "call": "warmer_than_yesterday([{'day': 2, 'temp': 25}, {'day': 1, 'temp': 10}, {'day': 3, 'temp': 20}, {'day': 5, 'temp': 30}])",
+     "expect": [
+      2
+     ]
+    }
+   },
+   "sql": {
+    "query": "SELECT day FROM (\n    SELECT day, temp, LAG(temp) OVER (ORDER BY day) AS prev_temp, LAG(day) OVER (ORDER BY day) AS prev_day\n    FROM weather\n) AS w\nWHERE day - prev_day = 1 AND temp > prev_temp",
+    "setup": [
+     "CREATE TABLE weather (day INTEGER, temp INTEGER)",
+     "INSERT INTO weather VALUES (1, 10), (2, 25), (3, 20), (5, 30)"
+    ],
+    "expect": [
+     [
+      2
+     ]
+    ]
+   },
+   "problems": [
+    {
+     "slug": "rising-temperature",
+     "title": "Rising Temperature (SQL)",
+     "statement": "Dates warmer than the day before.",
+     "level": "Easy",
+     "url": "https://leetcode.com/problems/rising-temperature/"
+    },
+    {
+     "slug": "consecutive-numbers",
+     "title": "Consecutive Numbers (SQL)",
+     "statement": "Numbers that appear at least three times in a row.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/consecutive-numbers/"
+    },
+    {
+     "slug": "game-play-analysis-iv",
+     "title": "Game Play Analysis IV (SQL)",
+     "statement": "Share of players who logged in again the day after their first login.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/game-play-analysis-iv/"
+    }
+   ]
+  },
+  {
+   "id": "sessionize",
+   "group": "data",
+   "name": "Sessions and streaks (gaps and islands)",
+   "clue": "Group events into sessions, find streaks, or split a timeline wherever there is a gap.",
+   "idea": "Sort by time; start a new group whenever the gap from the previous event is too big. In SQL: flag the starts with LAG, then a running SUM of the flags numbers the groups.",
+   "cost": "O(n log n).",
+   "worked": {
+    "lines": [
+     {
+      "code": "def sessionize(minutes, gap=30):",
+      "step": 0
+     },
+     {
+      "code": "    sessions = []",
+      "step": 1
+     },
+     {
+      "code": "    for t in sorted(minutes):",
+      "step": 2
+     },
+     {
+      "code": "        if sessions and t - sessions[-1][-1] <= gap:",
+      "step": 3
+     },
+     {
+      "code": "            sessions[-1].append(t)",
+      "step": 3
+     },
+     {
+      "code": "        else:",
+      "step": 4
+     },
+     {
+      "code": "            sessions.append([t])",
+      "step": 4
+     },
+     {
+      "code": "    return sessions",
+      "step": 0
+     }
+    ],
+    "steps": [
+     "Start with no sessions.",
+     "Walk the events in time order.",
+     "Close enough to the last event: same session.",
+     "Too far: start a new session."
+    ],
+    "check": {
+     "call": "sessionize([0, 10, 100, 5, 125])",
+     "expect": [
+      [
+       0,
+       5,
+       10
+      ],
+      [
+       100,
+       125
+      ]
+     ]
+    }
+   },
+   "sql": {
+    "query": "SELECT user_id, SUM(is_start) OVER (PARTITION BY user_id ORDER BY t) AS session_no, t\nFROM (\n    SELECT user_id, t,\n           CASE WHEN t - LAG(t) OVER (PARTITION BY user_id ORDER BY t) <= 30 THEN 0 ELSE 1 END AS is_start\n    FROM clicks\n) AS flagged\nORDER BY user_id, t",
+    "setup": [
+     "CREATE TABLE clicks (user_id TEXT, t INTEGER)",
+     "INSERT INTO clicks VALUES ('u', 0), ('u', 10), ('u', 100), ('u', 125)"
+    ],
+    "expect": [
+     [
+      "u",
+      1,
+      0
+     ],
+     [
+      "u",
+      1,
+      10
+     ],
+     [
+      "u",
+      2,
+      100
+     ],
+     [
+      "u",
+      2,
+      125
+     ]
+    ]
+   },
+   "problems": [
+    {
+     "slug": "game-play-analysis-iv",
+     "title": "Game Play Analysis IV (SQL)",
+     "statement": "Share of players who came back the next day.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/game-play-analysis-iv/"
+    }
+   ]
+  },
+  {
+   "id": "parse-clean",
+   "group": "data",
+   "name": "Parse and clean",
+   "clue": "Log lines, CSV or JSON with bad rows, mixed formats, 'count errors per hour'.",
+   "idea": "Define what a valid record looks like, parse each one, count (never silently drop) the bad ones, then aggregate.",
+   "cost": "O(n).",
+   "worked": {
+    "lines": [
+     {
+      "code": "import re",
+      "step": 0
+     },
+     {
+      "code": "LINE = re.compile(r\"^(\\S+) (\\d\\d):\\d\\d:\\d\\d (ERROR|WARN|INFO) (.*)$\")",
+      "step": 1
+     },
+     {
+      "code": "def errors_per_hour(lines):",
+      "step": 0
+     },
+     {
+      "code": "    counts, bad = {}, 0",
+      "step": 2
+     },
+     {
+      "code": "    for line in lines:",
+      "step": 3
+     },
+     {
+      "code": "        m = LINE.match(line.strip())",
+      "step": 3
+     },
+     {
+      "code": "        if not m:",
+      "step": 4
+     },
+     {
+      "code": "            bad += 1",
+      "step": 4
+     },
+     {
+      "code": "            continue",
+      "step": 4
+     },
+     {
+      "code": "        date, hour, level, _ = m.groups()",
+      "step": 5
+     },
+     {
+      "code": "        if level == \"ERROR\":",
+      "step": 6
+     },
+     {
+      "code": "            key = f\"{date} {hour}\"",
+      "step": 6
+     },
+     {
+      "code": "            counts[key] = counts.get(key, 0) + 1",
+      "step": 6
+     },
+     {
+      "code": "    return counts, bad",
+      "step": 7
+     }
+    ],
+    "steps": [
+     "Write the shape of a valid line as a pattern.",
+     "Set up the counts and a bad-row counter.",
+     "Parse each line.",
+     "Count lines that do not parse instead of dropping them silently.",
+     "Pull out the fields.",
+     "Count errors per date and hour.",
+     "Return both, so bad data is visible."
+    ],
+    "check": {
+     "call": "errors_per_hour(['2026-01-01 10:05:00 ERROR disk', '2026-01-01 10:59:59 ERROR net', 'garbage', '2026-01-01 11:00:00 INFO ok'])",
+     "expect": [
+      {
+       "2026-01-01 10": 2
+      },
+      1
+     ]
+    }
+   },
+   "problems": []
+  },
+  {
+   "id": "joins",
+   "group": "data",
+   "name": "Joins and anti-joins",
+   "clue": "Combine two sources, 'customers who never ordered', 'employees who earn more than their manager'.",
+   "idea": "Build a lookup (set or dict) from one side, then walk the other. In SQL: LEFT JOIN ... WHERE right.id IS NULL for 'never'.",
+   "cost": "O(n + m).",
+   "worked": {
+    "lines": [
+     {
+      "code": "def never_ordered(customers, orders):",
+      "step": 0
+     },
+     {
+      "code": "    ordered = {o[\"customer_id\"] for o in orders}",
+      "step": 1
+     },
+     {
+      "code": "    return [c[\"name\"] for c in customers if c[\"id\"] not in ordered]",
+      "step": 2
+     }
+    ],
+    "steps": [
+     "Build a set of everyone who ordered.",
+     "Keep the customers who are not in it."
+    ],
+    "check": {
+     "call": "never_ordered([{'id': 1, 'name': 'Ana'}, {'id': 2, 'name': 'Bo'}], [{'customer_id': 1}])",
+     "expect": [
+      "Bo"
+     ]
+    }
+   },
+   "sql": {
+    "query": "SELECT c.name\nFROM customers AS c\nLEFT JOIN orders AS o ON o.customer_id = c.id\nWHERE o.customer_id IS NULL",
+    "setup": [
+     "CREATE TABLE customers (id INTEGER, name TEXT)",
+     "CREATE TABLE orders (customer_id INTEGER)",
+     "INSERT INTO customers VALUES (1, 'Ana'), (2, 'Bo')",
+     "INSERT INTO orders VALUES (1)"
+    ],
+    "expect": [
+     [
+      "Bo"
+     ]
+    ]
+   },
+   "problems": [
+    {
+     "slug": "combine-two-tables",
+     "title": "Combine Two Tables (SQL)",
+     "statement": "Each person with their address, if any.",
+     "level": "Easy",
+     "url": "https://leetcode.com/problems/combine-two-tables/"
+    },
+    {
+     "slug": "customers-who-never-order",
+     "title": "Customers Who Never Order (SQL)",
+     "statement": "Customers with no orders.",
+     "level": "Easy",
+     "url": "https://leetcode.com/problems/customers-who-never-order/"
+    },
+    {
+     "slug": "employees-earning-more-than-their-managers",
+     "title": "Employees Earning More Than Their Managers (SQL)",
+     "statement": "A self-join on the same table.",
+     "level": "Easy",
+     "url": "https://leetcode.com/problems/employees-earning-more-than-their-managers/"
+    },
+    {
+     "slug": "trips-and-users",
+     "title": "Trips and Users (SQL)",
+     "statement": "Daily cancellation rate, leaving out banned users.",
+     "level": "Hard",
+     "url": "https://leetcode.com/problems/trips-and-users/"
+    }
+   ]
+  },
+  {
+   "id": "streaming-files",
+   "group": "data",
+   "name": "Large files with generators",
+   "clue": "'The file does not fit in memory', streaming rows, chunked processing.",
+   "idea": "Yield one record at a time instead of building a list, so memory stays flat however big the file is.",
+   "cost": "O(n) time, O(1) memory.",
+   "worked": {
+    "lines": [
+     {
+      "code": "import csv, io",
+      "step": 0
+     },
+     {
+      "code": "def valid_rows(handle):",
+      "step": 1
+     },
+     {
+      "code": "    for row in csv.DictReader(handle):",
+      "step": 1
+     },
+     {
+      "code": "        if row.get(\"id\"):",
+      "step": 2
+     },
+     {
+      "code": "            yield row",
+      "step": 2
+     },
+     {
+      "code": "def count_valid(handle):",
+      "step": 3
+     },
+     {
+      "code": "    return sum(1 for _ in valid_rows(handle))",
+      "step": 3
+     }
+    ],
+    "steps": [
+     "Read rows lazily from the open file.",
+     "Hand back each valid row one at a time (yield, not a list).",
+     "Consume the stream without ever holding it all."
+    ],
+    "check": {
+     "call": "count_valid(io.StringIO('id,v\\n1,a\\n,b\\n3,c\\n'))",
+     "expect": 2
+    }
+   },
+   "problems": []
+  },
+  {
+   "id": "running-window",
+   "group": "data",
+   "name": "Running totals and moving averages",
+   "clue": "Cumulative sums, 7-day averages, rolling metrics.",
+   "idea": "Keep a window of recent values and its sum; add the new value, drop the oldest. In SQL: a window frame (ROWS BETWEEN 6 PRECEDING AND CURRENT ROW).",
+   "cost": "O(n).",
+   "worked": {
+    "lines": [
+     {
+      "code": "from collections import deque",
+      "step": 0
+     },
+     {
+      "code": "def moving_average(values, window):",
+      "step": 0
+     },
+     {
+      "code": "    recent, total, out = deque(), 0.0, []",
+      "step": 1
+     },
+     {
+      "code": "    for v in values:",
+      "step": 2
+     },
+     {
+      "code": "        recent.append(v)",
+      "step": 2
+     },
+     {
+      "code": "        total += v",
+      "step": 2
+     },
+     {
+      "code": "        if len(recent) > window:",
+      "step": 3
+     },
+     {
+      "code": "            total -= recent.popleft()",
+      "step": 3
+     },
+     {
+      "code": "        out.append(total / len(recent))",
+      "step": 4
+     },
+     {
+      "code": "    return out",
+      "step": 0
+     }
+    ],
+    "steps": [
+     "Keep the recent values, their sum, and the output.",
+     "Add each new value to the window and the sum.",
+     "Window too long: drop the oldest from both.",
+     "Record the average of what is in the window."
+    ],
+    "check": {
+     "call": "moving_average([2, 4, 6, 8], 2)",
+     "expect": [
+      2.0,
+      3.0,
+      5.0,
+      7.0
+     ]
+    }
+   },
+   "sql": {
+    "query": "SELECT day, AVG(amount) OVER (ORDER BY day ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS avg_2\nFROM sales\nORDER BY day",
+    "setup": [
+     "CREATE TABLE sales (day INTEGER, amount REAL)",
+     "INSERT INTO sales VALUES (1, 2), (2, 4), (3, 6), (4, 8)"
+    ],
+    "expect": [
+     [
+      1,
+      2.0
+     ],
+     [
+      2,
+      3.0
+     ],
+     [
+      3,
+      5.0
+     ],
+     [
+      4,
+      7.0
+     ]
+    ]
+   },
+   "problems": [
+    {
+     "slug": "restaurant-growth",
+     "title": "Restaurant Growth (SQL)",
+     "statement": "A 7-day moving average of spending.",
+     "level": "Medium",
+     "url": "https://leetcode.com/problems/restaurant-growth/"
+    }
+   ]
+  }
+ ]
+}

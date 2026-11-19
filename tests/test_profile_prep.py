@@ -399,6 +399,8 @@ def test_filler_words_are_dropped_but_real_time_stays():
 
 
 GENERAL = {
+    "deep_dives": [{"key": "exp-acme-llc-data-engineer", "short": "Acme pipelines."}],
+    "question_examples": {"rag": "Example."},
     "role_tracks": [{"role": "Data Engineer", "covers": "DE roles", "what_they_test": ["SQL depth"],
                      "your_proof": ["Cut ingestion time by 60%."], "study_list": ["Window functions"],
                      "likely_questions": [{"question": "Walk me through a pipeline.", "draft_answer": "Acme.",

@@ -1,0 +1,36 @@
+{% extends "_base.html" %}
+
+{% block title %}Career Pilot -- Edit deep dive{% endblock %}
+{% block header_title %}<a href="/" class="plain-link">Career Pilot</a> / <a href="/interview-prep/deep-dives" class="plain-link">Deep dives</a> / Edit{% endblock %}
+
+{% block content %}
+{% if error %}<div class="flash flash-error" role="alert">{{ error }}</div>{% endif %}
+{% if setup_error %}
+<section class="variant-block"><p class="muted-note">{{ setup_error }}</p></section>
+{% else %}
+<section class="variant-block prep-section">
+    <h2>{{ card.title }}</h2>
+    {% if card.subtitle %}<p class="prep-date">{{ card.subtitle }}</p>{% endif %}
+    {% if card.bullets %}
+    <details class="prep-more-item" open>
+        <summary>Your profile says</summary>
+        <ul class="prep-list">{% for b in card.bullets %}<li>{{ b }}</li>{% endfor %}</ul>
+    </details>
+    {% endif %}
+    <p class="muted-note">Write only what is true and that you can talk about. Numbers that are not in your profile are pointed out when you save.</p>
+
+    <form method="post" action="/interview-prep/deep-dives/{{ card.key }}/edit" class="prep-edit-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        {% for l in layers %}
+        <label for="f-{{ l.field }}"><strong>{{ l.name }}</strong></label>
+        <p class="muted-note">{{ l.prompt }}{% if l.field in pair_fields %} Use " :: " between the two parts.{% endif %}</p>
+        <textarea id="f-{{ l.field }}" name="{{ l.field }}" rows="{{ 6 if (l.field in pair_fields or l.field in line_fields) else 3 }}">{{ form[l.field] }}</textarea>
+        {% endfor %}
+        <div class="prep-card-actions">
+            <button type="submit">Save card</button>
+            <a class="btn-secondary" href="/interview-prep/deep-dives#{{ card.key }}">Cancel</a>
+        </div>
+    </form>
+</section>
+{% endif %}
+{% endblock %}

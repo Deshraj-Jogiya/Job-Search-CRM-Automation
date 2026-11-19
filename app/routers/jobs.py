@@ -59,6 +59,8 @@ from ..services import (
     matching_service,
     outreach_service,
     page_fit_service,
+    prep_content,
+    profile_prep_service,
     tailoring_service,
     wage_level_service,
 )
@@ -653,6 +655,22 @@ def _build_detail_context(application_id: int, request: Request, db: Session, di
     except matching_service.MatchingServiceError:
         confirmed_stories = []
 
+    # Pointers into the general prep (deep-dive cards and common questions) that this posting's own terms touch.
+    # Nothing is copied: the job prep links to the general cards, so a card written once serves every application.
+    general_links = {"cards": [], "questions": []}
+    jd = application.posting.job_description if application.posting else ""
+    if jd:
+        try:
+            gp_profile, gp_variant = profile_prep_service.load_profile(db)
+            _, gp_drafted = profile_prep_service.get_active_prep(db, gp_variant.id)
+            general_links = {
+                "cards": prep_content.cards_for_posting(
+                    prep_content.build_cards(gp_profile, (gp_drafted or {}).get("deep_dives")), jd),
+                "questions": prep_content.questions_for_posting(jd),
+            }
+        except profile_prep_service.ProfilePrepServiceError:
+            pass
+
     return {
         "application": application,
         "posting": application.posting,
@@ -665,6 +683,7 @@ def _build_detail_context(application_id: int, request: Request, db: Session, di
         "process_research": process_research,
         "predicted_rounds": predicted_rounds,
         "confirmed_stories": confirmed_stories,
+        "general_links": general_links,
         "interview_prep": active_prep,
         "prep_versions": prep_versions,
         "outreach_messages": outreach_messages,

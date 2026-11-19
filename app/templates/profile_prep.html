@@ -11,6 +11,7 @@
 {% if error %}
 <div class="flash flash-error" role="alert">{{ error }}</div>
 {% endif %}
+{% set active = "overview" %}{% include "_prep_tabs.html" %}
 
 {% if setup_error %}
 <section class="variant-block">

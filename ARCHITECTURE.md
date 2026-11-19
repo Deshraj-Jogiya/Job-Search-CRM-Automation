@@ -82,7 +82,28 @@ choices, see [`CONTRIBUTING.md`](./CONTRIBUTING.md).
   never auto-filled into a message without review.
 - **Interview prep.** General talking points from your own background,
   plus company-specific angles grounded in real research when
-  configured.
+  configured. The general prep (`/interview-prep`) also has four
+  sub-pages that need no LLM:
+  - *Deep dives*: one card per experience, project and certificate
+    (confidential projects excluded). A card starts as an outline built
+    by rules from the profile item (its bullets, the numbers to explain,
+    the usual follow-up questions for its tools) and is filled in by
+    hand. Saving warns about any number not in the profile, and a card
+    is flagged when its profile item changes later.
+  - *Questions*: a fixed bank of common data and ML questions in three
+    answer shapes (process, concept, X versus Y), with room for your own
+    example under each.
+  - *Coding*: start steps for a blank page, 23 patterns (algorithms and
+    data work) each with a worked example, an in-order "Parsons" drill
+    and practice problems, plus a pattern-naming drill. The worked code
+    and SQL are run by the test suite.
+  - *Practice*: spaced review over all of the above (1, 3, 7, 21, 45
+    days, in the `prep_practice` table). The public demo keeps it in the
+    visitor's browser instead.
+  The static content lives in `app/prep_content/*.json`; your own cards
+  and examples live with the prep in the database. Each application's
+  page lists the general cards and questions its posting's terms touch,
+  as links, so a card written once serves every application.
 - **Monthly upgrade check.** Every 30 days (or on demand from
   `/upgrades`), five mechanical checks with no LLM: skills the target
   postings require against how the profile shows them (silent below 30

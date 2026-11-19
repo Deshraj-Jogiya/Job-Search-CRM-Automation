@@ -1,0 +1,12 @@
+{# Shared tab bar for the general interview prep pages. `active` is set by each page. #}
+<nav class="prep-tabs" aria-label="Interview prep sections">
+    {% for href, label, id in [
+        ("/interview-prep", "Overview", "overview"),
+        ("/interview-prep/deep-dives", "Deep dives", "deep-dives"),
+        ("/interview-prep/questions", "Questions", "questions"),
+        ("/interview-prep/coding", "Coding", "coding"),
+        ("/interview-prep/practice", "Practice", "practice"),
+    ] %}
+    <a href="{{ href }}" class="prep-tab{{ ' prep-tab-active' if active == id }}"{% if active == id %} aria-current="page"{% endif %}>{{ label }}</a>
+    {% endfor %}
+</nav>

@@ -88,7 +88,8 @@ free rule-based checks before any paid model call, AI tailoring with a
 fabrication safeguard, a confirmation-gated apply queue, a Kanban
 pipeline board, a browser extension that fills application forms in
 your own browser, outreach with contact discovery, a research agent
-over your own data, interview prep and mock interviews, outcome
+over your own data, interview prep (deep-dive cards, a question bank,
+coding drills and spaced review) and mock interviews, outcome
 analytics, encrypted backup/restore, and a deployment setup for running
 this on a free-tier cloud VM. See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for how
 each piece works.

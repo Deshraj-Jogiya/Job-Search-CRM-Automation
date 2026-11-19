@@ -38,6 +38,7 @@ from ..models import (
     MockInterviewSession,
     MockInterviewTurn,
     OutreachMessage,
+    PrepPractice,
     ProfileInterviewPrep,
     ProfileVariant,
     ProfileVersion,
@@ -229,10 +230,66 @@ def _cover_letter(posting: tuple) -> str:
     )
 
 
+# One written deep-dive card, so a visitor sees what a finished card looks like next to the rule-built outlines. Every number
+# in it is one of the fixture's own bullets (500GB/day, 12 sources, 4 hours to 45 minutes); tests/test_demo_seed.py checks that.
+_DEMO_CARD_FORM = {
+    "short": ("I own the ingestion layer at Fictional Analytics Co: Airflow pipelines pulling roughly 500GB a day from 12 "
+              "upstream sources, plus the quality checks that stop a broken source before analysts see it."),
+    "flow": "\n".join([
+        "Sources land raw files in S3",
+        "Airflow schedules one load per source",
+        "Spark jobs clean and type the data",
+        "Schema and freshness checks run before publish",
+        "dbt models build the reporting tables in Redshift",
+    ]),
+    "decisions": "\n".join([
+        "Why incremental instead of a full nightly rebuild? :: The full rebuild reprocessed history that never changed; "
+        "loading only new and changed rows took the nightly run from 4 hours to 45 minutes.",
+        "Why check schemas before publish? :: Upstream teams change columns without notice; failing the load is "
+        "cheaper than a wrong dashboard.",
+    ]),
+    "hardest": ("Moving reporting to incremental loads without double-counting late-arriving rows: I keyed each load on an "
+                "updated-at watermark and re-read a short overlap window."),
+    "numbers": "\n".join([
+        "500GB/day across 12 sources :: Summed from the per-source load logs",
+        "4 hours to 45 minutes :: Airflow run duration of the nightly DAG before and after the change",
+    ]),
+    "my_part": "I designed the incremental model and the quality framework and own them in production.",
+    "change": "Add data contracts with the upstream teams so schema changes are announced instead of caught.",
+    "follow_ups": "\n".join([
+        "How do you handle a late-arriving record? :: A watermark plus an overlap window, and merges keyed on the "
+        "business key so a re-read row updates instead of duplicating.",
+        "What happens when a freshness check fails? :: The publish step stops and the owning team is alerted; "
+        "yesterday's tables stay in place.",
+    ]),
+    "skills": "\n".join([
+        "Airflow :: Schedules one DAG per source",
+        "Spark :: Cleans and types the raw data",
+        "dbt :: Builds the reporting models",
+        "Data modeling :: Incremental model keyed on business keys",
+    ]),
+    "careful": "\n".join([
+        "Say roughly 500GB, not an exact figure",
+        "The quality framework catches breakages; do not claim it prevents them",
+    ]),
+}
+
+
+def _demo_deep_dives(profile: dict) -> list[dict]:
+    from . import prep_content
+
+    exp = (profile.get("experience") or [None])[0]
+    if not exp:
+        return []
+    key = "exp-" + prep_content.slug(f"{exp.get('company', '')} {exp.get('role', '')}")
+    return [prep_content.card_from_form(key, _DEMO_CARD_FORM, prep_content.fingerprint_for(profile, key))]
+
+
 def _clear(db: Session) -> None:
     for model in (MockInterviewTurn, MockInterviewSession, InterviewPrep, OutreachMessage, TailoredDocument,
                   JobApplication, JobPosting, Company, LlmUsageLog, ActivityLog, BehavioralStory, SavedAnswer,
-                  ResearchAgentQuery, AdaptationLog, AdaptiveParameterValue, ProfileInterviewPrep, AdminAccount):
+                  ResearchAgentQuery, AdaptationLog, AdaptiveParameterValue, ProfileInterviewPrep, PrepPractice,
+                  AdminAccount):
         db.query(model).delete(synchronize_session=False)
     db.query(ProfileVersion).delete(synchronize_session=False)
     db.query(ProfileVariant).delete(synchronize_session=False)
@@ -467,9 +524,11 @@ def seed_demo_data(db: Session) -> bool:
     from .demo_prep_service import draft_profile_answers
 
     stories = db.query(BehavioralStory).filter(BehavioralStory.variant_id == variant_id).all()
+    general = draft_profile_answers(profile, stories)
+    general["deep_dives"] = _demo_deep_dives(profile)
     db.add(ProfileInterviewPrep(variant_id=variant_id, profile_version_id=version.id if version else None,
                                 is_active=True, trigger="initial", generated_at=now - timedelta(days=5),
-                                content_json=json.dumps(draft_profile_answers(profile, stories))))
+                                content_json=json.dumps(general)))
 
     db.add(ResearchAgentQuery(
         question="Which of my applications are waiting on a reply for more than a week?",

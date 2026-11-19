@@ -1,0 +1,109 @@
+{% extends "_base.html" %}
+
+{% block title %}Career Pilot -- Interview Prep: Deep dives{% endblock %}
+{% block header_title %}<a href="/" class="plain-link">Career Pilot</a> / <a href="/interview-prep" class="plain-link">Interview Prep</a> / Deep dives{% endblock %}
+
+{% block content %}
+{% if message %}<div class="flash flash-ok" role="status">{{ message }}</div>{% endif %}
+{% if error %}<div class="flash flash-error" role="alert">{{ error }}</div>{% endif %}
+{% set active = "deep-dives" %}{% include "_prep_tabs.html" %}
+
+{% if setup_error %}
+<section class="variant-block"><p class="muted-note">{{ setup_error }} <a href="/profile">Go to Profile</a></p></section>
+{% else %}
+<section class="variant-block prep-section">
+    <h2>Deep dives: every role, project and certificate</h2>
+    <p class="prep-lede">{{ guide.why }}</p>
+    <div class="prep-two-col">
+        <div>
+            <h3>Say it like this</h3>
+            <p class="prep-cue"><span>Pattern</span> {{ guide.sentence }}</p>
+            <p class="prep-cue"><span>Then hand over</span> "{{ guide.hand_off }}"</p>
+        </div>
+        <div>
+            <h3>The layers</h3>
+            <ol class="prep-list">{% for l in guide.layers %}<li><strong>{{ l.name }}</strong></li>{% endfor %}</ol>
+        </div>
+    </div>
+    <p class="muted-note">A card marked <em>outline</em> is built only from your profile: its bullets, the numbers to explain, and the
+        usual follow-up questions for the tools it names. {% if not showcase_mode %}Write the rest with Edit.{% endif %}</p>
+</section>
+
+{% for kind, heading in [("experience", "Experience"), ("project", "Projects"), ("certification", "Certifications")] %}
+{% set group = cards | selectattr("kind", "equalto", kind) | list %}
+{% if group %}
+<section class="variant-block prep-section">
+    <h2>{{ heading }} <span class="prep-date">{{ group | length }}</span></h2>
+    {% for c in group %}
+    <details class="prep-more prep-card" id="{{ c.key }}">
+        <summary>
+            <strong>{{ c.title }}</strong>{% if c.subtitle %} <span class="prep-date">{{ c.subtitle }}</span>{% endif %}
+            {% if c.outline %}<span class="prep-badge">outline</span>{% else %}<span class="prep-badge prep-badge-ok">written</span>{% endif %}
+            {% if c.changed_since %}<span class="prep-badge prep-badge-warn">profile changed since</span>{% endif %}
+        </summary>
+
+        {% if c.short %}<p class="prep-cue"><span>20 seconds</span> {{ c.short }}</p>{% endif %}
+
+        {% if kind == "certification" %}
+            {% if c.covered %}<h3>What it covered</h3><ul class="prep-list">{% for x in c.covered %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+            {% if c.concepts %}<h3>Concepts to explain cold</h3><ul class="prep-list">{% for x in c.concepts %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+            {% if c.applied %}<h3>Where you used it</h3><p>{{ c.applied }}</p>{% endif %}
+        {% else %}
+            {% if c.flow %}<h3>The data flow, tool by tool</h3><ol class="prep-list">{% for x in c.flow %}<li>{{ x }}</li>{% endfor %}</ol>{% endif %}
+            {% if c.decisions %}
+            <h3>Decisions</h3>
+            <ol class="prep-qa">{% for d in c.decisions %}<li><details><summary>{{ d.q }}</summary><div class="prep-answer"><p>{{ d.a }}</p></div></details></li>{% endfor %}</ol>
+            {% endif %}
+            {% if c.hardest %}<h3>Hardest problem</h3><p>{{ c.hardest }}</p>{% endif %}
+            {% if c.numbers %}
+            <h3>How each number was measured</h3>
+            <ul class="prep-list">{% for n in c.numbers %}<li>{{ n.claim }}{% if n.how %}<br><span class="muted-note">{{ n.how }}</span>{% elif c.outline %}<br><span class="muted-note">Write how this was measured: baseline, method, period.</span>{% endif %}</li>{% endfor %}</ul>
+            {% endif %}
+            {% if c.my_part %}<h3>Your part</h3><p>{{ c.my_part }}</p>{% endif %}
+            {% if c.change %}<h3>What you would change</h3><p>{{ c.change }}</p>{% endif %}
+            {% if c.outline and c.bullets %}
+            <h3>From your profile</h3>
+            <ul class="prep-list">{% for b in c.bullets %}<li>{{ b }}</li>{% endfor %}</ul>
+            {% endif %}
+        {% endif %}
+
+        {% if c.follow_ups %}
+        <h3>Likely follow-ups</h3>
+        <ol class="prep-qa">
+            {% for f in c.follow_ups %}
+            <li>{% if f.a %}<details><summary>{{ f.q }}</summary><div class="prep-answer"><p>{{ f.a }}</p></div></details>{% else %}{{ f.q }}{% endif %}</li>
+            {% endfor %}
+        </ol>
+        {% endif %}
+        {% if c.skills %}
+        <h3>Skills it proves</h3>
+        <ul class="prep-chips">{% for s in c.skills %}<li title="{{ s.where }}">{{ s.skill }}</li>{% endfor %}</ul>
+        {% endif %}
+        {% if c.careful %}<h3>Say only if asked</h3><ul class="prep-list">{% for x in c.careful %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+
+        <div class="prep-card-actions">
+            {% if not showcase_mode %}<a class="btn-secondary" href="/interview-prep/deep-dives/{{ c.key }}/edit">{{ "Write this card" if c.outline else "Edit" }}</a>{% endif %}
+            {% set key = "dd:" ~ c.key %}{% set back = "/interview-prep/deep-dives#" ~ c.key %}{% include "_prep_rate.html" %}
+        </div>
+    </details>
+    {% endfor %}
+</section>
+{% endif %}
+{% endfor %}
+
+{% if orphans %}
+<section class="variant-block prep-section">
+    <h2>Written cards for items no longer in your profile</h2>
+    <p class="muted-note">Kept so nothing you wrote is lost. Remove them once you no longer need them.</p>
+    {% for c in orphans %}
+    <form method="post" action="/interview-prep/deep-dives/{{ c.key }}/delete" class="prep-inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <span>{{ c.key }}</span> <button type="submit" class="btn-secondary">Remove</button>
+    </form>
+    {% endfor %}
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}<script src="/static/js/prep_practice.js"></script>{% endblock %}

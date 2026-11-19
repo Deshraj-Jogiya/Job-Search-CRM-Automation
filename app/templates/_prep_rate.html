@@ -1,0 +1,15 @@
+{# Rating buttons for one practice item. Needs: key, back, practice (dict of rows), ratings. In the public demo the
+   buttons are handled in the browser (static/js/prep_practice.js) and nothing is posted. #}
+{% set row = practice.get(key) if practice else None %}
+<form method="post" action="/interview-prep/practice/rate" class="prep-rate" data-key="{{ key }}"{% if showcase_mode %} data-local="1"{% endif %}>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="card_key" value="{{ key }}">
+    <input type="hidden" name="back" value="{{ back }}">
+    <span class="prep-rate-label">How did it go?</span>
+    {% for value, label in ratings.items() %}
+    <button type="submit" name="rating" value="{{ value }}" class="btn-secondary prep-rate-{{ value }}">{{ label }}</button>
+    {% endfor %}
+    <span class="prep-rate-status muted-note">
+        {% if row %}Practised {{ row.reviews }}x{% if row.next_due_at %}, next review {{ row.next_due_at.strftime('%b %d') }}{% endif %}{% endif %}
+    </span>
+</form>

@@ -1,0 +1,62 @@
+{% extends "_base.html" %}
+
+{% block title %}Career Pilot -- Interview Prep: Practice{% endblock %}
+{% block header_title %}<a href="/" class="plain-link">Career Pilot</a> / <a href="/interview-prep" class="plain-link">Interview Prep</a> / Practice{% endblock %}
+
+{% block content %}
+{% if message %}<div class="flash flash-ok" role="status">{{ message }}</div>{% endif %}
+{% if error %}<div class="flash flash-error" role="alert">{{ error }}</div>{% endif %}
+{% set active = "practice" %}{% include "_prep_tabs.html" %}
+
+{% if setup_error %}
+<section class="variant-block"><p class="muted-note">{{ setup_error }} <a href="/profile">Go to Profile</a></p></section>
+{% else %}
+<section class="variant-block prep-section">
+    <h2>Practice</h2>
+    <p class="prep-lede">Recall beats rereading, and spacing beats cramming. Answer out loud first, then open the answer and rate yourself:
+        "could not" comes back tomorrow, "shaky" repeats the same gap, "solid" waits longer
+        ({% for d in intervals %}{{ d }}{{ ", " if not loop.last }}{% endfor %} days).</p>
+    <p class="muted-note">A good day: 15 minutes of due cards and questions, 45 minutes of coding, and one timed mock interview a week.</p>
+    {% if showcase_mode %}<p class="muted-note">In this demo your practice is kept in this browser only.</p>{% endif %}
+
+    <div class="prep-summary-grid">
+        {% set prefixes = {"Deep dives": "dd:", "Questions": "qb:", "Coding patterns": "pat:", "Coding problems": "code:"} %}
+        {% for name, s in summary.items() %}
+        <div class="prep-summary" data-prefix="{{ prefixes.get(name, '') }}"><strong>{{ name }}</strong>
+            <span><span data-n="practised">{{ s.practised }}</span> of {{ s.total }} practised</span>
+            <span><span data-n="solid">{{ s.solid }}</span> solid</span>
+            <span><span data-n="due">{{ s.due }}</span> due now</span>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="variant-block prep-section" id="due">
+    <h2>Due now</h2>
+    {% if due %}
+    <ul class="prep-list">
+        {% for d in due %}
+        <li><span class="prep-date">{{ d.group }}</span> <a href="{{ d.href }}"{% if d.external %} target="_blank" rel="noopener"{% endif %}>{{ d.label }}</a>
+            <span class="muted-note">last rated {{ ratings[d.row.last_rating] | lower }}</span>
+            {% set key = d.key %}{% set back = "/interview-prep/practice#due" %}{% set practice = {d.key: d.row} %}{% include "_prep_rate.html" %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% elif not showcase_mode %}
+    <p class="muted-note">Nothing due. Rate a few items on the other tabs and they will come back here on schedule.</p>
+    {% endif %}
+    {% if showcase_mode %}<ul class="prep-list" data-local-due hidden></ul>{% endif %}
+</section>
+
+<section class="variant-block prep-section">
+    <h2>Pick one at random</h2>
+    <p class="muted-note">For a short session: one random question, card or problem.</p>
+    <div class="prep-random" data-items='{{ all_items | tojson }}'>
+        <button type="button" class="btn-secondary" data-random-next>Give me one</button>
+        <p data-random-out role="status"></p>
+    </div>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}<script src="/static/js/prep_practice.js"></script>{% endblock %}
