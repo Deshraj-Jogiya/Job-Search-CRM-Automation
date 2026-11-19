@@ -745,6 +745,43 @@ class UpgradeReport(Base):
     report_json = Column(Text, nullable=False)
 
 
+class EmailMessage(Base):
+    """One job email read from the mailbox (email_sync_service.py), with what the rules made of it and what the user
+    decided. Only what the inbox page needs is kept: sender, subject, date, the result, and a short excerpt around the
+    phrase that decided it (none at all for career-site account mail, which carries codes). Full bodies are never
+    stored. application_id is a plain column, not a foreign key, so deleting an application (the Rejected sweep
+    does) never fails on an old email; the page treats a missing application as unmatched."""
+    __tablename__ = "email_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    message_id = Column(String, nullable=False, unique=True)  # the email's own Message-ID, so nothing is handled twice
+    thread_id = Column(String, nullable=True)  # Gmail thread, for a link back to it
+    received_at = Column(DateTime, nullable=False, index=True)
+    sender_name = Column(String, nullable=True)
+    sender_email = Column(String, nullable=False)
+    subject = Column(String, nullable=True)
+    excerpt = Column(Text, nullable=True)
+
+    kind = Column(String, nullable=False)  # confirmation | rejection | interview | assessment | offer | reply | ignore
+    confidence = Column(String, nullable=False)  # high | medium | low
+    reason = Column(String, nullable=True)
+    company_guess = Column(String, nullable=True)
+    role_guess = Column(String, nullable=True)
+    job_ref = Column(String, nullable=True)
+    due_text = Column(String, nullable=True)  # "within 72 hours", "Nov 24"
+
+    match_state = Column(String, nullable=False, default="unmatched")  # matched | choose | unmatched
+    match_how = Column(String, nullable=True)
+    application_id = Column(Integer, nullable=True, index=True)
+    candidate_ids = Column(JSON, nullable=True)
+
+    # pending (waiting for the user) | done (change applied) | noted (nothing to change) | dismissed
+    state = Column(String, nullable=False, default="pending", index=True)
+    action_taken = Column(String, nullable=True)
+    resolved_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utcnow)
+
+
 class LocationExclusion(Base):
     """Location-text terms (country/region names, e.g. "Poland", "India")
     to exclude from intake -- a company's own Greenhouse/Lever/Ashby board
@@ -1001,6 +1038,16 @@ class GlobalSettings(Base):
     # Developers) is the closest OEWS bucket most Data Engineer postings
     # get filed under; live-editable if that's ever not the right fit.
     target_soc_code = Column(String, default="15-1252")
+
+    # Reading job emails (email_sync_service.py): off until switched on, separate from automation_enabled because it
+    # only reads and suggests. The last-UID pair lets each run fetch only new mail; a changed UIDVALIDITY (the
+    # server renumbered the mailbox) falls back to a date search.
+    email_sync_enabled = Column(Boolean, default=False)
+    email_sync_lookback_days = Column(Integer, default=60)  # how far back the first run reads
+    email_sync_last_uid = Column(Integer, nullable=True)
+    email_sync_uidvalidity = Column(Integer, nullable=True)
+    email_sync_last_run_at = Column(DateTime, nullable=True)
+    email_sync_last_error = Column(String, nullable=True)
 
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 

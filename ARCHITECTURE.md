@@ -104,6 +104,22 @@ choices, see [`CONTRIBUTING.md`](./CONTRIBUTING.md).
   and examples live with the prep in the database. Each application's
   page lists the general cards and questions its posting's terms touch,
   as links, so a card written once serves every application.
+- **Inbox: job emails to application status.** Off until switched on
+  from `/inbox`. Every 30 minutes (or on "Check now") it reads the
+  mailbox over IMAP, read-only (EXAMINE and BODY.PEEK, so nothing is
+  marked read, moved or deleted), and only messages newer than the last
+  one it saw. Rules, not an LLM, decide what each email is
+  (confirmation, rejection, interview request, assessment, offer,
+  reply) and which application it is about: a person already contacted
+  through Outreach, then the company by name, address or ATS tenant,
+  then a job ID or the role title. Each one becomes a suggestion such as
+  "Mark as Not Selected", dated with the email's own date and applied
+  through the same guarded functions as the buttons, only when you
+  accept it. An employer's no is "Not Selected", never "Rejected" (that
+  one means you declined). Emails it can't place ask you to pick the
+  application or add it to the CRM. Unrelated mail is never stored;
+  password and code emails are stored without their text. The demo
+  shows a sample inbox run through the same rules.
 - **Monthly upgrade check.** Every 30 days (or on demand from
   `/upgrades`), five mechanical checks with no LLM: skills the target
   postings require against how the profile shows them (silent below 30

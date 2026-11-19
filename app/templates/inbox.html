@@ -1,0 +1,222 @@
+{% extends "_base.html" %}
+
+{% block title %}Career Pilot -- Inbox{% endblock %}
+{% block header_title %}<a href="/" class="plain-link">Career Pilot</a> / Inbox{% endblock %}
+
+{% macro head(item) %}
+{% set r = item.row %}
+<div class="inbox-head">
+    <span class="badge{% if r.kind in ('rejection',) %} badge-warn{% elif r.kind in ('interview', 'offer', 'assessment') %} badge-active{% endif %}">{{ item.label }}</span>
+    <span class="inbox-subject">{% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ r.subject or "(no subject)" }}</a>{% else %}{{ r.subject or "(no subject)" }}{% endif %}</span>
+</div>
+<div class="inbox-meta">{{ r.received_at.strftime("%b %d, %Y %H:%M") }} UTC &middot; {{ r.sender_name or r.sender_email }}{% if r.sender_name %} &lt;{{ r.sender_email }}&gt;{% endif %}
+    {% if r.confidence != "high" %}&middot; {{ r.confidence }} confidence{% endif %} &middot; {{ r.reason }}
+    {% if r.due_text %}&middot; <strong>due {{ r.due_text }}</strong>{% endif %}</div>
+{% if r.excerpt %}<p class="inbox-excerpt">{{ r.excerpt }}</p>{% endif %}
+{% endmacro %}
+
+{% macro app_line(app) %}<a href="/jobs/{{ app.id }}">{{ app.posting.job_title }}</a> at {{ app.posting.company_name_raw }} <span class="muted-note">(#{{ app.id }}, {{ app.status }})</span>{% endmacro %}
+
+{% macro small_forms(r) %}
+{% if not showcase_mode %}
+<form method="post" action="/inbox/{{ r.id }}/kind" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="visually-hidden" for="kind-{{ r.id }}">Email type</label>
+    <select name="kind" id="kind-{{ r.id }}" onchange="this.form.submit()">
+        {% for k in kinds %}<option value="{{ k }}"{% if k == r.kind %} selected{% endif %}>{{ kind_labels[k] }}</option>{% endfor %}
+    </select>
+</form>
+<form method="post" action="/inbox/{{ r.id }}/dismiss" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="btn-secondary">Dismiss</button>
+</form>
+{% endif %}
+{% endmacro %}
+
+{% block content %}
+{% if message %}<div class="flash flash-ok" role="status">{{ message }}</div>{% endif %}
+{% if error %}<div class="flash flash-error" role="alert">{{ error }}</div>{% endif %}
+
+<section class="variant-block">
+    <h2>Inbox</h2>
+    {% if showcase_mode %}
+    <p class="muted-note">Demo: these are sample emails for the fictional candidate, sorted and matched by the same rules a real
+        instance uses. A real instance reads its own mailbox (read-only) and changes an application only when you accept.</p>
+    {% else %}
+    <p class="muted-note">Job emails from your mailbox: confirmations, rejections, interview and assessment requests, offers and
+        replies, each matched to its application. The mailbox is only read (nothing is marked read, moved or deleted), and no
+        application changes until you accept. Changes use the email's date.</p>
+    {% if not configured %}
+    <p class="flash flash-error" role="alert">Email reading isn't set up: add IMAP_HOST, IMAP_USER and IMAP_PASSWORD (a Gmail app
+        password) to .env and restart.</p>
+    {% else %}
+    <form method="post" action="/inbox/settings" class="inline-form-row">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="checkbox-label"><input type="checkbox" name="email_sync_enabled" value="true" {{ "checked" if settings.email_sync_enabled }}>
+            Check my mailbox every 30 minutes</label>
+        <label>First check looks back <input type="number" name="email_sync_lookback_days" min="1" max="365"
+            value="{{ settings.email_sync_lookback_days or 60 }}" style="width:5rem"> days</label>
+        <button type="submit" class="btn-secondary">Save</button>
+    </form>
+    <form method="post" action="/inbox/check" class="inline-form-row" style="margin-top:8px">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit">Check now</button>
+        <span class="muted-note">{% if settings.email_sync_last_run_at %}Last checked {{ settings.email_sync_last_run_at.strftime("%b %d %H:%M") }} UTC.{% else %}Not checked yet.{% endif %}
+            {% if settings.email_sync_last_error %}<span class="flash-error-inline">Last error: {{ settings.email_sync_last_error }}</span>{% endif %}</span>
+    </form>
+    {% endif %}
+    {% endif %}
+    <ul class="inbox-tabs">
+        <li><a href="#review">To accept ({{ groups.suggested | length }})</a></li>
+        <li><a href="#choose">Pick the application ({{ groups.choose | length }})</a></li>
+        <li><a href="#new">Not in the CRM ({{ groups.unmatched | length }})</a></li>
+        <li><a href="#handled">Handled ({{ groups.handled | length }})</a></li>
+        <li><a href="#ignored">Ignored ({{ groups.ignored | length }})</a></li>
+    </ul>
+</section>
+
+<section class="variant-block" id="review">
+    <h2>To accept</h2>
+    {% if groups.suggested %}
+    <form method="post" action="/inbox/accept-selected" id="accept-selected">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    </form>
+    <ul class="inbox-list">
+        {% for item in groups.suggested %}{% set r = item.row %}{% set s = item.suggestion %}
+        <li class="inbox-item" id="email-{{ r.id }}">
+            {{ head(item) }}
+            <div>About {{ app_line(item.app) }} <span class="muted-note">({{ r.match_how }})</span></div>
+            {% if s and s.warning %}<div class="flash-error-inline">{{ s.warning }}</div>{% endif %}
+            <div class="inbox-actions">
+                {% if s and s.steps and not showcase_mode %}
+                <label class="checkbox-label"><input type="checkbox" name="email_ids" value="{{ r.id }}" form="accept-selected"> select</label>
+                <form method="post" action="/inbox/{{ r.id }}/accept" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit">{{ s.label }}</button>
+                </form>
+                {% elif s %}<span class="muted-note">{{ s.label }}</span>{% endif %}
+                {{ small_forms(r) }}
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% if not showcase_mode %}<button type="submit" form="accept-selected" style="margin-top:10px">Accept the selected</button>{% endif %}
+    {% else %}
+    <p class="muted-note">Nothing waiting.</p>
+    {% endif %}
+</section>
+
+<section class="variant-block" id="choose">
+    <h2>Pick the application</h2>
+    <p class="muted-note">The company matched, but more than one of its applications could be the one, or the email names a role
+        none of them has.</p>
+    {% if groups.choose %}
+    <ul class="inbox-list">
+        {% for item in groups.choose %}{% set r = item.row %}
+        <li class="inbox-item" id="email-{{ r.id }}">
+            {{ head(item) }}
+            {% if r.role_guess %}<div class="muted-note">Role in the email: {{ r.role_guess }}{% if r.job_ref %} (ID {{ r.job_ref }}){% endif %}</div>{% endif %}
+            {% if not showcase_mode %}
+            <form method="post" action="/inbox/{{ r.id }}/accept" class="inbox-pick-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                {% for app in item.candidates %}
+                <label class="inbox-pick"><input type="radio" name="application_id" value="{{ app.id }}"{% if loop.first %} required{% endif %}> <span>{{ app_line(app) }}</span></label>
+                {% endfor %}
+                <div class="inbox-actions"><button type="submit">Use this application</button></div>
+            </form>
+            <form method="post" action="/inbox/{{ r.id }}/add" class="inbox-actions">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <span class="muted-note">Or it's a different one:</span>
+                <label class="visually-hidden" for="co-{{ r.id }}">Company</label>
+                <input type="text" id="co-{{ r.id }}" name="company" value="{{ item.candidates[0].posting.company_name_raw if item.candidates else (r.company_guess or '') }}" required>
+                <label class="visually-hidden" for="role-{{ r.id }}">Role</label>
+                <input type="text" id="role-{{ r.id }}" name="role" value="{{ r.role_guess or '' }}" placeholder="Role">
+                <button type="submit" class="btn-secondary">Add it to the CRM</button>
+            </form>
+            {% endif %}
+            <div class="inbox-actions">{{ small_forms(r) }}</div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}<p class="muted-note">Nothing to pick.</p>{% endif %}
+</section>
+
+<section class="variant-block" id="new">
+    <h2>Not in the CRM</h2>
+    <p class="muted-note">Emails about applications the CRM never had, usually ones sent straight from an employer's site. Adding
+        one creates the company, the posting and the application with the email's date.</p>
+    {% if groups.unmatched %}
+    <ul class="inbox-list">
+        {% for item in groups.unmatched %}{% set r = item.row %}
+        <li class="inbox-item" id="email-{{ r.id }}">
+            {{ head(item) }}
+            {% if not showcase_mode %}
+            <form method="post" action="/inbox/{{ r.id }}/add" class="inbox-actions">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <label class="visually-hidden" for="nco-{{ r.id }}">Company</label>
+                <input type="text" id="nco-{{ r.id }}" name="company" value="{{ r.company_guess or '' }}" placeholder="Company" required>
+                <label class="visually-hidden" for="nrole-{{ r.id }}">Role</label>
+                <input type="text" id="nrole-{{ r.id }}" name="role" value="{{ r.role_guess or '' }}" placeholder="Role">
+                <button type="submit">Add to the CRM</button>
+            </form>
+            {% endif %}
+            <div class="inbox-actions">{{ small_forms(r) }}</div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}<p class="muted-note">Nothing here.</p>{% endif %}
+</section>
+
+<section class="variant-block" id="handled">
+    <h2>Handled</h2>
+    {% if groups.handled %}
+    <ul class="inbox-list">
+        {% for item in groups.handled %}{% set r = item.row %}
+        <li class="inbox-item">
+            {{ head(item) }}
+            <div>{% if item.app %}{{ app_line(item.app) }}: {% endif %}<strong>{{ r.action_taken }}</strong>
+                {% if r.resolved_at %}<span class="muted-note">({{ r.resolved_at.strftime("%b %d") }})</span>{% endif %}</div>
+            {% if item.feedback and r.state == "done" %}
+            <details>
+                <summary>Ask {{ (r.sender_name or "them").split(" ")[0] }} for feedback (a draft; you send it)</summary>
+                <label class="visually-hidden" for="fb-{{ r.id }}">Feedback request draft</label>
+                <textarea id="fb-{{ r.id }}" class="inbox-feedback" readonly>{{ item.feedback }}</textarea>
+                <a href="mailto:{{ r.sender_email }}?subject={{ ('Re: ' ~ (r.subject or '')) | urlencode }}&body={{ item.feedback | urlencode }}">Open in my mail app</a>
+            </details>
+            {% endif %}
+            {% if not showcase_mode and r.state in ("dismissed", "noted") %}
+            <form method="post" action="/inbox/{{ r.id }}/restore" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn-secondary">Put back</button>
+            </form>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}<p class="muted-note">Nothing handled yet.</p>{% endif %}
+</section>
+
+<section class="variant-block" id="ignored">
+    <h2>Ignored</h2>
+    <p class="muted-note">From job senders but not about an application's status: account codes, surveys, job alerts. Shown so
+        a miss can be put back.</p>
+    {% if groups.ignored %}
+    <details>
+        <summary>Show {{ groups.ignored | length }}</summary>
+        <ul class="inbox-list">
+            {% for item in groups.ignored %}{% set r = item.row %}
+            <li class="inbox-item">
+                {{ head(item) }}
+                {% if not showcase_mode %}
+                <form method="post" action="/inbox/{{ r.id }}/restore" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn-secondary">This is a job update</button>
+                </form>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </details>
+    {% else %}<p class="muted-note">Nothing ignored.</p>{% endif %}
+</section>
+{% endblock %}

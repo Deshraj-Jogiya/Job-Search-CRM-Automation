@@ -460,7 +460,7 @@
         {% elif application.status == "Applied" %}
         <section class="variant-block">
             <h2>Applied</h2>
-            <p class="muted-note">Marked applied {{ application.applied_at.strftime("%Y-%m-%d %H:%M") }} UTC.</p>
+            <p class="muted-note">Marked applied{% if application.applied_at %} {{ application.applied_at.strftime("%Y-%m-%d %H:%M") }} UTC{% endif %}.</p>
             {% if application.replied_at %}
             <p class="muted-note">Marked replied {{ application.replied_at.strftime("%Y-%m-%d %H:%M") }} UTC.</p>
             {% endif %}
@@ -521,6 +521,19 @@
         <section class="variant-block">
             <h2>Rejected</h2>
             <p class="muted-note">Rejected {{ application.rejected_at.strftime("%Y-%m-%d %H:%M") }} UTC -- will be cleaned up automatically after the retention window.</p>
+        </section>
+        {% endif %}
+
+        {% if job_emails %}
+        <section class="variant-block">
+            <h2>Emails</h2>
+            <ul class="prep-list">
+                {% for e in job_emails %}
+                <li><span class="prep-date">{{ e.row.received_at.strftime("%b %d, %Y") }}</span> {{ e.label }}:
+                    {% if e.link %}<a href="{{ e.link }}" target="_blank" rel="noopener">{{ e.row.subject or "(no subject)" }}</a>{% else %}{{ e.row.subject or "(no subject)" }}{% endif %}
+                    <span class="muted-note">{% if e.row.state == "pending" %}waiting on the <a href="/inbox#email-{{ e.row.id }}">inbox</a>{% elif e.row.action_taken %}{{ e.row.action_taken }}{% endif %}</span></li>
+                {% endfor %}
+            </ul>
         </section>
         {% endif %}
 

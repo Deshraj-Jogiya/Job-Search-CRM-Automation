@@ -31,6 +31,7 @@ from ..models import (
     AdaptiveParameterValue,
     BehavioralStory,
     Company,
+    EmailMessage,
     InterviewPrep,
     JobApplication,
     JobPosting,
@@ -286,7 +287,7 @@ def _demo_deep_dives(profile: dict) -> list[dict]:
 
 
 def _clear(db: Session) -> None:
-    for model in (MockInterviewTurn, MockInterviewSession, InterviewPrep, OutreachMessage, TailoredDocument,
+    for model in (EmailMessage, MockInterviewTurn, MockInterviewSession, InterviewPrep, OutreachMessage, TailoredDocument,
                   JobApplication, JobPosting, Company, LlmUsageLog, ActivityLog, BehavioralStory, SavedAnswer,
                   ResearchAgentQuery, AdaptationLog, AdaptiveParameterValue, ProfileInterviewPrep, PrepPractice,
                   AdminAccount):
@@ -541,7 +542,49 @@ def seed_demo_data(db: Session) -> bool:
     db.commit()
     for app in apps.values():
         recompute_score_breakdown(db, app)
+    _seed_demo_inbox(db, now)
     return True
+
+
+def _demo_emails(now) -> list:
+    """Fictional job emails for the fictional companies above, read by the same classifier and matcher as a real
+    mailbox (email_sync_service.ingest), so the demo inbox shows what the real one would do."""
+    from .email_reader_service import RawEmail
+
+    def mail(uid, days, name, address, subject, *lines):
+        return RawEmail(uid=uid, message_id=f"<demo-{uid}@example.com>", sender_name=name, sender_email=address,
+                        subject=subject, received_at=now - timedelta(days=days), to_addresses=["alex.morgan@example.com"],
+                        text="\n\n".join(lines))
+
+    return [
+        mail(1, 2, "Halcyon Retail", "no-reply@hire.lever.co", "Thank you for applying to Halcyon Retail",
+             "Hi Alex,", "Thank you for applying for the Data Engineer position at Halcyon Retail. We have received "
+             "your application and our team will review it shortly.", "Halcyon Retail Recruiting"),
+        mail(2, 1, "Tidewater Insurance Hiring Team", "noreply@smartrecruiters.com",
+             "Your application for Data Engineer II at Tidewater Insurance",
+             "Dear Alex,", "Thank you for your interest in the Data Engineer II role. After careful review, we have "
+             "decided to move forward with other candidates whose experience more closely matches our needs.",
+             "We wish you the best in your search.", "Tidewater Insurance Talent Acquisition"),
+        mail(3, 0, "Sam Okafor", "sam.okafor@example.com", "Data Platform Engineer - next steps",
+             "Hi Alex,", "Thanks for applying to the Data Platform Engineer role at Larkspur Analytics. I would love "
+             "to talk with you about it. Would you be available for a 30-minute call next week? Please share a few "
+             "times that work.", "Sam Okafor", "Talent Partner, Larkspur Analytics"),
+        mail(4, 1, "Coderbyte", "no-reply@coderbyte.com", "Quarry Labs has invited you to an assessment",
+             "Hi Alex,", "Quarry Labs has invited you to complete a coding assessment for the Data Engineer role. "
+             "Please complete it within 5 days.", "Good luck!"),
+        mail(5, 3, "Granite Peak Software", "no-reply@us.greenhouse-mail.io",
+             "Thank you for applying to Granite Peak Software",
+             "Hi Alex,", "Thank you for applying for the Analytics Engineer role at Granite Peak Software. We have "
+             "received your application and will be in touch if there is a fit.", "The Granite Peak Software team"),
+        mail(6, 0, "Greenhouse", "no-reply@us.greenhouse-mail.io", "Your Greenhouse security code",
+             "Your security code is 482913. It expires in 10 minutes."),
+    ]
+
+
+def _seed_demo_inbox(db: Session, now) -> None:
+    from . import email_sync_service
+
+    email_sync_service.ingest(db, _demo_emails(now))
 
 
 def reset_demo_data(db: Session) -> None:

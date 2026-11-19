@@ -28,7 +28,7 @@ from ..app_mode import is_showcase_mode
 from ..database import SessionLocal
 from ..models import get_or_create_settings
 from . import (
-    backup_service, confirmation_service, demo_seed_service, intake_service, notification_service, profile_prep_service,
+    backup_service, confirmation_service, demo_seed_service, email_sync_service, intake_service, notification_service, profile_prep_service,
     trend_research_service, upgrade_service,
 )
 from .activity_logger import log_activity, sweep_activity_log_retention
@@ -144,6 +144,13 @@ def _upgrade_check_tick() -> None:
     _run_isolated("monthly upgrade check", upgrade_service.run_if_due)
 
 
+def _email_sync_tick() -> None:
+    # Not gated by automation_enabled: it only reads mail and stores suggestions, makes no paid calls, and changes no
+    # application until the user accepts on /inbox. Its own email_sync_enabled setting (off by default) is the gate,
+    # checked inside run_if_enabled; it never runs in showcase mode.
+    _run_isolated("email check", email_sync_service.run_if_enabled)
+
+
 def _demo_reset_tick() -> None:
     # Showcase only: visitors share one database, so it goes back to the sample search once a day.
     _run_isolated("demo data reset", demo_seed_service.reset_demo_data)
@@ -175,6 +182,11 @@ def start_scheduler() -> None:
             _upgrade_check_tick, trigger="interval", hours=24, name="monthly_upgrade_check", max_instances=1,
             next_run_time=datetime.now() + timedelta(minutes=2),
         )
+        if not is_showcase_mode():
+            scheduler.add_job(
+                _email_sync_tick, trigger="interval", minutes=email_sync_service.SYNC_EVERY_MINUTES, name="email_check",
+                max_instances=1, next_run_time=datetime.now() + timedelta(minutes=3),
+            )
         if is_showcase_mode():
             scheduler.add_job(_demo_reset_tick, trigger="interval", hours=24, name="demo_data_reset", max_instances=1)
         scheduler.start()

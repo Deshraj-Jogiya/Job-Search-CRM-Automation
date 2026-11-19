@@ -31,7 +31,7 @@ import dotenv  # noqa: E402
 dotenv.load_dotenv = lambda *args, **kwargs: False
 for _name in ("SMTP_USER", "SMTP_PASSWORD", "SMTP_SERVER", "NOTIFICATION_EMAIL", "TAVILY_API_KEY", "HUNTER_API_KEY",
               "ADZUNA_APP_ID", "ADZUNA_APP_KEY", "JOBSPIPE_API_KEY", "OPENAI_API_KEY", "OPENAI_API_BASE",
-              "CLAUDE_CLI_PATH", "DASHBOARD_PASSWORD", "ADMIN_PASSWORD"):
+              "CLAUDE_CLI_PATH", "DASHBOARD_PASSWORD", "ADMIN_PASSWORD", "IMAP_HOST", "IMAP_USER", "IMAP_PASSWORD"):
     os.environ[_name] = ""
 # An AI call a test forgot to mock goes to a closed local port and fails at once, instead of reaching
 # the real API (which it did, with the real key, before these lines existed).
@@ -49,6 +49,18 @@ class _NoSmtp:
 
 
 smtplib.SMTP = smtplib.SMTP_SSL = _NoSmtp
+
+import imaplib  # noqa: E402
+
+
+class _NoImap:
+    """No test reads the real mailbox; the email tests pass a fake connection instead."""
+
+    def __init__(self, *args, **kwargs):
+        raise RuntimeError("A test tried to open a real IMAP connection. Pass connect= with a fake instead.")
+
+
+imaplib.IMAP4_SSL = _NoImap  # imaplib.IMAP4 stays: the reader catches imaplib.IMAP4.error
 
 import pytest  # noqa: E402
 

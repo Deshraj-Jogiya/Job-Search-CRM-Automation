@@ -1727,3 +1727,22 @@ button[disabled] {
 .upgrade-item button {
     justify-self: start;
 }
+
+/* ==========================================================================
+   Inbox (job emails, /inbox)
+   ========================================================================== */
+
+.inbox-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 10px; }
+.inbox-item { border: 1px solid var(--input-border); border-radius: 10px; padding: 10px 12px; display: grid; gap: 6px; min-width: 0; }
+.inbox-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; }
+.inbox-head .inbox-subject { font-weight: 600; overflow-wrap: anywhere; }
+.inbox-meta { color: var(--text-secondary); font-size: 0.82rem; overflow-wrap: anywhere; }
+.inbox-excerpt { color: var(--text-secondary); font-size: 0.85rem; margin: 0; overflow-wrap: anywhere; }
+.inbox-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.inbox-actions select, .inbox-actions input[type="text"] { width: auto; min-width: 0; flex: 1 1 180px; }
+.inbox-pick { display: flex; align-items: flex-start; gap: 8px; }
+.inbox-pick input { margin-top: 4px; }
+.inbox-feedback { width: 100%; box-sizing: border-box; min-height: 7rem; }
+.inbox-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 0; padding: 0; list-style: none; }
+.inbox-tabs a { display: inline-block; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--input-border); text-decoration: none; font-size: 0.85rem; }
+.inbox-tabs a[aria-current="page"] { border-color: var(--accent-indigo); color: var(--accent-indigo); }

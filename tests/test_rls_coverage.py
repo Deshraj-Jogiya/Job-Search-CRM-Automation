@@ -30,6 +30,7 @@ _RLS_MIGRATION_FILES = [
     "d5f1a8c3e7b2_add_upgrade_reports_table.py",
     "e9c1d4f7a2b8_add_hiring_evidence_and_board_snapshots.py",
     "a734a7bcb026_add_prep_practice.py",
+    "b5e3d8a1c7f4_add_email_messages_and_email_sync_settings.py",
 ]
 
 

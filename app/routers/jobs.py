@@ -45,6 +45,7 @@ from ..models import (
 )
 from ..app_mode import is_showcase_mode
 from ..services.llm import AI_REQUIRED_MESSAGE, llm_available
+from ..services import email_sync_service
 from ..services import (
     adaptation_service,
     autofill_service,
@@ -688,6 +689,7 @@ def _build_detail_context(application_id: int, request: Request, db: Session, di
         "prep_versions": prep_versions,
         "outreach_messages": outreach_messages,
         "followup_dates": followup_dates,
+        "job_emails": email_sync_service.emails_for_application(db, application_id),
         "discovery_available": is_showcase_mode() or contact_discovery_service.is_tavily_configured(),
         "discovered_contacts": discovered_contacts,
         "autofill_supported": autofill_service.is_supported(application.posting.source),

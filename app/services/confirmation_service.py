@@ -453,7 +453,7 @@ def reject_application(db: Session, application_id: int) -> JobApplication:
     return application
 
 
-def mark_applied(db: Session, application_id: int) -> JobApplication:
+def mark_applied(db: Session, application_id: int, at: datetime | None = None) -> JobApplication:
     """Confirmation that the application was actually submitted --
     either an explicit human click (the dashboard button), or
     autofill_service's own submission-confirmation watcher calling
@@ -467,7 +467,7 @@ def mark_applied(db: Session, application_id: int) -> JobApplication:
         raise ConfirmationServiceError(f"Application is '{application.status}', not yet Approved.")
 
     application.status = "Applied"
-    application.applied_at = utcnow()
+    application.applied_at = at or utcnow()
     # Real bug found live 2026-09-22: attention_reason is only ever SET
     # (on a failure), never cleared on a later success -- an
     # application that failed once (e.g. a transient autofill/LLM
@@ -483,7 +483,29 @@ def mark_applied(db: Session, application_id: int) -> JobApplication:
     return application
 
 
-def mark_replied(db: Session, application_id: int) -> JobApplication:
+def mark_applied_from_email(db: Session, application_id: int, at: datetime | None = None) -> JobApplication:
+    """The application was sent outside the pipeline (by hand on the employer's site) and the employer's own
+    confirmation email says so. Accepted only from the inbox page after the user confirms it
+    (email_sync_service.py). Unlike mark_applied it accepts any status before Applied, because a hand-sent
+    application never went through Approved; `at` is the email's date so the funnel dates stay true. Clears a
+    pending confirmation window, which no longer means anything once the application is out."""
+    application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
+    if not application:
+        raise ConfirmationServiceError(f"Application {application_id} not found.")
+    if application.status not in ("Ingested", "Tailored", "Needs Review", "Pending Confirmation", "Approved", "Rejected"):
+        raise ConfirmationServiceError(f"Application is '{application.status}', already past Applied.")
+
+    application.status = "Applied"
+    application.applied_at = at or utcnow()
+    application.confirmation_deadline = None
+    application.attention_reason = None
+    db.commit()
+    log_activity(db, f"Marked '{application.posting.job_title}' at {application.posting.company_name_raw} as Applied "
+                     f"(employer's confirmation email).", "INFO")
+    return application
+
+
+def mark_replied(db: Session, application_id: int, at: datetime | None = None) -> JobApplication:
     """Explicit self-report that the employer/recruiter replied --
     same trust model as mark_interviewing/mark_applied, feeds the
     /metrics weekly funnel's "sent -> replied" step (metrics_service.py).
@@ -497,17 +519,17 @@ def mark_replied(db: Session, application_id: int) -> JobApplication:
     if application.applied_at is None:
         raise ConfirmationServiceError("Application hasn't been marked as Applied yet.")
 
-    application.replied_at = utcnow()
+    application.replied_at = at or utcnow()
     db.commit()
     log_activity(db, f"Marked a reply from {application.posting.company_name_raw} on '{application.posting.job_title}'.", "INFO")
     return application
 
 
-def mark_interviewing(db: Session, application_id: int) -> JobApplication:
+def mark_interviewing(db: Session, application_id: int, at: datetime | None = None) -> JobApplication:
     """Explicit self-report that an interview is happening --
     same trust model as mark_applied. Feeds the outcome-analytics
-    funnel; nothing infers this automatically since there's no email-
-    scanning integration in this build."""
+    funnel. The email inbox (email_sync_service.py) calls it too, but only
+    after the user accepts the suggestion there, with the email's date as `at`."""
     application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
     if not application:
         raise ConfirmationServiceError(f"Application {application_id} not found.")
@@ -515,13 +537,13 @@ def mark_interviewing(db: Session, application_id: int) -> JobApplication:
         raise ConfirmationServiceError(f"Application is '{application.status}', not yet Applied.")
 
     application.status = "Interviewing"
-    application.interviewing_at = utcnow()
+    application.interviewing_at = at or utcnow()
     db.commit()
     log_activity(db, f"Marked '{application.posting.job_title}' at {application.posting.company_name_raw} as Interviewing.", "INFO")
     return application
 
 
-def mark_offer(db: Session, application_id: int) -> JobApplication:
+def mark_offer(db: Session, application_id: int, at: datetime | None = None) -> JobApplication:
     """Reachable from Applied directly too (not every offer goes through
     a tracked 'Interviewing' click first) -- both are real, valid paths."""
     application = db.query(JobApplication).filter(JobApplication.id == application_id).first()
@@ -531,13 +553,13 @@ def mark_offer(db: Session, application_id: int) -> JobApplication:
         raise ConfirmationServiceError(f"Application is '{application.status}', not Applied or Interviewing.")
 
     application.status = "Offer"
-    application.offer_at = utcnow()
+    application.offer_at = at or utcnow()
     db.commit()
     log_activity(db, f"Marked '{application.posting.job_title}' at {application.posting.company_name_raw} as Offer.", "INFO")
     return application
 
 
-def mark_not_selected(db: Session, application_id: int) -> JobApplication:
+def mark_not_selected(db: Session, application_id: int, at: datetime | None = None) -> JobApplication:
     """Distinct from reject_application()'s 'Rejected' -- this is a
     real applied-and-declined (or gone silent) outcome, worth keeping
     for analytics history, not swept/deleted like a pre-apply decline.
@@ -551,7 +573,7 @@ def mark_not_selected(db: Session, application_id: int) -> JobApplication:
         raise ConfirmationServiceError(f"Application is '{application.status}', not Applied or Interviewing.")
 
     application.status = "Not Selected"
-    application.not_selected_at = utcnow()
+    application.not_selected_at = at or utcnow()
     company = application.posting.company
     if company:
         company.ghosted_count = (company.ghosted_count or 0) + 1

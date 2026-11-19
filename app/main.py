@@ -29,6 +29,7 @@ from .routers import jobs as jobs_router
 from .routers import mock_interview as mock_interview_router
 from .routers import profile_prep as profile_prep_router
 from .routers import upgrades as upgrades_router
+from .routers import inbox as inbox_router
 from .routers import sponsors as sponsors_router
 from .routers import extension_page as extension_page_router
 from .routers import confirmation as confirmation_router
@@ -38,6 +39,7 @@ from .routers import queue as queue_router
 from .routers import metrics as metrics_router
 from .routers import adaptation as adaptation_router
 from .routers import extension as extension_router
+from .services import email_sync_service
 from .services import analytics_service, auth_service, backup_service, demo_seed_service, llm_usage_service, profile_prep_service, profile_service, trend_research_service, upgrade_service
 from .services import scheduler as bg_scheduler
 from .services.activity_logger import log_activity
@@ -135,6 +137,7 @@ app.include_router(jobs_router.router, dependencies=app_dependencies)
 app.include_router(mock_interview_router.router, dependencies=app_dependencies)
 app.include_router(profile_prep_router.router, dependencies=app_dependencies)
 app.include_router(upgrades_router.router, dependencies=app_dependencies)
+app.include_router(inbox_router.router, dependencies=app_dependencies)
 app.include_router(sponsors_router.router, dependencies=app_dependencies)
 app.include_router(extension_page_router.router, dependencies=app_dependencies)
 # NOT behind HTTPBasic: these routes are reached from a one-click email
@@ -356,6 +359,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     # than duplicated.
     progress = analytics_service.conversion_rates(db)
     upgrade_card = upgrade_service.card_summary(db)
+    inbox_count = email_sync_service.pending_count(db)
     recent_research_queries = (
         db.query(ResearchAgentQuery).order_by(ResearchAgentQuery.created_at.desc()).limit(5).all()
     )
@@ -387,6 +391,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
             "llm_usage": llm_usage,
             "progress": progress,
             "upgrade_card": upgrade_card,
+            "inbox_count": inbox_count,
             "message": request.query_params.get("message"),
             "error": request.query_params.get("error"),
         },
