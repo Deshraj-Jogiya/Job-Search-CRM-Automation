@@ -2,7 +2,9 @@
 Job emails into the CRM: reads new mail (email_reader_service, read-only), sorts it by rules (email_classifier, no AI,
 no paid calls), finds the application it is about (email_matcher), and keeps a row per email for the /inbox page.
 
-Nothing changes an application until the user accepts it on /inbox. Every change then goes through
+Nothing changes an application until the user accepts it on /inbox, with one exception: a high-confidence
+"application received" email matched to one application marks it Applied on its own (auto_accept_confirmations).
+Every change goes through
 confirmation_service's guarded functions with the email's own date, so the funnel dates (applied_at, not_selected_at,
 ...) are when it happened, not when the button was clicked. Nothing is ever deleted: an employer's "no" becomes
 Not Selected, never the user's own "Rejected".
@@ -129,7 +131,45 @@ def ingest(db: Session, emails: list[RawEmail]) -> dict:
         counts["noted" if row.state == "noted" else "suggested"] += 1
     counts["stored"] = len(stored)
     db.commit()
+    auto = auto_accept_confirmations(db)
+    counts["auto_applied"] = auto
+    counts["suggested"] -= min(auto, counts["suggested"])
     return counts
+
+
+AUTO_LABEL = "Marked as Applied automatically (the employer confirmed the application)"
+
+
+def auto_accept_confirmations(db: Session) -> int:
+    """An employer's "we received your application" for one clearly matched application only says what the user
+    already did, so it is applied without a click (his call, 2026-11-20). Only high-confidence confirmations matched
+    to a single application whose one step is Mark as Applied; rejections, interviews, offers, replies and any email
+    that could be about several applications still wait on /inbox. Covers older waiting confirmations too."""
+    done = 0
+    rows = (db.query(EmailMessage).filter(EmailMessage.state == "pending", EmailMessage.kind == "confirmation",
+                                          EmailMessage.confidence == "high", EmailMessage.match_state == "matched",
+                                          EmailMessage.application_id.isnot(None))
+            .order_by(EmailMessage.received_at).all())
+    for row in rows:
+        db.refresh(row)
+        if row.state != "pending":
+            continue  # settled by an earlier one for the same application
+        app = db.get(JobApplication, row.application_id)
+        s = suggestion_for(row, app, db) if app else None
+        if s is None or s.key != "applied":
+            continue
+        try:
+            accept(db, row.id)
+        except EmailSyncError as e:
+            log_activity(db, f"Email check: could not mark application {app.id} as Applied from an email: {e}", "WARNING")
+            continue
+        row = db.get(EmailMessage, row.id)
+        row.action_taken = AUTO_LABEL
+        db.commit()
+        log_activity(db, f"Marked {app.posting.company_name_raw or 'an application'} ({app.id}) as Applied from the "
+                         f"employer's confirmation email of {row.received_at:%Y-%m-%d}.", "INFO")
+        done += 1
+    return done
 
 
 def _link_by_job_ref(db: Session, rows: list[EmailMessage]) -> None:
@@ -219,7 +259,9 @@ def _run_sync(db: Session, connect, force: bool) -> dict:
     db.commit()
     if counts["suggested"]:
         log_activity(db, f"Email check: {counts['suggested']} job email{'s' if counts['suggested'] != 1 else ''} to review "
-                         f"on the inbox page ({counts['read']} read).", "INFO")
+                         f"on the inbox page ({counts['read']} read"
+                         + (f", {counts['auto_applied']} marked Applied from confirmations" if counts.get("auto_applied") else "")
+                         + ").", "INFO")
     return counts
 
 

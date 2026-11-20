@@ -199,13 +199,33 @@ class TestIngestAndAccept:
         app = _app(db, make_company(db, "Whatnot"), "Data Engineer", "Ingested")
         raw = mail("no-reply@us.greenhouse-mail.io", "Thank you for applying to Whatnot",
                    "Thank you for applying for the Data Engineer role.", name="Whatnot Hiring Team", days=-3)
-        _ingest(db, raw)
-        row = _row(db, raw)
-        assert row.state == "pending"
-        email_sync_service.accept(db, row.id)
+        _ingest(db, raw)  # a clear employer confirmation is applied without a click
         db.refresh(app)
         assert app.status == "Applied" and app.applied_at == raw.received_at
-        assert _row(db, raw).state == "done"
+        row = _row(db, raw)
+        assert row.state == "done" and row.action_taken == email_sync_service.AUTO_LABEL
+
+    def test_confirmation_that_could_be_several_applications_still_waits(self, db):
+        c = make_company(db, "OpenAI")
+        a1 = _app(db, c, "Data Engineer", "Approved")
+        a2 = _app(db, c, "ML Engineer", "Approved")
+        raw = mail("no-reply@openai.com", "Thank you for applying to OpenAI",
+                   "Thank you for applying. We received your application.", name="OpenAI Hiring Team")
+        _ingest(db, raw)
+        db.refresh(a1), db.refresh(a2)
+        assert _row(db, raw).state == "pending" and {a1.status, a2.status} == {"Approved"}
+
+    def test_waiting_confirmations_from_before_are_applied_too(self, db):
+        app = _app(db, make_company(db, "Whatnot"), "Data Engineer", "Approved")
+        raw = mail("no-reply@us.greenhouse-mail.io", "Thank you for applying to Whatnot",
+                   "Thank you for applying for the Data Engineer role.", name="Whatnot Hiring Team", days=-2)
+        from unittest import mock
+        with mock.patch.object(email_sync_service, "auto_accept_confirmations", return_value=0):
+            _ingest(db, raw)
+        assert _row(db, raw).state == "pending"
+        assert email_sync_service.auto_accept_confirmations(db) == 1
+        db.refresh(app)
+        assert app.status == "Applied" and app.applied_at == raw.received_at
 
     def test_nothing_changes_until_accepted(self, db):
         app = _app(db, make_company(db, "Lyft"), "Data Engineer", "Applied")
@@ -235,8 +255,7 @@ class TestIngestAndAccept:
         db.refresh(app)
         assert app.status == "Not Selected"
         assert app.applied_at == confirm.received_at  # the earliest confirmation, not the rejection's date
-        # the confirmation now has nothing left to do
-        assert _row(db, confirm).state == "noted"
+        assert _row(db, confirm).state == "done"  # applied on its own when it arrived
 
     def test_confirmation_for_an_applied_application_needs_nothing(self, db):
         _app(db, make_company(db, "Whatnot"), "Data Engineer", "Applied")
@@ -626,15 +645,15 @@ class TestDryRunFixes:
         assert _row(db, raw).state == "noted"
 
     def test_bulk_accept_skips_a_duplicate_settled_by_the_first(self, db):
-        app = _app(db, make_company(db, "Lyft"), "Data Engineer", "Ingested")
-        a = mail("no-reply@us.greenhouse-mail.io", "Thank you for applying to Lyft",
-                 "Thank you for applying for the Data Engineer role.", name="Lyft Hiring Team", days=-2)
-        b = mail("no-reply@us.greenhouse-mail.io", "Thank you for applying to Lyft",
-                 "Thank you for applying for the Data Engineer role.", name="Lyft Hiring Team", days=-1)
+        app = _app(db, make_company(db, "Lyft"), "Data Engineer", "Applied")
+        a = mail("no-reply@us.greenhouse-mail.io", "Your application to Lyft",
+                 "Unfortunately we have decided to move forward with other candidates.", name="Lyft Hiring Team", days=-2)
+        b = mail("no-reply@us.greenhouse-mail.io", "Your application to Lyft",
+                 "Unfortunately we have decided to move forward with other candidates.", name="Lyft Hiring Team", days=-1)
         _ingest(db, a, b)
         done, errors = email_sync_service.accept_many(db, [_row(db, a).id, _row(db, b).id])
         db.refresh(app)
-        assert (done, errors, app.status) == (1, [], "Applied") and app.applied_at == a.received_at
+        assert (done, errors, app.status) == (1, [], "Not Selected") and app.not_selected_at == a.received_at
 
 
 class TestFirstRunChoiceAndRuns:
