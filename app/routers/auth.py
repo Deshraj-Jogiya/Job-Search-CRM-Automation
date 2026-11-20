@@ -12,8 +12,9 @@ from sqlalchemy.orm import Session
 
 from ..app_mode import is_showcase_mode
 from ..database import get_db
-from ..models import AdminAccount
-from ..services import auth_service
+from ..models import AdminAccount, get_or_create_settings
+from ..services import auth_service, email_reader_service
+from ..services.email_sync_service import SYNC_EVERY_MINUTES
 from ..services.activity_logger import log_activity
 from ..services.email_utils import is_smtp_configured, send_email
 from ..templating import render
@@ -38,7 +39,9 @@ def signup_page(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse(url="/", status_code=303)
     if db.query(AdminAccount).first():
         return RedirectResponse(url="/login", status_code=303)
-    return render(request, "signup.html", {"error": request.query_params.get("error")})
+    return render(request, "signup.html", {"error": request.query_params.get("error"),
+                                           "email_configured": email_reader_service.is_configured(),
+                                           "sync_minutes": SYNC_EVERY_MINUTES})
 
 
 @router.post("/signup")
@@ -48,6 +51,7 @@ def signup_submit(
     password: str = Form(...),
     confirm_password: str = Form(...),
     recovery_email: str = Form(""),
+    email_sync_enabled: bool = Form(False),
     db: Session = Depends(get_db),
 ):
     if is_showcase_mode():
@@ -70,9 +74,12 @@ def signup_submit(
         recovery_email=recovery_email or None,
     )
     db.add(account)
+    # The one first-run choice besides the login: whether the app may read job emails. Changeable later on /inbox.
+    get_or_create_settings(db).email_sync_enabled = bool(email_sync_enabled)
     db.commit()
     db.refresh(account)
-    log_activity(db, f"Account created for '{username}'.", "INFO")
+    log_activity(db, f"Account created for '{username}'; reading job emails "
+                     f"{'on' if email_sync_enabled else 'off'}.", "INFO")
 
     response = RedirectResponse(url="/", status_code=303)
     session_token = auth_service.create_session_token(account.id)

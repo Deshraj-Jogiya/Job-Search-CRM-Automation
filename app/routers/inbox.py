@@ -36,6 +36,7 @@ def inbox_page(request: Request, db: Session = Depends(get_db)):
         "groups": groups,
         "settings": get_or_create_settings(db),
         "configured": email_reader_service.is_configured(),
+        "running": email_sync_service.is_running(),
         "kinds": [k for k in email_sync_service.KIND_LABELS if k != "ignore"],
         "kind_labels": email_sync_service.KIND_LABELS,
         "message": request.query_params.get("message"),
@@ -51,12 +52,12 @@ def _guard():
 def check_now(db: Session = Depends(get_db)):
     if (blocked := _guard()):
         return blocked
-    try:
-        counts = email_sync_service.run_sync(db, force=True)
-    except EmailSyncError as e:
-        return _back(error=str(e))
-    return _back(message=f"Checked: {counts.get('read', 0)} emails read, {counts.get('suggested', 0)} new to review, "
-                         f"{counts.get('noted', 0)} needed no change.")
+    if not email_reader_service.is_configured():
+        return _back(error="Email reading isn't set up: IMAP_HOST, IMAP_USER and IMAP_PASSWORD are needed in .env.")
+    if not email_sync_service.run_in_background():
+        return _back(message="A check is already running; refresh in a minute.")
+    return _back(message="Checking the mailbox in the background. The first check reads the whole look-back window "
+                         "and can take a few minutes; refresh to see what it found.")
 
 
 @router.post("/{email_id}/accept")
@@ -132,9 +133,14 @@ def save_settings(email_sync_enabled: bool = Form(False), email_sync_lookback_da
     if (blocked := _guard()):
         return blocked
     settings = get_or_create_settings(db)
+    first_time_on = email_sync_enabled and not settings.email_sync_enabled and not settings.email_sync_last_run_at
     settings.email_sync_enabled = email_sync_enabled
     settings.email_sync_lookback_days = max(1, min(email_sync_lookback_days, 365))
     db.commit()
+    if first_time_on and email_reader_service.is_configured():
+        email_sync_service.run_in_background()  # don't make the first switch-on wait up to half an hour
+        return _back(message="Email reading is on. The first check has started and can take a few minutes; it then "
+                             f"checks every {email_sync_service.SYNC_EVERY_MINUTES} minutes.")
     return _back(message="Email reading is on: it checks every "
                          f"{email_sync_service.SYNC_EVERY_MINUTES} minutes." if email_sync_enabled
                  else "Email reading is off.")

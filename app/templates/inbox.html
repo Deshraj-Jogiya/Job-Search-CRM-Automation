@@ -60,8 +60,8 @@
     </form>
     <form method="post" action="/inbox/check" class="inline-form-row" style="margin-top:8px">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button type="submit">Check now</button>
-        <span class="muted-note">{% if settings.email_sync_last_run_at %}Last checked {{ settings.email_sync_last_run_at.strftime("%b %d %H:%M") }} UTC.{% else %}Not checked yet.{% endif %}
+        <button type="submit"{% if running %} disabled{% endif %}>{% if running %}Checking...{% else %}Check now{% endif %}</button>
+        <span class="muted-note">{% if running %}A check is running now; refresh in a minute. {% endif %}{% if settings.email_sync_last_run_at %}Last checked {{ settings.email_sync_last_run_at.strftime("%b %d %H:%M") }} UTC.{% else %}Not checked yet.{% endif %}
             {% if settings.email_sync_last_error %}<span class="flash-error-inline">Last error: {{ settings.email_sync_last_error }}</span>{% endif %}</span>
     </form>
     {% endif %}

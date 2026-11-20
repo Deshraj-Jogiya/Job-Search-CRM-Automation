@@ -1746,3 +1746,8 @@ button[disabled] {
 .inbox-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 0; padding: 0; list-style: none; }
 .inbox-tabs a { display: inline-block; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--input-border); text-decoration: none; font-size: 0.85rem; }
 .inbox-tabs a[aria-current="page"] { border-color: var(--accent-indigo); color: var(--accent-indigo); }
+
+.signup-choice { border: 1px solid var(--border, #444); border-radius: 8px; padding: 0.75rem 1rem; margin: 1rem 0; }
+.signup-choice legend { font-weight: 600; padding: 0 0.25rem; }
+.signup-choice .radio-row { display: flex; align-items: center; gap: 0.5rem; margin: 0.35rem 0; }
+.signup-choice .radio-row input { width: auto; margin: 0; }

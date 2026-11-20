@@ -15,10 +15,12 @@ same rules (demo_seed_service).
 from __future__ import annotations
 
 import re
+import threading
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Callable
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..app_mode import is_showcase_mode
@@ -168,10 +170,26 @@ def _settle_if_nothing_to_do(db: Session, row: EmailMessage) -> None:
         row.state, row.action_taken, row.resolved_at = "noted", f"nothing to change (already {app.status})", utcnow()
 
 
+_RUN_LOCK = threading.Lock()  # the scheduler tick and "Check now" never read the mailbox at the same time
+
+
+def is_running() -> bool:
+    return _RUN_LOCK.locked()
+
+
 def run_sync(db: Session, connect=None, force: bool = False) -> dict:
     """One read of the mailbox. `force` runs it even when the setting is off (the "Check now" button)."""
     if is_showcase_mode():
         raise EmailSyncError("The public demo has no mailbox; its inbox shows sample emails.")
+    if not _RUN_LOCK.acquire(blocking=False):
+        return {"skipped": "a check is already running"}
+    try:
+        return _run_sync(db, connect, force)
+    finally:
+        _RUN_LOCK.release()
+
+
+def _run_sync(db: Session, connect, force: bool) -> dict:
     settings = get_or_create_settings(db)
     if not (settings.email_sync_enabled or force):
         return {"skipped": "email reading is switched off"}
@@ -189,7 +207,12 @@ def run_sync(db: Session, connect=None, force: bool = False) -> dict:
         settings.email_sync_last_run_at = utcnow()
         db.commit()
         raise EmailSyncError(str(e)) from e
-    counts = ingest(db, emails)
+    try:
+        counts = ingest(db, emails)
+    except IntegrityError:
+        # Another process stored the same message first (a second app worker); the next run picks up the rest.
+        db.rollback()
+        raise EmailSyncError("Another check stored these emails at the same time; nothing was lost. Try again.")
     settings = get_or_create_settings(db)
     settings.email_sync_last_uid, settings.email_sync_uidvalidity = highest or settings.email_sync_last_uid, validity or None
     settings.email_sync_last_run_at, settings.email_sync_last_error = utcnow(), None
@@ -198,6 +221,33 @@ def run_sync(db: Session, connect=None, force: bool = False) -> dict:
         log_activity(db, f"Email check: {counts['suggested']} job email{'s' if counts['suggested'] != 1 else ''} to review "
                          f"on the inbox page ({counts['read']} read).", "INFO")
     return counts
+
+
+def run_in_background() -> bool:
+    """"Check now": the first read covers the whole look-back window and can take a few minutes, longer than a web
+    request should wait, so it runs on its own thread with its own session. False when a check is already running."""
+    if is_running():
+        return False
+    from ..database import SessionLocal
+
+    def work():
+        db = SessionLocal()
+        try:
+            counts = run_sync(db, force=True)
+            if "skipped" not in counts and not counts.get("suggested"):
+                log_activity(db, f"Email check: {counts.get('read', 0)} read, nothing new to review.", "INFO")
+        except EmailSyncError as e:
+            log_activity(db, f"Email check failed: {e}", "WARNING")
+        except Exception as e:  # noqa: BLE001 -- recorded on the page instead of dying silently in a thread
+            db.rollback()
+            settings = get_or_create_settings(db)
+            settings.email_sync_last_error, settings.email_sync_last_run_at = f"Unexpected error: {e}"[:300], utcnow()
+            db.commit()
+        finally:
+            db.close()
+
+    threading.Thread(target=work, daemon=True, name="email-check").start()
+    return True
 
 
 def run_if_enabled(db: Session) -> None:

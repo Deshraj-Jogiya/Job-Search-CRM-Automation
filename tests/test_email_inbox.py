@@ -635,3 +635,51 @@ class TestDryRunFixes:
         done, errors = email_sync_service.accept_many(db, [_row(db, a).id, _row(db, b).id])
         db.refresh(app)
         assert (done, errors, app.status) == (1, [], "Applied") and app.applied_at == a.received_at
+
+
+class TestFirstRunChoiceAndRuns:
+    def _signup(self, choice):
+        from fastapi.testclient import TestClient
+
+        from app.csrf import CSRF_COOKIE_NAME
+        from app.main import app as web_app
+
+        client = TestClient(web_app)
+        page = client.get("/signup")
+        assert "Read job emails?" in page.text
+        token = client.cookies.get(CSRF_COOKIE_NAME)
+        form = {"csrf_token": token, "username": "me", "password": "longpassword1", "confirm_password": "longpassword1"}
+        if choice is not None:
+            form["email_sync_enabled"] = choice
+        return client.post("/signup", data=form, follow_redirects=False)
+
+    def test_signup_yes_turns_email_reading_on(self, db):
+        assert self._signup("true").status_code == 303
+        db.expire_all()
+        assert get_or_create_settings(db).email_sync_enabled is True
+
+    def test_signup_not_now_leaves_it_off(self, db):
+        self._signup("false")
+        db.expire_all()
+        assert get_or_create_settings(db).email_sync_enabled is False
+
+    def test_a_second_run_while_one_is_running_is_skipped(self, db, imap_env):
+        email_sync_service._RUN_LOCK.acquire()
+        try:
+            assert email_sync_service.run_sync(db, connect=lambda: FakeIMAP({}), force=True) == \
+                {"skipped": "a check is already running"}
+            assert email_sync_service.run_in_background() is False
+        finally:
+            email_sync_service._RUN_LOCK.release()
+
+    def test_check_now_without_a_mailbox_says_so(self, db):
+        from fastapi.testclient import TestClient
+
+        from app.csrf import CSRF_COOKIE_NAME
+        from app.main import app as web_app
+
+        client = TestClient(web_app)
+        client.get("/inbox")
+        response = client.post("/inbox/check", data={"csrf_token": client.cookies.get(CSRF_COOKIE_NAME)},
+                               follow_redirects=False)
+        assert "error=" in response.headers["location"]

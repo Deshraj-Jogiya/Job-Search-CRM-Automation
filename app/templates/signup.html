@@ -36,6 +36,22 @@
             <input type="email" name="recovery_email" autocomplete="email">
         </label>
 
+        <fieldset class="signup-choice">
+            <legend>Read job emails?</legend>
+            <p class="muted-note">
+                Career Pilot can check your mailbox every {{ sync_minutes }} minutes for application confirmations,
+                rejections and interview requests, and suggest the status change for each application. It only reads
+                (nothing is marked read, moved or deleted), keeps only job emails, and changes nothing until you accept
+                a suggestion on the Inbox page. You can switch this on or off there at any time.
+            </p>
+            {% if not email_configured %}
+            <p class="muted-note">The mailbox isn't set up on this server yet (IMAP_HOST, IMAP_USER and IMAP_PASSWORD
+                in .env). Choosing "Yes" saves your choice; reading starts once those are added.</p>
+            {% endif %}
+            <label class="radio-row"><input type="radio" name="email_sync_enabled" value="true"> Yes, read job emails</label>
+            <label class="radio-row"><input type="radio" name="email_sync_enabled" value="false" checked> Not now</label>
+        </fieldset>
+
         <button type="submit">Create Account</button>
     </form>
 </section>
