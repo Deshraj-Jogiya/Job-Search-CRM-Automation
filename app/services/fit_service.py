@@ -26,6 +26,7 @@ fires on titles it does not understand would punish real matches.
 
 import re
 
+from .resume_ats import CAUSAL_EVIDENCE, NOSQL_EVIDENCE
 from .resume_rules import total_experience_months
 
 ROLE_MISMATCH_CAP = 40
@@ -104,7 +105,12 @@ _ALIASES = {
     "Data modeling": ["data modeling", "data modelling", "dimensional model"], "ETL": ["etl", "elt"],
     "Spark": ["spark", "pyspark"], "Airflow": ["airflow"], "dbt": ["dbt"], "C++": ["c++"], "C#": ["c#"],
     "Go": ["golang"], "Data visualization": ["data visualization", "data visualisation", "dashboards", "dashboard"],
+    "Causal inference": ["causal inference", "causal analysis"], "NoSQL": ["nosql"],
 }
+
+# Work that proves a term the profile words differently (an A/B test is causal inference; MongoDB is NoSQL). Matched in the
+# profile only, never in the posting, so a posting must still name the term itself.
+_IMPLIED_BY = {"Causal inference": CAUSAL_EVIDENCE, "NoSQL": NOSQL_EVIDENCE}
 
 _VOCABULARY = [
     "Python", "SQL", "Java", "Scala", "R", "C++", "C#", "Go", "Rust", "JavaScript", "TypeScript", "Node.js", "React",
@@ -118,6 +124,7 @@ _VOCABULARY = [
     "pandas", "NumPy", "scikit-learn", "TensorFlow", "PyTorch", "Keras", "XGBoost", "MLflow", "Hugging Face",
     "LangChain", "Machine Learning", "NLP", "Computer Vision", "LLM", "RAG",
     "REST APIs", "GraphQL", "Microservices", "Data modeling", "ETL", "Great Expectations", "ArcGIS",
+    "Causal inference", "NoSQL",
 ]
 
 # Interchangeable tools in one narrow category earn half credit (same rule the AI scoring prompt uses).
@@ -183,8 +190,9 @@ def _evidence_sources(profile: dict) -> list[tuple[str, str]]:
 
 
 def _find_evidence(term: str, sources: list[tuple[str, str]]) -> str | None:
+    implied = _IMPLIED_BY.get(term)
     for where, text in sources:
-        if _mentions(term, text.lower(), text):
+        if _mentions(term, text.lower(), text) or (implied and re.search(implied, text, re.IGNORECASE)):
             return where
     return None
 

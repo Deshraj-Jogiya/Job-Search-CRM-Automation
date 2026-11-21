@@ -124,6 +124,11 @@ POSTING_TERMS = [
     "MongoDB", "LangChain", "RAG", "vector databases", "embeddings", "fine-tuning", "NLP", "LLMs",
 ]
 
+# Shared with fit_service so the fit score and the resume check agree on what backs these terms.
+CAUSAL_EVIDENCE = (r"causal|a/b test|hypothesis test|z-test|control group|treatment (?:arm|group|efficacy)|log-rank|"
+                   r"difference[- ]in[- ]differences|propensity|uplift|counterfactual")
+NOSQL_EVIDENCE = r"nosql|mongodb|dynamodb|cassandra|redis|firestore|cosmos ?db|couchbase|hbase|neo4j|elasticsearch"
+
 # Profile evidence that backs a posting term worded differently in the profile.
 BACKED_BY = {
     "statistical modeling": r"regression|hypothesis test|survival analysis|z-test|ks-test|chi-square|statistical",
@@ -146,6 +151,11 @@ BACKED_BY = {
     "MLOps": r"mlops|mlflow|drift", "deep learning": r"pytorch|tensorflow|bert|transformer|neural",
     "natural language processing": r"\bnlp\b|bert|spacy|ner\b|sentiment", "computer vision": r"image|object detection|opencv|yolo",
     "recommendation systems": r"recommend", "microservices": r"microservice", "data mining": r"anomal|cluster|pattern|k-means",
+    # A/B tests, hypothesis tests against a baseline and treatment-versus-control comparisons are causal inference: they
+    # measure whether a change caused a difference. The posting's wording goes on the resume (owner, 2026-11-21).
+    "causal inference": CAUSAL_EVIDENCE,
+    # A document or key-value store named in the profile backs the general term.
+    "NoSQL": NOSQL_EVIDENCE,
 }
 
 
