@@ -740,6 +740,51 @@ class TestLiveGapsNov21:
                    name="TikTok Hiring Team")
         assert _match(db, raw).application_id == target.id
 
+    def test_rejection_from_the_employers_own_address_applies(self, db):
+        app = _app(db, make_company(db, "Vestwell"), "Data Scientist", "Applied")
+        raw = mail("no-reply@vestwell.com", "Vestwell Application Update",
+                   "Thank you for your interest in joining Vestwell. Our hiring team decided to move forward with other "
+                   "candidates at this time for the Data Scientist role.")
+        _ingest(db, raw)
+        db.refresh(app)
+        assert _row(db, raw).confidence == "medium" and app.status == "Not Selected"
+
+    def test_exact_title_decides_and_the_sent_copy_wins(self, db):
+        c = make_company(db, "First Citizens Bank")
+        _app(db, c, "Data Engineer II - ETL/ELT", "Tailored")
+        sent = _app(db, c, "Data Engineer II - ETL/ELT", "Applied")
+        raw = mail("firstcitizens+autoreply@talent.icims.com", "Application Status from First Citizens Bank",
+                   "Thank you for your recent application to the Data Engineer II - ETL/ELT position at First Citizens "
+                   "Bank. We are sorry to inform you that you do not meet the minimum qualifications.")
+        assert _match(db, raw).application_id == sent.id
+
+    def test_full_title_written_in_the_email_decides(self, db):
+        c = make_company(db, "IBM")
+        target = _app(db, c, "Data Engineer-Data Platforms-Google - 5", "Applied")
+        _app(db, c, "Data Engineer, IBM Quantum", "Applied")
+        _app(db, c, "Data Engineer-Data Platforms-Google - 3", "Ingested")
+        raw = mail("talent@ibm.com", "Your IBM Application Status",
+                   "Ref: 134985 - Data Engineer-Data Platforms-Google - 5 Dear D, we have decided to move forward with "
+                   "other candidates.", name="IBM Talent Acquisition")
+        assert _match(db, raw).application_id == target.id
+
+    def test_rejection_naming_no_role_goes_to_the_only_sent_application(self, db):
+        c = make_company(db, "Charles Schwab")
+        sent = _app(db, c, "AI Engineer, AI.x", "Applied")
+        _app(db, c, "Machine Learning Ops Data Engineer", "Ingested")
+        raw = mail("schwab+email@talent.icims.com", "Thank You",
+                   "Thank you again for considering Charles Schwab. We have decided to pursue other candidates for this "
+                   "position.", name="Charles Schwab Talent Acquisition")
+        assert _match(db, raw).application_id == sent.id
+
+    def test_rejection_naming_no_role_with_two_sent_still_asks(self, db):
+        c = make_company(db, "IBM")
+        _app(db, c, "Data Engineer-Data Platforms-Google - 5", "Applied")
+        _app(db, c, "Data Engineer, IBM Quantum", "Applied")
+        raw = mail("talent@ibm.com", "Your IBM Application Status",
+                   "Dear D, we have decided to move forward with other candidates.", name="IBM Talent Acquisition")
+        assert _match(db, raw).state == "choose"
+
 
 class TestFirstRunChoiceAndRuns:
     def _signup(self, choice):

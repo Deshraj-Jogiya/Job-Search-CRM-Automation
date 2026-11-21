@@ -153,19 +153,30 @@ def _contacts_for(db: Session, app_id: int) -> list[str]:
     return sorted(set(names))
 
 
+def _sure_of_company(row: EmailMessage) -> bool:
+    """A rejection is "medium" only because it came from the employer's own address (no-reply@perpay.com) rather than
+    an ATS or a known person. It still applies on its own when the company was found by its exact name, a job ID or
+    the sender: the "not moving forward" wording itself is never a weak line (those make no rejection at all)."""
+    how = row.match_how or ""
+    return "(exact)" in how or "job ID" in how or how.startswith("sender")
+
+
 def auto_accept_confirmations(db: Session) -> int:
     """Employer emails that only say what already happened are applied without a click: "we received your
     application" marks it Applied, "we will not move forward" marks it Not Selected (Applied first, dated from the
     confirmation, when it was never marked). Only high-confidence emails matched to one application; an Offer is never
-    touched; anything that could be about several applications still waits on /inbox. A rejection on an application
+    touched; anything that could be about several applications still waits on /inbox. A rejection from the
+    employer's own address counts when the company was matched exactly (`_sure_of_company`). A rejection on an application
     with people he contacted is logged with their names, the only ones worth asking for feedback. Covers older
     waiting emails too."""
     done = 0
     rows = (db.query(EmailMessage).filter(EmailMessage.state == "pending", EmailMessage.kind.in_(list(_AUTO_KEYS)),
-                                          EmailMessage.confidence == "high", EmailMessage.match_state == "matched",
-                                          EmailMessage.application_id.isnot(None))
+                                          EmailMessage.confidence.in_(("high", "medium")),
+                                          EmailMessage.match_state == "matched", EmailMessage.application_id.isnot(None))
             .order_by(EmailMessage.received_at).all())
     for row in rows:
+        if row.confidence != "high" and not (row.kind == "rejection" and _sure_of_company(row)):
+            continue
         db.refresh(row)
         if row.state != "pending":
             continue  # settled by an earlier one for the same application

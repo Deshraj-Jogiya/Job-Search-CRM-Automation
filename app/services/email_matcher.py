@@ -197,6 +197,44 @@ def rank(apps: list[JobApplication], cls: Classification) -> list[tuple[float, J
     return scored
 
 
+def _norm_title(value: str | None) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (value or "").lower()).strip()
+
+
+def _one_sent(apps: list[JobApplication]) -> JobApplication | None:
+    sent = [a for a in apps if a.status in SENT]
+    return sent[0] if len(sent) == 1 else None
+
+
+def _decide_by_title(raw: RawEmail, cls: Classification, apps: list[JobApplication]) -> tuple[JobApplication, str] | None:
+    """Pick one application at a company with several, from evidence in the email itself (real cases, 2026-11-21):
+    1. the email names a role equal to one title ("Machine Learning Engineer" at Lyft); when two copies of the same
+       posting are equal, the one actually sent;
+    2. one application's full title is written in the email ("Data Engineer-Data Platforms-Google - 5" at IBM; the
+       longest wins, so "Applied Scientist II" beats a shorter title it contains);
+    3. a rejection that names no role, where only one application at the company was sent (Schwab, JPMorgan)."""
+    if cls.role:
+        role = _norm_title(cls.role)
+        equal = [a for a in apps if _norm_title(a.posting.job_title) == role]
+        if len(equal) == 1:
+            return equal[0], f"role '{cls.role}' is this application's title"
+        if len(equal) > 1 and _one_sent(equal):
+            return _one_sent(equal), f"role '{cls.role}'; the copy that was sent"
+    text = " " + _norm_title(f"{raw.subject} {raw.text}") + " "
+    inside = [a for a in apps if len(_norm_title(a.posting.job_title).split()) >= 2
+              and f" {_norm_title(a.posting.job_title)} " in text]
+    if inside:
+        longest = max(len(_norm_title(a.posting.job_title)) for a in inside)
+        top = [a for a in inside if len(_norm_title(a.posting.job_title)) == longest]
+        if len(top) == 1:
+            return top[0], f"the email names '{top[0].posting.job_title}'"
+        if _one_sent(top):
+            return _one_sent(top), f"the email names '{top[0].posting.job_title}'; the copy that was sent"
+    if cls.kind == "rejection" and not cls.role and _one_sent(apps):
+        return _one_sent(apps), "names no role, and this is the only application sent there"
+    return None
+
+
 def match(index: CompanyIndex, people: dict[str, set[int | None]], raw: RawEmail, cls: Classification) -> MatchResult:
     # 1. someone already contacted or saved as the recruiter
     linked = {a for a in people.get(raw.sender_email, set()) if a and a in index.app_by_id}
@@ -235,6 +273,9 @@ def match(index: CompanyIndex, people: dict[str, set[int | None]], raw: RawEmail
     best_sim = title_similarity(cls.role, best.posting.job_title)
     if by_ref and (len(ranked) == 1 or not ranked[1][2]):
         return MatchResult("matched", best.id, ids, f"{how}; job ID {cls.job_ref}")
+    picked = _decide_by_title(raw, cls, [a for _, a, _ in ranked])
+    if picked:
+        return MatchResult("matched", picked[0].id, ids, f"{how}; {picked[1]}")
     if cls.role and best_sim < 0.3:
         # The email names a role none of this company's applications has (Torc "ML Engineer I" against a saved
         # "ML Engineer II - 3D"): likely a role that never made it into the CRM, so ask rather than guess.
