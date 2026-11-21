@@ -832,3 +832,21 @@ class TestFirstRunChoiceAndRuns:
         response = client.post("/inbox/check", data={"csrf_token": client.cookies.get(CSRF_COOKIE_NAME)},
                                follow_redirects=False)
         assert "error=" in response.headers["location"]
+
+
+def test_a_waiting_rejection_resolves_once_another_settles(db):
+    """IBM, 2026-11-21: two sent applications, two rejections; one names its title, the other names none. Once the
+    first is applied, the second has one sent application left and applies in the same check."""
+    c = make_company(db, "IBM")
+    named = _app(db, c, "Data Engineer-Data Platforms-Google - 5", "Applied")
+    other = _app(db, c, "Data Engineer, IBM Quantum", "Applied")
+    vague = mail("talent@ibm.com", "Your IBM Application Status",
+                 "Dear D, we have decided to move forward with other candidates.", name="IBM Talent Acquisition", days=-3)
+    _ingest(db, vague)
+    assert _row(db, vague).state == "pending"
+    clear = mail("talent@ibm.com", "Your IBM Application Status",
+                 "Ref: 134985 - Data Engineer-Data Platforms-Google - 5. We have decided to move forward with other "
+                 "candidates.", name="IBM Talent Acquisition")
+    _ingest(db, clear)
+    db.refresh(named), db.refresh(other)
+    assert (named.status, other.status) == ("Not Selected", "Not Selected")

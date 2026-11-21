@@ -132,7 +132,15 @@ def ingest(db: Session, emails: list[RawEmail]) -> dict:
         counts["noted" if row.state == "noted" else "suggested"] += 1
     counts["stored"] = len(stored)
     db.commit()
-    auto = auto_accept_confirmations(db)
+    # Older waiting emails are matched again each time: an application added since, or one settled by this run (IBM's
+    # other application marked Not Selected leaves one sent), can turn a "choose" into one clear match.
+    auto = 0
+    for _ in range(3):
+        rematch_pending(db)
+        step = auto_accept_confirmations(db)
+        auto += step
+        if not step:
+            break
     counts["auto_applied"] = auto
     counts["suggested"] -= min(auto, counts["suggested"])
     return counts
