@@ -513,7 +513,7 @@ def rematch_pending(db: Session) -> int:
         raw = RawEmail(uid=0, message_id=row.message_id, sender_name=row.sender_name or "", sender_email=row.sender_email,
                        subject=row.subject or "", received_at=row.received_at, text=row.excerpt or "")
         cls = email_classifier.Classification(row.kind, row.confidence, row.reason or "", company=row.company_guess,
-                                              role=row.role_guess, job_ref=row.job_ref,
+                                              role=email_classifier._tidy_role(row.role_guess), job_ref=row.job_ref,
                                               hints=email_classifier.sender_hints(raw))
         result = email_matcher.match(index, people, raw, cls)
         if result.state != row.match_state or result.application_id != row.application_id:
