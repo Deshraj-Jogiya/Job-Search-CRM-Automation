@@ -465,8 +465,9 @@
             <p class="muted-note">Marked replied {{ application.replied_at.strftime("%Y-%m-%d %H:%M") }} UTC.</p>
             {% endif %}
             <p class="muted-note">
-                None of this is inferred automatically -- there's no inbox scanning in this build, so update it
-                yourself as things happen. It's what makes the analytics/metrics pages' conversion numbers real.
+                When job emails are read (Inbox), an employer's confirmation marks this Applied and a "not moving
+                forward" marks it Not Selected on their own; interviews, offers and replies wait for you on the Inbox
+                page. Update anything else yourself. It's what makes the analytics/metrics pages' conversion numbers real.
             </p>
             <div class="pending-actions">
                 {% if not application.replied_at %}

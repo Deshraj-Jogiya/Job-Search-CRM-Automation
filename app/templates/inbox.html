@@ -41,11 +41,12 @@
     <h2>Inbox</h2>
     {% if showcase_mode %}
     <p class="muted-note">Demo: these are sample emails for the fictional candidate, sorted and matched by the same rules a real
-        instance uses. A real instance reads its own mailbox (read-only) and changes an application only when you accept.</p>
+        instance uses. A real instance reads its own mailbox (read-only) and applies clear confirmations and rejections on its own; everything else waits for you.</p>
     {% else %}
     <p class="muted-note">Job emails from your mailbox: confirmations, rejections, interview and assessment requests, offers and
-        replies, each matched to its application. The mailbox is only read (nothing is marked read, moved or deleted), and no
-        application changes until you accept. Changes use the email's date.</p>
+        replies, each matched to its application. The mailbox is only read (nothing is marked read, moved or deleted), A clear
+        confirmation marks its application Applied and a clear rejection marks it Not Selected on their own; interviews,
+        offers, replies and emails that could be about several applications wait for you here. Changes use the email's date.</p>
     {% if not configured %}
     <p class="flash flash-error" role="alert">Email reading isn't set up: add IMAP_HOST, IMAP_USER and IMAP_PASSWORD (a Gmail app
         password) to .env and restart.</p>

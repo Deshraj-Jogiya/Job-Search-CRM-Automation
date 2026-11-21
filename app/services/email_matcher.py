@@ -241,6 +241,13 @@ def match(index: CompanyIndex, people: dict[str, set[int | None]], raw: RawEmail
         return MatchResult("choose", None, ids, f"{how}; role '{cls.role}' is not one of this company's applications")
     if len(ranked) == 1:
         return MatchResult("matched", best.id, ids, how)
+    # The email names a shortened title ("Machine Learning Engineer Graduate") that only one application's full title
+    # contains as whole words ("... Graduate (Tech and Product, USDS) - 2027 Start"): that one.
+    if cls.role and len(cls.role.split()) >= 2:
+        pat = re.compile(rf"(?<![a-z0-9]){re.escape(cls.role.lower())}(?![a-z0-9])")
+        holders = [a for _, a, _ in ranked if pat.search((a.posting.job_title or "").lower())]
+        if len(holders) == 1:
+            return MatchResult("matched", holders[0].id, ids, f"{how}; role '{cls.role}' is in this application's title")
     second_sim = title_similarity(cls.role, ranked[1][1].posting.job_title)
     if best_sim >= 0.6 and (best_sim - second_sim >= 0.3 or
                             _status_weight(cls.kind, best.status) > _status_weight(cls.kind, ranked[1][1].status)):

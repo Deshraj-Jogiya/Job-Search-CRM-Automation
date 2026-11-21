@@ -176,6 +176,13 @@ def _row(db, raw):
     return db.query(EmailMessage).filter(EmailMessage.message_id == raw.message_id).one()
 
 
+def _ingest_waiting(db, *emails):
+    """Ingest without the automatic step, so a rejection or confirmation stays on /inbox for the test to act on."""
+    from unittest import mock
+    with mock.patch.object(email_sync_service, "auto_accept_confirmations", return_value=0):
+        return _ingest(db, *emails)
+
+
 class TestIngestAndAccept:
     def test_unrelated_mail_is_not_stored(self, db):
         counts = _ingest(db, mail("friend@example.org", "Dinner Friday?", "Are you free?"))
@@ -227,19 +234,58 @@ class TestIngestAndAccept:
         db.refresh(app)
         assert app.status == "Applied" and app.applied_at == raw.received_at
 
-    def test_nothing_changes_until_accepted(self, db):
+    def test_rejection_marks_not_selected_on_its_own(self, db):
         app = _app(db, make_company(db, "Lyft"), "Data Engineer", "Applied")
         raw = mail("no-reply@us.greenhouse-mail.io", "Your application to Lyft",
                    "Unfortunately we have decided to move forward with other candidates.", name="Lyft Hiring Team")
         _ingest(db, raw)
         db.refresh(app)
-        assert app.status == "Applied"
+        assert app.status == "Not Selected" and app.not_selected_at == raw.received_at
+        row = _row(db, raw)
+        assert row.state == "done" and row.action_taken.startswith(email_sync_service.AUTO_REJECT_LABEL)
+
+    def test_auto_rejection_names_the_people_contacted_there(self, db):
+        app = _app(db, make_company(db, "Lyft"), "Data Engineer", "Applied")
+        db.add(OutreachMessage(application_id=app.id, recipient_name="Pat Lee",
+                               subject="Hi", body="Hello", status="Sent"))
+        db.commit()
+        raw = mail("no-reply@us.greenhouse-mail.io", "Your application to Lyft",
+                   "Unfortunately we have decided to move forward with other candidates.", name="Lyft Hiring Team")
+        _ingest(db, raw)
+        assert "Pat Lee" in _row(db, raw).action_taken
+        assert db.query(ActivityLog).filter(ActivityLog.message.contains("Pat Lee")).count() == 1
+
+    def test_rejection_never_touches_an_offer(self, db):
+        app = _app(db, make_company(db, "Lyft"), "Data Engineer", "Offer")
+        raw = mail("no-reply@us.greenhouse-mail.io", "Your application to Lyft",
+                   "Unfortunately we have decided to move forward with other candidates.", name="Lyft Hiring Team")
+        _ingest(db, raw)
+        db.refresh(app)
+        assert app.status == "Offer"
+
+    def test_rejection_that_could_be_several_applications_waits(self, db):
+        c = make_company(db, "Torc Robotics")
+        a = _app(db, c, "ML Engineer II - 3D Perception", "Applied")
+        raw = mail("no-reply@us.greenhouse-mail.io", "Your application to Torc Robotics",
+                   "Unfortunately we have decided to move forward with other candidates for the Data Analyst role.",
+                   name="Torc Robotics Hiring Team")
+        _ingest(db, raw)
+        db.refresh(a)
+        assert a.status == "Applied" and _row(db, raw).state == "pending"
+
+    def test_interview_waits_for_a_click(self, db):
+        app = _app(db, make_company(db, "Acme"), "Data Engineer", "Applied", recruiter_email="sam@acme.com")
+        raw = mail("sam@acme.com", "Next steps", "I would love to talk. Would you be available for a call next week?",
+                   name="Sam R")
+        _ingest(db, raw)
+        db.refresh(app)
+        assert app.status == "Applied" and _row(db, raw).state == "pending"
 
     def test_rejection_is_not_selected_never_rejected(self, db):
         app = _app(db, make_company(db, "Lyft"), "Data Engineer", "Applied")
         raw = mail("no-reply@us.greenhouse-mail.io", "Your application to Lyft",
                    "Unfortunately we have decided to move forward with other candidates.", name="Lyft Hiring Team")
-        _ingest(db, raw)
+        _ingest_waiting(db, raw)
         email_sync_service.accept(db, _row(db, raw).id)
         db.refresh(app)
         assert app.status == "Not Selected" and app.not_selected_at == raw.received_at
@@ -250,12 +296,11 @@ class TestIngestAndAccept:
                        "Thank you for applying for the Data Engineer role.", name="Lyft Hiring Team", days=-10)
         reject = mail("no-reply@us.greenhouse-mail.io", "Your application to Lyft",
                       "Unfortunately we have decided to move forward with other candidates.", name="Lyft Hiring Team")
-        _ingest(db, confirm, reject)
-        email_sync_service.accept(db, _row(db, reject).id)
+        _ingest(db, confirm, reject)  # the confirmation and the rejection both apply on their own
         db.refresh(app)
         assert app.status == "Not Selected"
         assert app.applied_at == confirm.received_at  # the earliest confirmation, not the rejection's date
-        assert _row(db, confirm).state == "done"  # applied on its own when it arrived
+        assert _row(db, confirm).state == "done" and _row(db, reject).state == "done"
 
     def test_confirmation_for_an_applied_application_needs_nothing(self, db):
         _app(db, make_company(db, "Whatnot"), "Data Engineer", "Applied")
@@ -304,7 +349,7 @@ class TestIngestAndAccept:
         app = _app(db, make_company(db, "Lyft"), "Data Engineer", "Applied")
         raw = mail("no-reply@us.greenhouse-mail.io", "Your application to Lyft",
                    "Unfortunately we have decided to move forward with other candidates.", name="Lyft Hiring Team")
-        _ingest(db, raw)
+        _ingest_waiting(db, raw)
         row = _row(db, raw)
         email_sync_service.dismiss(db, row.id)
         db.refresh(app)
@@ -316,7 +361,7 @@ class TestIngestAndAccept:
         app = _app(db, make_company(db, "Lyft"), "Data Engineer", "Applied")
         raw = mail("no-reply@us.greenhouse-mail.io", "Your application to Lyft",
                    "Unfortunately we have decided to move forward with other candidates.", name="Lyft Hiring Team")
-        _ingest(db, raw)
+        _ingest_waiting(db, raw)
         row = _row(db, raw)
         email_sync_service.set_kind(db, row.id, "interview")
         email_sync_service.accept(db, row.id)
@@ -327,7 +372,7 @@ class TestIngestAndAccept:
         _app(db, make_company(db, "Lyft"), "Data Engineer", "Applied")
         raw = mail("no-reply@us.greenhouse-mail.io", "Your application to Lyft",
                    "Unfortunately we have decided to move forward with other candidates.", name="Lyft Hiring Team")
-        _ingest(db, raw)
+        _ingest_waiting(db, raw)
         row_id = _row(db, raw).id
         email_sync_service.accept(db, row_id)
         with pytest.raises(EmailSyncError):
@@ -492,9 +537,9 @@ class TestReader:
         settings = get_or_create_settings(db)
         assert settings.email_sync_last_uid == 7 and settings.email_sync_uidvalidity == 11
         assert settings.email_sync_last_error is None
-        assert counts["suggested"] == 2  # the Lyft rejection, and the Whatnot confirmation offered to add
+        assert counts["suggested"] == 1  # the Whatnot confirmation offered to add; the Lyft rejection applied itself
         rows = {r.subject: r for r in db.query(EmailMessage).all()}
-        assert rows["Your application to Lyft"].match_state == "matched"
+        assert rows["Your application to Lyft"].match_state == "matched" and rows["Your application to Lyft"].state == "done"
         assert rows["Thank you for applying to Whatnot"].match_state == "unmatched"
         assert db.query(EmailMessage).filter(EmailMessage.sender_email == "friend@example.org").count() == 0
 
@@ -528,7 +573,8 @@ class TestShowcase:
 
         demo_seed_service.seed_demo_data(db)
         groups = email_sync_service.inbox(db)
-        assert len(groups["suggested"]) >= 3 and len(groups["unmatched"]) >= 1
+        assert len(groups["suggested"]) >= 2 and len(groups["unmatched"]) >= 1
+        assert db.query(EmailMessage).filter(EmailMessage.action_taken.like("Marked as%automatically%")).count() >= 1
         assert all(r.excerpt is None for r in db.query(EmailMessage).filter(EmailMessage.state == "ignored"))
         demo_seed_service.reset_demo_data(db)
         assert db.query(EmailMessage).count() == 6
@@ -543,7 +589,7 @@ def test_inbox_page_and_actions(db, monkeypatch):
     app = _app(db, make_company(db, "Lyft"), "Data Engineer", "Applied")
     raw = mail("no-reply@us.greenhouse-mail.io", "Your application to Lyft",
                "Unfortunately we have decided to move forward with other candidates.", name="Lyft Hiring Team")
-    _ingest(db, raw)
+    _ingest_waiting(db, raw)
     row_id = _row(db, raw).id
     client = TestClient(web_app)
     page = client.get("/inbox")
@@ -650,10 +696,49 @@ class TestDryRunFixes:
                  "Unfortunately we have decided to move forward with other candidates.", name="Lyft Hiring Team", days=-2)
         b = mail("no-reply@us.greenhouse-mail.io", "Your application to Lyft",
                  "Unfortunately we have decided to move forward with other candidates.", name="Lyft Hiring Team", days=-1)
-        _ingest(db, a, b)
+        _ingest_waiting(db, a, b)
         done, errors = email_sync_service.accept_many(db, [_row(db, a).id, _row(db, b).id])
         db.refresh(app)
         assert (done, errors, app.status) == (1, [], "Not Selected") and app.not_selected_at == a.received_at
+
+
+class TestLiveGapsNov21:
+    """Real emails from 2026-11-21 that were misread or not tied to their application."""
+
+    def test_selection_process_boilerplate_is_a_confirmation(self):
+        raw = mail("noreply@icims.com", "Thank you for your application",
+                   "Thank you for applying for the Data Engineer position at CommonSpirit. We have received your "
+                   "application. Our selection process may include phone screens and interviews with the hiring team.",
+                   name="CommonSpirit Talent Acquisition")
+        assert kind(raw) == "confirmation"
+
+    def test_linkedin_view_job_link_is_the_job_ref(self):
+        raw = mail("jobs-noreply@linkedin.com", "Your application was sent to TikTok",
+                   "Your application was sent to TikTok. Data Engineer View job: "
+                   "https://www.linkedin.com/comm/jobs/view/4492028223/?trackingId=abc")
+        assert email_classifier.extract_job_ref(raw) == "4492028223"
+
+    def test_workday_number_after_the_title_is_not_part_of_the_role(self):
+        assert email_classifier._tidy_role("BI Developer – 31168177") == "BI Developer"
+        assert email_classifier._tidy_role("Data Engineer - JR-104070") == "Data Engineer"
+
+    def test_role_named_in_one_title_decides(self, db):
+        c = make_company(db, "Abbott")
+        _app(db, c, "Sr. Data Engineer", "Approved")
+        target = _app(db, c, "BI Developer (SQL)", "Approved")
+        raw = mail("no-reply@us.greenhouse-mail.io", "Thank you for applying to Abbott",
+                   "Thank you for applying for the BI Developer role at Abbott. We received your application.",
+                   name="Abbott Hiring Team")
+        assert _match(db, raw).application_id == target.id
+
+    def test_short_role_contained_in_a_long_title(self, db):
+        c = make_company(db, "TikTok")
+        _app(db, c, "Machine Learning Engineer, Ads Ranking", "Approved")
+        target = _app(db, c, "Data Engineer, Recommendation Architecture - USDS", "Approved")
+        raw = mail("no-reply@us.greenhouse-mail.io", "Thank you for applying to TikTok",
+                   "Thank you for applying for the Data Engineer role at TikTok. We received your application.",
+                   name="TikTok Hiring Team")
+        assert _match(db, raw).application_id == target.id
 
 
 class TestFirstRunChoiceAndRuns:

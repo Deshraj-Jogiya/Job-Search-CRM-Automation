@@ -2,8 +2,9 @@
 Job emails into the CRM: reads new mail (email_reader_service, read-only), sorts it by rules (email_classifier, no AI,
 no paid calls), finds the application it is about (email_matcher), and keeps a row per email for the /inbox page.
 
-Nothing changes an application until the user accepts it on /inbox, with one exception: a high-confidence
-"application received" email matched to one application marks it Applied on its own (auto_accept_confirmations).
+Nothing changes an application until the user accepts it on /inbox, with two exceptions: a high-confidence
+"application received" email matched to one application marks it Applied, and a high-confidence "not moving forward"
+marks it Not Selected, on their own (auto_accept_confirmations). Interviews, offers and replies always wait.
 Every change goes through
 confirmation_service's guarded functions with the email's own date, so the funnel dates (applied_at, not_selected_at,
 ...) are when it happened, not when the button was clicked. Nothing is ever deleted: an employer's "no" becomes
@@ -138,15 +139,29 @@ def ingest(db: Session, emails: list[RawEmail]) -> dict:
 
 
 AUTO_LABEL = "Marked as Applied automatically (the employer confirmed the application)"
+AUTO_REJECT_LABEL = "Marked as Not Selected automatically (the employer said no)"
+# Which suggestions apply on their own, per email kind. Confirmations (his call, 2026-11-20) and rejections (his call,
+# 2026-11-21: "applied and rejected, nothing I can do... rejected is rejected") only record what already happened.
+# Interviews, assessments, offers and replies still wait on /inbox: they ask him to do something.
+_AUTO_KEYS = {"confirmation": {"applied"}, "rejection": {"not_selected", "applied_not_selected"}}
+
+
+def _contacts_for(db: Session, app_id: int) -> list[str]:
+    from ..models import OutreachMessage
+    names = [n for (n,) in db.query(OutreachMessage.recipient_name).filter(
+        OutreachMessage.application_id == app_id, OutreachMessage.status == "Sent").distinct().all() if n]
+    return sorted(set(names))
 
 
 def auto_accept_confirmations(db: Session) -> int:
-    """An employer's "we received your application" for one clearly matched application only says what the user
-    already did, so it is applied without a click (his call, 2026-11-20). Only high-confidence confirmations matched
-    to a single application whose one step is Mark as Applied; rejections, interviews, offers, replies and any email
-    that could be about several applications still wait on /inbox. Covers older waiting confirmations too."""
+    """Employer emails that only say what already happened are applied without a click: "we received your
+    application" marks it Applied, "we will not move forward" marks it Not Selected (Applied first, dated from the
+    confirmation, when it was never marked). Only high-confidence emails matched to one application; an Offer is never
+    touched; anything that could be about several applications still waits on /inbox. A rejection on an application
+    with people he contacted is logged with their names, the only ones worth asking for feedback. Covers older
+    waiting emails too."""
     done = 0
-    rows = (db.query(EmailMessage).filter(EmailMessage.state == "pending", EmailMessage.kind == "confirmation",
+    rows = (db.query(EmailMessage).filter(EmailMessage.state == "pending", EmailMessage.kind.in_(list(_AUTO_KEYS)),
                                           EmailMessage.confidence == "high", EmailMessage.match_state == "matched",
                                           EmailMessage.application_id.isnot(None))
             .order_by(EmailMessage.received_at).all())
@@ -155,19 +170,28 @@ def auto_accept_confirmations(db: Session) -> int:
         if row.state != "pending":
             continue  # settled by an earlier one for the same application
         app = db.get(JobApplication, row.application_id)
-        s = suggestion_for(row, app, db) if app else None
-        if s is None or s.key != "applied":
+        if app is None or app.status == "Offer":
             continue
+        s = suggestion_for(row, app, db)
+        if s is None or s.key not in _AUTO_KEYS[row.kind]:
+            continue
+        company = app.posting.company_name_raw or "an application"
         try:
             accept(db, row.id)
         except EmailSyncError as e:
-            log_activity(db, f"Email check: could not mark application {app.id} as Applied from an email: {e}", "WARNING")
+            log_activity(db, f"Email check: could not update application {app.id} from an email: {e}", "WARNING")
             continue
         row = db.get(EmailMessage, row.id)
-        row.action_taken = AUTO_LABEL
+        if row.kind == "rejection":
+            people = _contacts_for(db, app.id)
+            row.action_taken = AUTO_REJECT_LABEL + (f"; you contacted {', '.join(people)[:120]}" if people else "")
+            msg = (f"Marked {company} ({app.id}) as Not Selected from the employer's email of {row.received_at:%Y-%m-%d}."
+                   + (f" People you contacted there, who could be asked for feedback: {', '.join(people)}." if people else ""))
+        else:
+            row.action_taken = AUTO_LABEL
+            msg = f"Marked {company} ({app.id}) as Applied from the employer's confirmation email of {row.received_at:%Y-%m-%d}."
         db.commit()
-        log_activity(db, f"Marked {app.posting.company_name_raw or 'an application'} ({app.id}) as Applied from the "
-                         f"employer's confirmation email of {row.received_at:%Y-%m-%d}.", "INFO")
+        log_activity(db, msg, "INFO")
         done += 1
     return done
 
@@ -260,7 +284,8 @@ def _run_sync(db: Session, connect, force: bool) -> dict:
     if counts["suggested"]:
         log_activity(db, f"Email check: {counts['suggested']} job email{'s' if counts['suggested'] != 1 else ''} to review "
                          f"on the inbox page ({counts['read']} read"
-                         + (f", {counts['auto_applied']} marked Applied from confirmations" if counts.get("auto_applied") else "")
+                         + (f", {counts['auto_applied']} applications updated from confirmations and rejections"
+                            if counts.get("auto_applied") else "")
                          + ").", "INFO")
     return counts
 

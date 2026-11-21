@@ -127,7 +127,8 @@ CONFIRMATION_PHRASES = (
 # Sentences that describe what *might* happen; they never make an email an interview or an assessment.
 _CONDITIONAL_RE = re.compile(
     r"\b(if (you are|you're|your|we|selected|there|it|a|you)|should (you|your|we|there)|once (we|our)|in the event|"
-    r"will (reach out|contact you|be in touch)|may (reach out|contact)|might|whether|qualified candidates|"
+    r"will (reach out|contact you|be in touch)|may (reach out|contact)|(may|can|could|might) (include|involve|consist)|"
+    r"selection process|as part of (its|our|the) (selection|hiring|recruiting)|might|whether|qualified candidates|"
     r"selected candidates|candidates (who|that)|next steps? (would|will|may)|what happens next|typically|"
     r"our process|hiring process (includes|consists|may)|only be able|select few|in the meantime|keep an eye|"
     r"explore our|feel free|stages)\b", re.I)
@@ -141,6 +142,7 @@ _JOB_ID_RE = re.compile(
     r"\b(?:job\s*(?:id|number|no\.?|#|req(?:uisition)?)|req(?:uisition)?\s*(?:id|number|no\.?|#)?|"
     r"position\s*(?:id|number)|posting\s*id|reference\s*(?:number|no\.?|id))\s*[:#-]?\s*([A-Z]{0,4}[-_]?\d[\w-]{2,})",
     re.I)
+_LINKEDIN_VIEW_JOB_RE = re.compile(r"\bView job:?\s*https?://(?:www\.)?linkedin\.com/(?:comm/)?jobs/view/(\d{8,})", re.I)
 _PAREN_ID_RE = re.compile(r"\(\s*(?:ID|Job ID|Req|JR)\s*[:#]?\s*([A-Z]{0,4}\d[\w-]{2,})\s*\)", re.I)
 _CODE_ID_RE = re.compile(r"\b((?:JR|R|REQ|JR-|R-|REQ-)\d{4,}(?:-\d+)?)\b")
 _DUE_RE = re.compile(
@@ -340,6 +342,7 @@ def _tidy_role(value: str | None) -> str | None:
     role = re.sub(r"\s*[-–(]\s*(?:job\s*)?(?:id|req|number)\b.*$", "", role, flags=re.I)
     role = re.sub(r"^(?:JR|R|REQ)-?\d{4,}\s+", "", role)
     role = re.sub(r"\s*\((?:open|closed)\)$", "", role, flags=re.I).strip(" -")
+    role = re.sub(r"\s+[-–—]\s+[A-Z]{0,4}[-_]?\d{5,}$", "", role).strip(" -")  # Workday "BI Developer – 31168177"
     return role if role and _ROLE_WORD_RE.search(role) and len(role.split()) <= 14 else None
 
 
@@ -361,6 +364,11 @@ def extract_role(raw: RawEmail) -> str | None:
 
 def extract_job_ref(raw: RawEmail) -> str | None:
     head = flat(raw.subject) + " \n " + flat(raw.text)[:2000]
+    # A LinkedIn receipt names the job only by its link ("View job: .../jobs/view/4492028223/"); that ID is in the
+    # posting URL the CRM saved, so it settles which application it is.
+    m = _LINKEDIN_VIEW_JOB_RE.search(flat(raw.text)[:4000])
+    if m:
+        return m.group(1)
     for pattern in (_PAREN_ID_RE, _JOB_ID_RE, _CODE_ID_RE):
         m = pattern.search(head)
         if m:
