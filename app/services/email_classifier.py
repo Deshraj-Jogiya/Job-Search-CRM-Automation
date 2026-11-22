@@ -160,7 +160,7 @@ _DISPLAY_JUNK_RE = re.compile(r"\b(my)?workday\b|\bhr\b(?=workday)|\bno ?reply\b
 _NAME = r"([A-Z0-9][\w&.'’-]*(?:\s+(?:&\s+)?[A-Z0-9(][\w&.'’()-]*){0,6})"
 _TEXT_COMPANY_RES = (
     re.compile(r"your application was sent to\s+(.+?)(?:\s*$|\s*\n)", re.I | re.M),
-    re.compile(r"\b(?:applying|applied|application)\s+(?:to|with|at)\s+(?:the\s+)?(?:team at\s+)?" + _NAME + r"(?=\s*(?:[!.,\n]|$|\s+(?:for|and|we|as|-|is|has)\b))"),
+    re.compile(r"\b(?:applying|applied|apply|application)\s+(?:to|with|at)\s+(?:the\s+)?(?:team at\s+)?" + _NAME + r"(?=\s*(?:[!.,\n]|$|\s+(?:for|and|we|as|-|is|has)\b))"),
     re.compile(r"\binterest in\s+(?:joining\s+(?:the team at\s+|us at\s+)?|working (?:at|with|for)\s+)?" + _NAME + r"(?=\s*(?:[!.,\n]|$|\s+(?:for|and|we|as|-|is|has)\b))"),
     re.compile(r"\b(?:role|position)\s+(?:here\s+)?at\s+" + _NAME + r"(?=\s*(?:[!.,\n]|$|\s+(?:for|and|we|as|-|is|has)\b))"),
     re.compile(r"\bcareers? (?:at|with)\s+" + _NAME + r"(?=\s*(?:[!.,\n]|$))"),

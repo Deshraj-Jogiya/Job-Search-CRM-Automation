@@ -850,3 +850,10 @@ def test_a_waiting_rejection_resolves_once_another_settles(db):
     _ingest(db, clear)
     db.refresh(named), db.refresh(other)
     assert (named.status, other.status) == ("Not Selected", "Not Selected")
+
+
+def test_company_from_time_to_apply_to():
+    raw = mail("no-reply@us.greenhouse-mail.io", "Thanks for your interest, D",
+               "Thanks again for taking the time to apply to SeatGeek. We have decided not to move forward with your "
+               "application for the Senior Machine Learning Engineer position.")
+    assert email_classifier.classify(raw).company == "SeatGeek"
