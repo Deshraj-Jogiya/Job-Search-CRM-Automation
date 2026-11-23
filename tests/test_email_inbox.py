@@ -868,3 +868,22 @@ def test_confirmation_from_the_employers_own_address_applies(db):
     _ingest(db, raw)
     db.refresh(app)
     assert _row(db, raw).confidence == "medium" and app.status == "Applied"
+
+
+def test_reminder_for_a_started_application_is_not_a_confirmation():
+    """Amazon "Keep track of your application", 2026-11-22: sent whether or not the application was finished."""
+    raw = mail("noreply@mail.amazon.jobs", "Keep track of your application",
+               "Thank you for your interest in Business Intelligence Engineer, Amazon Autos (ID: 10488670). If you have "
+               "completed the application: Great! If you are still working on the application: Don't worry! You can "
+               "complete it here when you're ready.")
+    assert kind(raw) == "ignore"
+
+
+def test_general_title_inside_a_longer_named_role_is_not_evidence(db):
+    c = make_company(db, "Amazon")
+    _app(db, c, "Applied Scientist", "Ingested")
+    _app(db, c, "Data Engineer, Amazon Prime", "Applied")
+    raw = mail("noreply@mail.amazon.jobs", "Thank you for Applying to Amazon!",
+               "We've received your application for the Applied Scientist, AWS Payments and Fraud Prevention (ID: "
+               "10557803) position.")
+    assert _match(db, raw).state != "matched"

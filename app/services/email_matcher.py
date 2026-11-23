@@ -221,8 +221,13 @@ def _decide_by_title(raw: RawEmail, cls: Classification, apps: list[JobApplicati
         if len(equal) > 1 and _one_sent(equal):
             return _one_sent(equal), f"role '{cls.role}'; the copy that was sent"
     text = " " + _norm_title(f"{raw.subject} {raw.text}") + " "
+    named = _norm_title(cls.role)
+    # A title written inside a longer role the email names ("Applied Scientist" inside "Applied Scientist, AWS Payments
+    # and Fraud Prevention") is a different, more general posting, not evidence for it.
     inside = [a for a in apps if len(_norm_title(a.posting.job_title).split()) >= 2
-              and f" {_norm_title(a.posting.job_title)} " in text]
+              and f" {_norm_title(a.posting.job_title)} " in text
+              and not (named and named != _norm_title(a.posting.job_title)
+                       and f" {_norm_title(a.posting.job_title)} " in f" {named} ")]
     if inside:
         longest = max(len(_norm_title(a.posting.job_title)) for a in inside)
         top = [a for a in inside if len(_norm_title(a.posting.job_title)) == longest]

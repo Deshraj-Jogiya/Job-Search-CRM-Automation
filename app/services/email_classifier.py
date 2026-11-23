@@ -132,6 +132,11 @@ _CONDITIONAL_RE = re.compile(
     r"selected candidates|candidates (who|that)|next steps? (would|will|may)|what happens next|typically|"
     r"our process|hiring process (includes|consists|may)|only be able|select few|in the meantime|keep an eye|"
     r"explore our|feel free|stages)\b", re.I)
+# Reminders sent for an application that was started; they never say it was sent.
+_UNFINISHED_RE = re.compile(
+    r"\b(if you have (completed|finished|submitted) (the|your) application|still working on (the|your) application|"
+    r"complete (it|your application) here|finish (your|the) application|your application is (not yet complete|incomplete))\b",
+    re.I)
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 # A rejection phrase inside "if you don't complete it by Friday we will not move forward" is a condition, not a decision.
 _IF_RE = re.compile(r"\b(if|unless|should you|in the event|otherwise|submissions that|those who|anyone who|candidates who)\b", re.I)
@@ -444,6 +449,10 @@ def classify(raw: RawEmail, known_person: bool = False, tracked_company_sender: 
     hit = _actionable(text, INTERVIEW_PHRASES, _INVITE_RE)
     if hit and (jobish or (is_person(raw) and "interview" in subject)):
         return Classification("interview", "high" if jobish else "medium", f"matched '{hit}'", due=extract_due(body), **extras)
+
+    if _UNFINISHED_RE.search(text):
+        # Amazon's "Keep track of your application": sent when an application is started, finished or not.
+        return Classification("ignore", "medium", "reminder about an application that may not be finished", hints=hints)
 
     hit = _find(text, CONFIRMATION_PHRASES)
     if hit and (jobish or "applica" in subject or "applying" in subject or _find(subject, CONFIRMATION_PHRASES)):
