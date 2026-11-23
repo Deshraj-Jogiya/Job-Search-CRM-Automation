@@ -887,3 +887,40 @@ def test_general_title_inside_a_longer_named_role_is_not_evidence(db):
                "We've received your application for the Applied Scientist, AWS Payments and Fraud Prevention (ID: "
                "10557803) position.")
     assert _match(db, raw).state != "matched"
+
+
+def test_close_company_name_with_the_exact_title_applies(db):
+    """Otter.ai, 2026-11-23: talent@otter.ai names "Otter" (a close match) but also the exact role, so it applies."""
+    c = make_company(db, "Otter.ai")
+    target = _app(db, c, "Software Engineer, Data Infrastructure", "Tailored")
+    other = _app(db, c, "Software Engineer, AI Agent & LLM", "Tailored")
+    raw = mail("talent@otter.ai", "Thank you for applying to Otter.ai, DESHRAJ!",
+               "Dear DESHRAJ, Thank you for taking the time to submit your application for Software Engineer, Data "
+               "Infrastructure and considering Otter.ai for your next role!")
+    _ingest(db, raw)
+    db.refresh(target); db.refresh(other)
+    assert (target.status, other.status) == ("Applied", "Tailored")
+
+
+def test_confirmation_for_two_unsent_copies_goes_to_the_newest(db):
+    """Pinterest, 2026-11-23: the same posting saved twice, neither sent; the confirmation marks the newer copy."""
+    c = make_company(db, "Pinterest")
+    old = _app(db, c, "Software Engineer II, Data Analytics & Engineering", "Tailored", job_url="https://x/old")
+    new = _app(db, c, "Software Engineer II, Data Analytics & Engineering", "Tailored", job_url="https://x/new")
+    _app(db, c, "Machine Learning Engineer", "Tailored")
+    raw = mail("no-reply@us.greenhouse-mail.io", "Your application for Software Engineer II, Data Analytics & Engineering",
+               "Hi Deshraj, Thank you for your interest in joining the Pinterest team! We appreciate the time you took to "
+               "apply for a role with us.", name="Pinterest")
+    _ingest(db, raw)
+    db.refresh(old); db.refresh(new)
+    assert (new.status, old.status) == ("Applied", "Tailored")
+
+
+def test_rejection_for_two_unsent_copies_still_waits(db):
+    c = make_company(db, "Pinterest")
+    _app(db, c, "Data Engineer", "Tailored", job_url="https://x/a")
+    _app(db, c, "Data Engineer", "Tailored", job_url="https://x/b")
+    raw = mail("no-reply@us.greenhouse-mail.io", "Your application for Data Engineer",
+               "Thank you for applying to Pinterest. We have decided to move forward with other candidates for the "
+               "Data Engineer role.", name="Pinterest")
+    assert _match(db, raw).state != "matched"

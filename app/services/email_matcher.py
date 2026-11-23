@@ -206,6 +206,16 @@ def _one_sent(apps: list[JobApplication]) -> JobApplication | None:
     return sent[0] if len(sent) == 1 else None
 
 
+def _newest_unsent_copy(apps: list[JobApplication], cls: Classification) -> JobApplication | None:
+    """Two saved copies of one posting (Pinterest reposted "Software Engineer II, Data Analytics & Engineering",
+    2026-11-23) where neither is marked sent: a confirmation is for the copy he just worked on, the newest one."""
+    if cls.kind != "confirmation" or len(apps) < 2 or any(a.status in SENT for a in apps):
+        return None
+    if len({_norm_title(a.posting.job_title) for a in apps}) != 1:
+        return None
+    return max(apps, key=lambda a: a.id)
+
+
 def _decide_by_title(raw: RawEmail, cls: Classification, apps: list[JobApplication]) -> tuple[JobApplication, str] | None:
     """Pick one application at a company with several, from evidence in the email itself (real cases, 2026-11-21):
     1. the email names a role equal to one title ("Machine Learning Engineer" at Lyft); when two copies of the same
@@ -220,6 +230,8 @@ def _decide_by_title(raw: RawEmail, cls: Classification, apps: list[JobApplicati
             return equal[0], f"role '{cls.role}' is this application's title"
         if len(equal) > 1 and _one_sent(equal):
             return _one_sent(equal), f"role '{cls.role}'; the copy that was sent"
+        if _newest_unsent_copy(equal, cls):
+            return _newest_unsent_copy(equal, cls), f"role '{cls.role}'; the newest copy of this posting"
     text = " " + _norm_title(f"{raw.subject} {raw.text}") + " "
     named = _norm_title(cls.role)
     # A title written inside a longer role the email names ("Applied Scientist" inside "Applied Scientist, AWS Payments
@@ -235,6 +247,8 @@ def _decide_by_title(raw: RawEmail, cls: Classification, apps: list[JobApplicati
             return top[0], f"the email names '{top[0].posting.job_title}'"
         if _one_sent(top):
             return _one_sent(top), f"the email names '{top[0].posting.job_title}'; the copy that was sent"
+        if _newest_unsent_copy(top, cls):
+            return _newest_unsent_copy(top, cls), f"the email names '{top[0].posting.job_title}'; the newest copy"
     if cls.kind == "rejection" and not cls.role and _one_sent(apps):
         return _one_sent(apps), "names no role, and this is the only application sent there"
     return None

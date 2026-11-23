@@ -165,9 +165,14 @@ def _sure_of_company(row: EmailMessage) -> bool:
     """A confirmation or rejection is "medium" only because it came from the employer's own address
     (no-reply@perpay.com, careerautoresponder@careerhub.newyorklife.com) rather than an ATS or a known person. It still
     applies on its own when the company was found by its exact name, a job ID or the sender: the wording itself is
-    never a weak line (conditional and "if selected" sentences make no confirmation or rejection at all)."""
+    never a weak line (conditional and "if selected" sentences make no confirmation or rejection at all). A close
+    company name counts too when the email names the application's exact title."""
     how = row.match_how or ""
-    return "(exact)" in how or "job ID" in how or how.startswith("sender")
+    if "(exact)" in how or "job ID" in how or how.startswith("sender"):
+        return True
+    # A close company name ("Otter" for Otter.ai, "Northwestern" for Northwestern University, 2026-11-23) is enough
+    # when the email also names this application's own title.
+    return "(close)" in how and ("the email names" in how or "is this application's title" in how)
 
 
 def auto_accept_confirmations(db: Session) -> int:
