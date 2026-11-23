@@ -857,3 +857,14 @@ def test_company_from_time_to_apply_to():
                "Thanks again for taking the time to apply to SeatGeek. We have decided not to move forward with your "
                "application for the Senior Machine Learning Engineer position.")
     assert email_classifier.classify(raw).company == "SeatGeek"
+
+
+def test_confirmation_from_the_employers_own_address_applies(db):
+    """New York Life, 2026-11-22: its own autoresponder, so medium confidence, but the company matched exactly."""
+    app = _app(db, make_company(db, "Seattle Children's"), "Data Engineer", "Tailored")
+    raw = mail("recruitment@jobalerts.seattlechildrens.org", "Thank you for your interest in Seattle Children's",
+               "Dear D, Thank you for taking time to apply for the Data Engineer role. We're currently reviewing "
+               "applications for this position.")
+    _ingest(db, raw)
+    db.refresh(app)
+    assert _row(db, raw).confidence == "medium" and app.status == "Applied"
