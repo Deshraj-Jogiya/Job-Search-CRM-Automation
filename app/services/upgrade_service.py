@@ -167,6 +167,28 @@ def market_demand(db: Session, profile: dict, now: datetime | None = None, top: 
     return result
 
 
+PIPELINE_STATUSES = ("Approved", "Applied", "Interviewing")
+PIPELINE_WINDOW_DAYS = 45
+
+
+def pipeline_demand(db: Session, profile: dict, terms: list[str], now: datetime | None = None) -> dict:
+    """For each term, the share (0-100) of the postings he is actively pursuing (Approved, Applied or Interviewing, applied to or
+    added in the last PIPELINE_WINDOW_DAYS) whose required section asks for it."""
+    from ..models import JobApplication
+
+    since = (now or utcnow()) - timedelta(days=PIPELINE_WINDOW_DAYS)
+    apps = db.query(JobApplication).filter(JobApplication.status.in_(PIPELINE_STATUSES)).all()
+    postings = [a.posting for a in apps if a.posting and ((a.applied_at or a.posting.first_seen_at or since) >= since)]
+    counts = {t: 0 for t in terms}
+    for p in postings:
+        found = _required_terms(profile, p.job_description)
+        for t in terms:
+            if t in found:
+                counts[t] += 1
+    n = len(postings)
+    return {"postings": n, "shares": {t: round(100 * c / n) for t, c in counts.items()} if n else {}}
+
+
 # ---------------------------------------------------------------------------
 # Check 2: his own work moved on
 # ---------------------------------------------------------------------------

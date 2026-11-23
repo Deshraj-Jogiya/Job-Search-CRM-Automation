@@ -190,8 +190,22 @@ def test_market_skills_export_keeps_only_skill_names_shares_and_evidence(db, mon
     assert summary == {"written": str(out), "skills": 2, "target_postings": 30}
     assert data["generated_at"] == "2026-10-22" and data["target_postings"] == 30
     assert len(data["skills"]) == 2
-    assert all(set(s) == {"term", "share", "evidence"} for s in data["skills"])
+    assert all(set(s) == {"term", "share", "evidence", "pipeline_share"} for s in data["skills"])
+    assert data["pipeline_postings"] == 0
     assert all(s["share"] == 100 for s in data["skills"])
+
+
+def test_pipeline_demand_counts_only_postings_he_is_pursuing(db, monkeypatch):
+    from tests.conftest import make_application
+
+    company = make_company(db, name="Pursued Co")
+    for i, (status, text) in enumerate((("Applied", "Requirements:\nPython and Spark"), ("Interviewing", "Requirements:\nPython"),
+                                         ("Not Selected", "Requirements:\nSpark"))):
+        posting = make_posting(db, company, job_title="Data Engineer", job_url=f"https://p/{i}", job_description=text,
+                               first_seen_at=NOW - timedelta(days=5))
+        make_application(db, posting, status=status, applied_at=NOW - timedelta(days=3))
+    out = upgrade_service.pipeline_demand(db, PROFILE, ["Python", "Spark"], NOW)
+    assert out == {"postings": 2, "shares": {"Python": 100, "Spark": 50}}
 
 # ---- checks 4 and 5 ----------------------------------------------------------------------------------------
 
@@ -328,3 +342,8 @@ def test_demo_labels_the_upgrades_as_the_fictional_candidates():
     assert "Sample: 1 upgrade for Jordan Ellis" in demo and "your repos" not in demo
     personal = _base_context(upgrade_card=card)
     assert "1 upgrade to look at" in personal and "Jordan" not in personal
+
+
+def test_a_dimensional_data_model_counts_as_data_modeling_evidence():
+    profile = {"projects": [{"name": "Warehouse", "bullets": ["Dimensional Data Model: staging views into dimension and fact tables"]}]}
+    assert upgrade_service.evidence_strength(profile, "Data modeling")["level"] == "work"

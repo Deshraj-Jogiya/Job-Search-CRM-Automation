@@ -97,6 +97,12 @@ def market_skills(db, top: int = 40, out: str | None = None) -> dict:
         "target_roles": demand["target_roles"],
         "skills": [{"term": s["term"], "share": s["share"], "evidence": s["level"]} for s in demand["skills"]],
     }
+    # The postings he is waiting on right now: their recruiters and hiring managers are the readers a post can actually help with,
+    # so the post picker weights the skills these postings ask for (owner, 2026-11-23: posts must serve the job search).
+    pipeline = upgrade_service.pipeline_demand(db, profile, [s["term"] for s in result["skills"]])
+    result["pipeline_postings"] = pipeline["postings"]
+    for s in result["skills"]:
+        s["pipeline_share"] = pipeline["shares"].get(s["term"], 0)
     if out:
         with open(out, "w", encoding="utf-8") as fh:
             _json.dump(result, fh, indent=2, ensure_ascii=False)
