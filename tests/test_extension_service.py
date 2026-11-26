@@ -533,8 +533,8 @@ class TestEducationLevelAnswer:
 
     def test_masters_degree_matches_a_real_masters_option(self, db, settings):
         _set_profile(db, _profile(education=[
-            {"degree": "Master of Science, Information Technology", "school": "Arizona State University", "date": "Aug 2022 - Jul 2024"},
-            {"degree": "Bachelor of Technology, Computer Engineering", "school": "Institute of Advanced Research", "date": "Aug 2017 - Jul 2021"},
+            {"degree": "Master of Science, Information Technology", "school": "Arizona State University", "date": "Aug 2022 - May 2024"},
+            {"degree": "Bachelor of Technology, Computer Engineering", "school": "Institute of Advanced Research", "date": "Aug 2017 - Jun 2021"},
         ]))
         company = make_company(db)
         application = make_application(db, make_posting(db, company), status="Approved")
@@ -572,7 +572,7 @@ class TestEducationLevelAnswer:
         # Degree" phrase besides. Both the apostrophe-normalization fix
         # and the existing phrase-containment cascade need to hold here.
         _set_profile(db, _profile(education=[
-            {"degree": "Master of Science, Information Technology", "school": "Arizona State University", "date": "Aug 2022 - Jul 2024"},
+            {"degree": "Master of Science, Information Technology", "school": "Arizona State University", "date": "Aug 2022 - May 2024"},
         ]))
         company = make_company(db)
         application = make_application(db, make_posting(db, company), status="Approved")

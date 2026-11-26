@@ -40,11 +40,11 @@ class TestCorePostingTitle:
 
 class TestGpa:
     def test_drops_a_gpa_off_the_four_point_scale(self):
-        assert resume_ats.us_scale_gpa_only("Aug 2017 – Jul 2021 · GPA: 7.8/10") == "Aug 2017 – Jul 2021"
+        assert resume_ats.us_scale_gpa_only("Aug 2017 – Jun 2021 · GPA: 7.8/10") == "Aug 2017 – Jun 2021"
         assert resume_ats.us_scale_gpa_only("GPA: 82/100") is None
 
     def test_keeps_a_four_point_gpa(self):
-        assert resume_ats.us_scale_gpa_only("Aug 2022 – Jul 2024 · GPA: 4.0/4.0") == "Aug 2022 – Jul 2024 · GPA: 4.0/4.0"
+        assert resume_ats.us_scale_gpa_only("Aug 2022 – May 2024 · GPA: 4.0/4.0") == "Aug 2022 – May 2024 · GPA: 4.0/4.0"
         assert resume_ats.us_scale_gpa_only("May 2020 | GPA 3.6/4") == "May 2020 | GPA 3.6/4"
 
     def test_rendered_pdf_has_no_ten_point_gpa(self):
