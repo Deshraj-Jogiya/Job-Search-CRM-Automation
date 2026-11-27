@@ -66,3 +66,17 @@ def test_one_mention_of_a_long_name_counts_once():
     once = GOOD.replace("Reddit's", "Acme's").replace("Reddit", "Acme")
     once = once.replace("Acme", "Amazon Web Services", 1).replace("Acme", "the company")
     assert any("names Amazon Web Services (AWS) 1 time" in i for i in cls.quality_issues(once, "Amazon Web Services (AWS)"))
+
+
+def test_semicolon_is_flagged_and_never_rendered():
+    """Application sites flag a semicolon in a cover letter (his report, 2026-11-27): the check fails a letter that
+    has one, and every rendered format splits it into two sentences, so stored letters go out without one too."""
+    from app.services import cover_letter_service
+    body = ("At Zifatech I rebuilt the reporting models; it cut manual work 70%.\n\n"
+            "I test every model in CI ; the checks run on each push.")
+    assert any("semicolon" in issue for issue in cover_letter_service.quality_issues(body, "Acme"))
+    assert cover_letter_service.remove_semicolons("I built X; it cut Y;") == "I built X. It cut Y."
+    text = cover_letter_service.full_text(body, "Deshraj Jogiya")
+    assert ";" not in text
+    assert "rebuilt the reporting models. It cut manual work 70%." in text
+    assert "in CI. The checks run on each push." in text

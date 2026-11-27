@@ -41,11 +41,22 @@ _OWN_CLOSING_RE = re.compile(r"^(sincerely|best regards|kind regards|warm regard
                              re.IGNORECASE)
 
 
+_SEMICOLON_RE = re.compile(r"\s*;\s*(\S?)")
+
+
+def remove_semicolons(text: str) -> str:
+    """Application sites flag a semicolon in a cover letter, so none is ever sent: each one ends the sentence and
+    the next word starts a new one ("I built X; it cut Y" -> "I built X. It cut Y")."""
+    return _SEMICOLON_RE.sub(lambda m: ". " + m.group(1).upper() if m.group(1) else ".", text or "")
+
+
 def letter_parts(body: str, recipient_name: str | None = None) -> tuple[str, list[str]]:
     """(greeting line, body paragraphs). Letters written before the frame existed, or by hand, carry their own
     greeting and sign-off: the sign-off is dropped so it is not printed twice, and their own greeting ("Dear Loenbro
     Hiring Team,") is kept unless an addressee has been saved for the application."""
-    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", body or "") if p.strip()]
+    # Every format (PDF, Word, plain text, the extension's paste) comes through here, so letters stored before the
+    # no-semicolon rule go out without one too.
+    paragraphs = [remove_semicolons(p.strip()) for p in re.split(r"\n\s*\n", body or "") if p.strip()]
     own_greeting = None
     if paragraphs:
         first, _, rest = paragraphs[0].partition("\n")
@@ -134,6 +145,8 @@ def quality_issues(body: str, company_name: str) -> list[str]:
     if not any(len(p.split()) >= STORY_MIN_WORDS and _NUMBER_IN_TEXT_RE.search(p) for p in paragraphs[1:-1] or paragraphs):
         issues.append(f"no story paragraph (one body paragraph of {STORY_MIN_WORDS}+ words telling one piece of work "
                       "and its measured result)")
+    if ";" in (body or ""):
+        issues.append("uses a semicolon (application sites flag it), write two sentences instead")
     if paragraphs and not _ASK_RE.search(paragraphs[-1]):
         issues.append("last paragraph does not ask for an interview or conversation")
     return issues

@@ -737,7 +737,8 @@ def generate_cover_letter(profile_content: dict, company_name: str, job_title: s
             "Do not paste resume bullets: rephrase them as prose with context.\n\n"
             "Banned: 'I am applying for', 'The posting asks/describes', 'I am excited to apply', 'I work the same "
             "way', 'please find my resume', 'I am confident that', or any sentence that could be sent to another "
-            "company unchanged. No greetings or sign-offs -- start directly with paragraph 1's body text."
+            "company unchanged. No greetings or sign-offs -- start directly with paragraph 1's body text. "
+            "Never use a semicolon (;): application sites flag it. Write two sentences or use a comma instead."
             + (f"\n\nYour previous draft broke a rule; fix it: {correction}" if correction else "")
         ),
         temperature=0.5,
@@ -1055,11 +1056,11 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
             if bad_numbers or letter_issues:
                 problems = list(letter_issues)
                 if bad_numbers:
-                    problems.append(f"these numbers are not in the evidence: {', '.join(bad_numbers)}; remove them "
+                    problems.append(f"these numbers are not in the evidence: {', '.join(bad_numbers)}. Remove them "
                                     "or use only numbers the evidence states")
                 cl_text = generate_cover_letter(
                     profile_content, posting.company_name_raw, posting.job_title, jd_text, **cl_args,
-                    correction="; ".join(problems) + ".")
+                    correction=". ".join(problems) + ".")
                 bad_numbers = unsupported_numbers(cl_text, cl_facts)
                 letter_issues = cover_letter_service.quality_issues(cl_text, posting.company_name_raw)
             cl_score = score_cover_letter(cl_text, jd_text)
@@ -1070,6 +1071,7 @@ def tailor_application(db: Session, application_id: int) -> JobApplication:
         # applied after scoring (a handful of swapped-out filler words don't
         # need a second LLM call to re-verify compellingness).
         cl_text = resume_rules.rewrite_ai_cliche_language(cl_text)
+        cl_text = cover_letter_service.remove_semicolons(cl_text)
 
         _upsert_document(db, application.id, "cover_letter", cl_text, ats_score=cl_score)
     else:
