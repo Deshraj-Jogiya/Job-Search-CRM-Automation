@@ -818,6 +818,21 @@
       "until": "2027-03-15",
       "note": "1,037 jobs cut",
       "source": "https://intellizence.com/insights/layoff-downsizing/leading-companies-announcing-layoffs-and-hiring-freezes/"
+    },
+    {
+      "names": [
+        "Lucid Motors",
+        "Lucid USA",
+        "Lucid"
+      ],
+      "kind": "layoff",
+      "scope": "company",
+      "percent": 30,
+      "evidence": "insider",
+      "date": "2026-11-23",
+      "until": "2027-05-23",
+      "note": "A contact says a company-wide 30% layoff earlier this year cut deep in IT and they do not expect growth soon",
+      "source": "LinkedIn conversation, 2026-11-23"
     }
   ]
 }
