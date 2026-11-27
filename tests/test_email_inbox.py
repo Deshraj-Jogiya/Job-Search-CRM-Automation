@@ -31,6 +31,12 @@ def kind(raw, **kw):
 # ---------------------------------------------------------------------------- classifier
 
 class TestClassifier:
+    def test_adp_time_to_submit_confirmation(self):
+        raw = mail("acme.hr@adp.com", "Your application for the position Analytics Engineer at Acme",
+                   "Dear Deshraj, Thank you for taking the time to submit your application for the Analytics Engineer "
+                   "position. We are currently reviewing your application.")
+        assert kind(raw) == "confirmation"
+
     def test_greenhouse_confirmation(self):
         raw = mail("no-reply@us.greenhouse-mail.io", "Thank you for applying to Whatnot",
                    "Hi D, Thank you for applying for the Data Engineer role at Whatnot. We have received your application.",
@@ -924,3 +930,12 @@ def test_rejection_for_two_unsent_copies_still_waits(db):
                "Thank you for applying to Pinterest. We have decided to move forward with other candidates for the "
                "Data Engineer role.", name="Pinterest")
     assert _match(db, raw).state != "matched"
+
+
+def test_thank_you_for_completing_your_application_is_a_confirmation():
+    """Xanterra (iCIMS), 2026-11-26: the confirmation says "completing", not "applying"."""
+    raw = mail("xanterra+autoreply@talent.icims.com",
+               "Thank you for completing your application for Analytics Engineer at Xanterra Travel Collection!",
+               "Dear Deshraj, Thank you for completing your application with Xanterra Travel Collection! Your "
+               "application is for the Analytics Engineer position.")
+    assert kind(raw) == "confirmation"

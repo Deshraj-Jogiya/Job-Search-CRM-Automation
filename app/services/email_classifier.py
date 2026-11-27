@@ -122,7 +122,8 @@ CONFIRMATION_PHRASES = (
     "thank you for submitting", "thanks for submitting", "thanks for your submission", "thank you for your submission",
     "thank you for your interest in", "thanks for your interest in", "we have received your", "we've received your",
     "we received your", "application submitted", "indeed application:", "application confirmation",
-    "has been submitted", "for applying",
+    "has been submitted", "for applying", "time to submit your application", "reviewing your application",
+    "for completing your application",
 )
 # Sentences that describe what *might* happen; they never make an email an interview or an assessment.
 _CONDITIONAL_RE = re.compile(
